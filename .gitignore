@@ -10,6 +10,10 @@ temp/
 # 构建产物与依赖（后续编码阶段）
 node_modules/
 dist/
+# nam 前端构建产物：go:embed 需要该目录存在，只提交占位文件
+!nam/webdist/dist/
+nam/webdist/dist/*
+!nam/webdist/dist/.gitkeep
 *.db
 *.db-shm
 *.db-wal
@@ -18,3 +22,4 @@ dist/
 !.env.example
 .venv/
 venv/
+

@@ -1,0 +1,257 @@
+openapi: 3.0.3
+info:
+  title: nam API
+  version: 0.1.0
+  description: |
+    nam 管理接口。两种运行模式路径相同，统一在 /api/nam 下。
+    所有响应都是 {success, message, data} 信封；失败时 HTTP 状态码表示错误类别
+    （400 参数错误、401 未登录、403 非 root、404 不存在、409 冲突、429 锁定、5xx 服务端或 NewAPI 出错）。
+    嵌入模式：使用 NewAPI 会话 cookie，并带 New-Api-User 头（取 localStorage user.id）。
+    独立模式：使用 nam_session cookie。
+    M1 只包含下面这些接口；后续里程碑在此文件追加。
+servers:
+  - url: /api/nam
+components:
+  schemas:
+    Envelope:
+      type: object
+      required: [success, message]
+      properties:
+        success: { type: boolean }
+        message: { type: string }
+        data: {}
+    Identity:
+      type: object
+      properties:
+        user_id: { type: integer }
+        username: { type: string }
+        role: { type: integer, description: 100 = root }
+    Session:
+      type: object
+      properties:
+        mode: { type: string, enum: [embedded, standalone] }
+        identity: { $ref: '#/components/schemas/Identity' }
+        version: { type: string }
+    BackendInfo:
+      type: object
+      properties:
+        mode: { type: string }
+        version: { type: string }
+        address: { type: string }
+        patch_p1: { type: boolean }
+        quota_per_unit: { type: number }
+        last_request_at: { type: integer }
+        last_error: { type: string }
+    UpstreamType:
+      type: string
+      enum: [newapi, sk-key, sub2api, onehub, official, generic]
+    CredType:
+      type: string
+      enum: ['', access_token, password, sk_key]
+    Credential:
+      type: object
+      properties:
+        access_token: { type: string }
+        username: { type: string }
+        password: { type: string }
+        key: { type: string }
+    UpstreamInput:
+      type: object
+      description: 创建时 name/type/base_url 必填；修改时只传要改的字段。credential 传空对象表示清除凭证。
+      properties:
+        name: { type: string, maxLength: 64 }
+        type: { $ref: '#/components/schemas/UpstreamType' }
+        base_url: { type: string, description: 根地址，不带 /v1，末尾斜杠会被去掉 }
+        cred_type: { $ref: '#/components/schemas/CredType' }
+        credential: { $ref: '#/components/schemas/Credential' }
+        platform_user_id: { type: integer }
+        currency_rate: { type: number, exclusiveMinimum: true, minimum: 0, description: 上游货币汇率（元 / 上游 1 美元额度） }
+        tags: { type: string, description: 逗号分隔 }
+        remark: { type: string }
+        adapter_config: { type: string, description: JSON 字符串，仅 generic }
+    Upstream:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        type: { $ref: '#/components/schemas/UpstreamType' }
+        base_url: { type: string }
+        cred_type: { $ref: '#/components/schemas/CredType' }
+        has_credential: { type: boolean }
+        platform_user_id: { type: integer }
+        currency_rate: { type: number }
+        tags: { type: string }
+        remark: { type: string }
+        adapter_config: { type: string }
+        balance_usd: { type: number, nullable: true }
+        balance_cny: { type: number, nullable: true, description: balance_usd × currency_rate }
+        balance_at: { type: integer }
+        last_sync_at: { type: integer }
+        last_sync_error: { type: string }
+        token_count: { type: integer }
+        channel_count: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    NewAPIChannel:
+      type: object
+      properties:
+        id: { type: integer }
+        type: { type: integer }
+        name: { type: string }
+        base_url: { type: string }
+        models: { type: array, items: { type: string } }
+        group: { type: string }
+        priority: { type: integer }
+        weight: { type: integer }
+        tag: { type: string }
+        status: { type: integer, description: 1 启用 / 2 手动禁用 / 3 自动禁用 }
+        test_model: { type: string }
+        response_time: { type: integer }
+        test_time: { type: integer }
+        balance: { type: number }
+        used_quota: { type: integer }
+        created_time: { type: integer }
+    JobStatus:
+      type: object
+      properties:
+        name: { type: string, enum: [balance, ratio, price_book, announcements, pull_logs, pricing, consistency, cleanup, backup] }
+        title: { type: string }
+        interval_s: { type: integer }
+        last_start: { type: integer }
+        last_duration_ms: { type: integer }
+        last_result: { type: string, enum: ['', ok, fail] }
+        last_message: { type: string }
+        running: { type: boolean }
+        queued: { type: boolean }
+        next_at: { type: integer }
+    Settings:
+      type: object
+      description: 字符串键值。job_interval.<job> 为 Go duration（如 30m、6h）。site_rate 只读，修改走定价流程（M5）。
+      additionalProperties: { type: string }
+      example:
+        site_rate: '7'
+        protect_threshold: '0.5'
+        auto_write: 'true'
+        log_retention_days: '30'
+        stats_retention_days: '180'
+        job_interval.balance: 30m0s
+    AuditLog:
+      type: object
+      properties:
+        id: { type: integer }
+        at: { type: integer }
+        kind: { type: string, enum: [channel, price, setting, upstream] }
+        target: { type: string }
+        action: { type: string }
+        summary: { type: string }
+        before: { type: string }
+        after: { type: string }
+        request: { type: string }
+        response: { type: string }
+        trigger: { type: string, enum: [auto, manual] }
+        result: { type: string, enum: [ok, fail, skipped] }
+        error: { type: string }
+        operator: { type: string }
+        rollback_of: { type: integer, nullable: true }
+paths:
+  /ping:
+    get:
+      summary: 健康检查（无需登录）
+      responses: { '200': { description: data = "pong" } }
+  /auth/login:
+    post:
+      summary: 登录（仅独立模式）
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [password], properties: { password: { type: string } } }
+      responses:
+        '200': { description: 设置 nam_session cookie（7 天） }
+        '401': { description: '密码错误；data = {failures, locked_until}' }
+        '429': { description: '连续失败 5 次后锁定 60 秒；data = {locked_until}' }
+  /auth/logout:
+    post:
+      summary: 退出（仅独立模式）
+      responses: { '200': { description: ok } }
+  /auth/password:
+    post:
+      summary: 修改管理员密码（仅独立模式）；成功后所有会话失效
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [old_password, new_password, confirm_password]
+              properties:
+                old_password: { type: string }
+                new_password: { type: string, minLength: 8 }
+                confirm_password: { type: string }
+      responses: { '200': { description: ok }, '400': { description: 校验失败 }, '401': { description: 旧密码错误 } }
+  /session:
+    get:
+      summary: 当前模式与身份
+      responses: { '200': { description: data = Session, content: { application/json: { schema: { $ref: '#/components/schemas/Session' } } } } }
+  /backend:
+    get:
+      summary: NewAPI 连接状态
+      responses: { '200': { description: data = BackendInfo } }
+  /upstreams:
+    get:
+      summary: 上游列表
+      responses: { '200': { description: 'data = Upstream[]' } }
+    post:
+      summary: 新增上游（只写 nam）
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/UpstreamInput' } } } }
+      responses: { '200': { description: data = Upstream }, '400': { description: 校验失败 }, '409': { description: 名称重复 } }
+  /upstreams/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    get:
+      responses: { '200': { description: data = Upstream }, '404': { description: 不存在 } }
+    put:
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/UpstreamInput' } } } }
+      responses: { '200': { description: data = Upstream } }
+    delete:
+      summary: 删除上游（M2 起同时把其渠道的删除加入草稿）
+      responses: { '200': { description: ok } }
+  /upstreams/{id}/credential:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    get:
+      summary: 查看凭证明文（高危：嵌入模式需二次验证）
+      responses: { '200': { description: data = Credential } }
+  /newapi/channels:
+    get:
+      summary: 直接读取 NewAPI 渠道（不含 key）
+      responses: { '200': { description: 'data = {total, items: NewAPIChannel[]}' }, '502': { description: NewAPI 不可达 } }
+  /jobs:
+    get:
+      summary: 后台任务状态
+      responses: { '200': { description: 'data = JobStatus[]' } }
+  /jobs/{name}:
+    parameters:
+      - { name: name, in: path, required: true, schema: { type: string } }
+      - { name: wait, in: query, schema: { type: boolean }, description: 为 1 时等待任务完成 }
+    post:
+      summary: 立即运行（加入串行队列）
+      responses: { '200': { description: ok }, '404': { description: 未知任务 } }
+  /settings:
+    get:
+      responses: { '200': { description: data = Settings } }
+    put:
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/Settings' } } } }
+      responses: { '200': { description: data = Settings（更新后） }, '400': { description: 校验失败或未知键 } }
+  /audit:
+    get:
+      parameters:
+        - { name: kind, in: query, schema: { type: string } }
+        - { name: trigger, in: query, schema: { type: string } }
+        - { name: result, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: integer } }
+        - { name: to, in: query, schema: { type: integer } }
+        - { name: q, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 500 } }
+        - { name: offset, in: query, schema: { type: integer } }
+      responses: { '200': { description: 'data = {total, items: AuditLog[]}' } }
+  /audit/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    get:
+      responses: { '200': { description: data = AuditLog } }

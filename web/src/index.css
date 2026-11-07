@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 220 14% 14%;
+    --card: 0 0% 100%;
+    --popover: 0 0% 100%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 0 0% 100%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 42%;
+    --accent: 220 14% 94%;
+    --accent-foreground: 220 14% 14%;
+    --destructive: 0 72% 51%;
+    --success: 152 60% 36%;
+    --warning: 38 92% 45%;
+    --border: 220 13% 90%;
+    --input: 220 13% 86%;
+    --ring: 221 83% 53%;
+  }
+  .dark {
+    --background: 222 14% 9%;
+    --foreground: 220 14% 90%;
+    --card: 222 14% 11%;
+    --popover: 222 14% 12%;
+    --primary: 217 91% 63%;
+    --primary-foreground: 222 14% 9%;
+    --muted: 222 12% 15%;
+    --muted-foreground: 220 9% 62%;
+    --accent: 222 12% 18%;
+    --accent-foreground: 220 14% 92%;
+    --destructive: 0 70% 58%;
+    --success: 152 50% 52%;
+    --warning: 38 90% 58%;
+    --border: 222 12% 20%;
+    --input: 222 12% 24%;
+    --ring: 217 91% 63%;
+  }
+  * {
+    @apply border-border;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-background font-sans text-base text-foreground antialiased;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--input));
+    border-radius: 6px;
+    border: 2px solid hsl(var(--background));
+  }
+}
