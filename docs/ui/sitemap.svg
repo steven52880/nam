@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="894" viewBox="0 0 1440 894" font-family="'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif">
+  <title>nam 界面站点图</title>
+  <style>
+    .bg{fill:#f4f5f7}.h1{font-size:18px;font-weight:600;fill:#1a202c}.h2{font-size:12px;fill:#8b93a1}
+    .n rect{stroke-width:1.4}.n .t{font-size:12px;font-weight:600;fill:#1a202c}.n .s{font-size:10.5px;fill:#4a5261}
+    .pg rect{fill:#e9efff;stroke:#2952cc}.pg .t{fill:#1e40af}
+    .md rect{fill:#fff;stroke:#b45309}.dr rect{fill:#efe8fd;stroke:#6d28d9}.cf rect{fill:#fde8e8;stroke:#c81e1e}
+    .jp rect{fill:#fff;stroke:#2952cc;stroke-dasharray:4 3}.jp .t{fill:#2952cc}.ac rect{fill:#fafbfc;stroke:#8b93a1}
+    .gl rect{fill:#fff;stroke:#c9ced6}.wb circle{fill:#fff1b8;stroke:#e0b400}.wb text{font-size:9.5px;font-weight:600;fill:#6b4e00;text-anchor:middle}
+    .ln{stroke:#b9bfc9;stroke-width:1.2;fill:none}.ln.d{stroke-dasharray:4 3}.ln.a{stroke:#2952cc}
+    .lbl{font-size:10.5px;fill:#8b93a1}.zone{fill:#fff;stroke:#e1e4e8}
+  </style>
+  <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="#b9bfc9"/></marker>
+  <marker id="arb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="#2952cc"/></marker></defs>
+  <rect class="bg" width="1440" height="894"/>
+  <text class="h1" x="40" y="34">nam（newapi-manager）界面站点图</text>
+  <text class="h2" x="40" y="52">页面 · 弹窗 · 抽屉 · 确认框 · 页面间跳转；对应 docs/ui/mockup.html 与 ui-spec.md</text>
+  <g class="n pg"><rect x="40" y="66" width="130" height="44" rx="6"/><text class="t" x="50" y="84">P0 登录</text><text class="s" x="50" y="100">单管理员密码</text></g>
+  <rect class="zone" x="210" y="62" width="1200" height="56" rx="8"/><text class="lbl" x="222" y="78">顶栏（所有页面）</text>
+  <g class="n gl"><rect x="330" y="68" width="204" height="44" rx="6"/><text class="t" x="340" y="86">全局搜索 Ctrl K</text><text class="s" x="340" y="102">→ 页面 / 上游抽屉 / 渠道 / 模型</text></g>
+  <g class="n gl"><rect x="546" y="68" width="204" height="44" rx="6"/><text class="t" x="556" y="86">NewAPI 连接点</text><text class="s" x="556" y="102">→ 连接信息弹窗</text></g>
+  <g class="n gl"><rect x="762" y="68" width="204" height="44" rx="6"/><text class="t" x="772" y="86">待应用草稿 N</text><text class="s" x="772" y="102">→ 应用变更弹窗</text></g>
+  <g class="n gl"><rect x="978" y="68" width="204" height="44" rx="6"/><text class="t" x="988" y="86">用户菜单</text><text class="s" x="988" y="102">→ P9 改密码 / P0 退出</text></g>
+  <g class="n gl"><rect x="1194" y="68" width="204" height="44" rx="6"/><text class="t" x="1204" y="86">Toast 区</text><text class="s" x="1204" y="102">右下角，3.4 秒消失</text></g>
+  <path class="ln a" d="M105 110 V142" marker-end="url(#arb)"/><text class="lbl" x="112" y="132">登录成功</text>
+  <rect class="zone" x="40" y="146" width="130" height="580" rx="8"/><text class="t" x="56" y="168" font-size="12" font-weight="600" fill="#1a202c">左侧导航</text><text class="lbl" x="56" y="186">点击切换页面</text><text class="lbl" x="56" y="202">（#/页面 路由）</text>
+  <path class="ln" d="M170 172 H218" marker-end="url(#ar)"/>
+  <g class="n pg"><rect x="220" y="150" width="170" height="44" rx="6"/><text class="t" x="230" y="168">P1 总览</text><text class="s" x="230" y="184">#/overview</text></g>
+  <path class="ln d" d="M390 172 H1244"/>
+  <g class="n jp"><rect x="430" y="150" width="150" height="44" rx="22"/><text class="t" x="440" y="168">→ P2 上游</text><text class="s" x="440" y="184">低余额 / 同步失败卡片</text></g>
+  <g class="n jp"><rect x="592" y="150" width="150" height="44" rx="22"/><text class="t" x="602" y="168">→ P3 渠道</text><text class="s" x="602" y="184">自动禁用 / 漂移卡片</text></g>
+  <g class="n jp"><rect x="754" y="150" width="150" height="44" rx="22"/><text class="t" x="764" y="168">→ P4 模型与价格</text><text class="s" x="764" y="184">价格待确认卡片</text></g>
+  <g class="n dr"><rect x="916" y="150" width="150" height="44" rx="6"/><text class="t" x="926" y="168">上游详情抽屉</text><text class="s" x="926" y="184">点余额汇总行</text></g>
+  <g class="n ac"><rect x="1078" y="150" width="150" height="44" rx="6"/><text class="t" x="1088" y="168">立即运行任务</text><text class="s" x="1088" y="184">插入串行队列</text></g>
+  <g class="n jp"><rect x="1240" y="150" width="150" height="44" rx="22"/><text class="t" x="1250" y="168">→ P7 写入历史</text><text class="s" x="1250" y="184">最近写入 · 全部</text></g>
+  <path class="ln" d="M170 238 H218" marker-end="url(#ar)"/>
+  <g class="n pg"><rect x="220" y="216" width="170" height="44" rx="6"/><text class="t" x="230" y="234">P2 上游</text><text class="s" x="230" y="250">#/upstreams</text></g>
+  <path class="ln d" d="M390 238 H1244"/>
+  <g class="n md"><rect x="430" y="216" width="150" height="44" rx="6"/><text class="t" x="440" y="234">新增上游向导</text><text class="s" x="440" y="250">5 步：地址→类型→凭证→测试→r</text></g>
+  <g class="n dr"><rect x="592" y="216" width="150" height="44" rx="6"/><text class="t" x="602" y="234">上游详情抽屉</text><text class="s" x="602" y="250">概览/分组/令牌/公告/适配器/日志</text></g>
+  <g class="n cf"><rect x="754" y="216" width="150" height="44" rx="6"/><text class="t" x="764" y="234">在上游新建令牌</text><text class="s" x="764" y="250">调上游 /api/token/</text></g>
+  <g class="n cf"><rect x="916" y="216" width="150" height="44" rx="6"/><text class="t" x="926" y="234">删除上游</text><text class="s" x="926" y="250">其渠道删除进入草稿</text></g>
+  <g class="n ac"><rect x="1078" y="216" width="150" height="44" rx="6"/><text class="t" x="1088" y="234">适配器测试</text><text class="s" x="1088" y="250">generic：余额地址+JSON 路径</text></g>
+  <g class="n jp"><rect x="1240" y="216" width="150" height="44" rx="22"/><text class="t" x="1250" y="234">→ P3a 批量创建</text><text class="s" x="1250" y="250">令牌 tab「建渠道」</text></g>
+  <path class="ln" d="M170 304 H218" marker-end="url(#ar)"/>
+  <g class="n pg"><rect x="220" y="282" width="170" height="44" rx="6"/><text class="t" x="230" y="300">P3 渠道</text><text class="s" x="230" y="316">#/channels</text></g>
+  <path class="ln d" d="M390 304 H1244"/>
+  <g class="n md"><rect x="430" y="282" width="150" height="44" rx="6"/><text class="t" x="440" y="300">P3a 批量创建向导</text><text class="s" x="440" y="316">5 步，结果加入草稿</text></g>
+  <g class="n md"><rect x="592" y="282" width="150" height="44" rx="6"/><text class="t" x="602" y="300">应用变更</text><text class="s" x="602" y="316">差异预览→逐条执行→进度</text><g class="wb"><circle cx="732" cy="292" r="8"/><text x="732" y="295.5">写</text></g></g>
+  <g class="n md"><rect x="754" y="282" width="150" height="44" rx="6"/><text class="t" x="764" y="300">漂移对比</text><text class="s" x="764" y="316">nam 值 vs NewAPI 值</text><g class="wb"><circle cx="894" cy="292" r="8"/><text x="894" y="295.5">写</text></g></g>
+  <g class="n ac"><rect x="916" y="282" width="150" height="44" rx="6"/><text class="t" x="926" y="300">右键菜单</text><text class="s" x="926" y="316">启停/测试/打开/复制/删除</text></g>
+  <g class="n cf"><rect x="1078" y="282" width="150" height="44" rx="6"/><text class="t" x="1088" y="300">测试 / 删除 / 放弃草稿</text><text class="s" x="1088" y="316">测试调 NewAPI test 接口</text><g class="wb"><circle cx="1218" cy="292" r="8"/><text x="1218" y="295.5">写</text></g></g>
+  <g class="n ac"><rect x="1240" y="282" width="150" height="44" rx="6"/><text class="t" x="1250" y="300">列显示设置</text><text class="s" x="1250" y="316">弹出勾选列表</text></g>
+  <path class="ln" d="M170 370 H218" marker-end="url(#ar)"/>
+  <g class="n pg"><rect x="220" y="348" width="170" height="44" rx="6"/><text class="t" x="230" y="366">P4 模型与价格</text><text class="s" x="230" y="382">#/models</text></g>
+  <path class="ln d" d="M390 370 H1082"/>
+  <g class="n md"><rect x="430" y="348" width="150" height="44" rx="6"/><text class="t" x="440" y="366">预览写入</text><text class="s" x="440" y="382">option 差异，PUT /api/option/</text><g class="wb"><circle cx="570" cy="358" r="8"/><text x="570" y="361.5">写</text></g></g>
+  <g class="n dr"><rect x="592" y="348" width="150" height="44" rx="6"/><text class="t" x="602" y="366">计算明细抽屉</text><text class="s" x="602" y="382">渠道占比与公式展开</text></g>
+  <g class="n md"><rect x="754" y="348" width="150" height="44" rx="6"/><text class="t" x="764" y="366">覆盖官方价</text><text class="s" x="764" y="382">写 price_override</text></g>
+  <g class="n md"><rect x="916" y="348" width="150" height="44" rx="6"/><text class="t" x="926" y="366">设置别名</text><text class="s" x="926" y="382">上游模型名→官方名</text></g>
+  <g class="n cf"><rect x="1078" y="348" width="150" height="44" rx="6"/><text class="t" x="1088" y="366">确认待定价格</text><text class="s" x="1088" y="382">变化 &gt;50% 的模型</text><g class="wb"><circle cx="1218" cy="358" r="8"/><text x="1218" y="361.5">写</text></g></g>
+  <path class="ln" d="M170 436 H218" marker-end="url(#ar)"/>
+  <g class="n pg"><rect x="220" y="414" width="170" height="44" rx="6"/><text class="t" x="230" y="432">P5 统计</text><text class="s" x="230" y="448">#/stats</text></g>
+  <path class="ln d" d="M390 436 H758"/>
+  <g class="n dr"><rect x="430" y="414" width="150" height="44" rx="6"/><text class="t" x="440" y="432">渠道逐小时抽屉</text><text class="s" x="440" y="448">点排行榜渠道行</text></g>
+  <g class="n jp"><rect x="592" y="414" width="150" height="44" rx="22"/><text class="t" x="602" y="432">→ P3 渠道</text><text class="s" x="602" y="448">抽屉「在渠道页打开」</text></g>
+  <g class="n ac"><rect x="754" y="414" width="150" height="44" rx="6"/><text class="t" x="764" y="432">导出 CSV</text><text class="s" x="764" y="448">排行榜</text></g>
+  <path class="ln" d="M170 502 H218" marker-end="url(#ar)"/>
+  <g class="n pg"><rect x="220" y="480" width="170" height="44" rx="6"/><text class="t" x="230" y="498">P6 路由策略（预留）</text><text class="s" x="230" y="514">#/route</text></g>
+  <path class="ln d" d="M390 502 H596"/>
+  <g class="n ac"><rect x="430" y="480" width="150" height="44" rx="6"/><text class="t" x="440" y="498">分层预览</text><text class="s" x="440" y="514">选模型查看层与权重</text></g>
+  <g class="n jp"><rect x="592" y="480" width="150" height="44" rx="22"/><text class="t" x="602" y="498">→ P3 草稿</text><text class="s" x="602" y="514">生成建议→加入草稿</text></g>
+  <path class="ln" d="M170 568 H218" marker-end="url(#ar)"/>
+  <g class="n pg"><rect x="220" y="546" width="170" height="44" rx="6"/><text class="t" x="230" y="564">P7 写入历史与审计</text><text class="s" x="230" y="580">#/audit</text></g>
+  <path class="ln d" d="M390 568 H920"/>
+  <g class="n ac"><rect x="430" y="546" width="150" height="44" rx="6"/><text class="t" x="440" y="564">展开行</text><text class="s" x="440" y="580">完整 diff + 原始请求/响应</text></g>
+  <g class="n cf"><rect x="592" y="546" width="150" height="44" rx="6"/><text class="t" x="602" y="564">回滚价格 / 设置</text><text class="s" x="602" y="580">直接写回旧值</text><g class="wb"><circle cx="732" cy="556" r="8"/><text x="732" y="559.5">写</text></g></g>
+  <g class="n cf"><rect x="754" y="546" width="150" height="44" rx="6"/><text class="t" x="764" y="564">生成反向草稿</text><text class="s" x="764" y="580">渠道变更</text></g>
+  <g class="n jp"><rect x="916" y="546" width="150" height="44" rx="22"/><text class="t" x="926" y="564">→ P3 渠道</text><text class="s" x="926" y="580">反向草稿待应用</text></g>
+  <path class="ln" d="M170 634 H218" marker-end="url(#ar)"/>
+  <g class="n pg"><rect x="220" y="612" width="170" height="44" rx="6"/><text class="t" x="230" y="630">P8 通知</text><text class="s" x="230" y="646">#/notify</text></g>
+  <path class="ln d" d="M390 634 H758"/>
+  <g class="n ac"><rect x="430" y="612" width="150" height="44" rx="6"/><text class="t" x="440" y="630">发送测试</text><text class="s" x="440" y="646">Telegram / Webhook / 邮件</text></g>
+  <g class="n ac"><rect x="592" y="612" width="150" height="44" rx="6"/><text class="t" x="602" y="630">模拟触发</text><text class="s" x="602" y="646">按规则行</text></g>
+  <g class="n ac"><rect x="754" y="612" width="150" height="44" rx="6"/><text class="t" x="764" y="630">低余额按上游覆盖</text><text class="s" x="764" y="646">规则子行</text></g>
+  <path class="ln" d="M170 700 H218" marker-end="url(#ar)"/>
+  <g class="n pg"><rect x="220" y="678" width="170" height="44" rx="6"/><text class="t" x="230" y="696">P9 设置</text><text class="s" x="230" y="712">#/settings</text></g>
+  <path class="ln d" d="M390 700 H1082"/>
+  <g class="n md"><rect x="430" y="678" width="150" height="44" rx="6"/><text class="t" x="440" y="696">站点汇率 S 影响预览</text><text class="s" x="440" y="712">ModelRatio ×N、余额重估</text></g>
+  <g class="n cf"><rect x="592" y="678" width="150" height="44" rx="6"/><text class="t" x="602" y="696">S 二次确认</text><text class="s" x="602" y="712">Price / USDExchangeRate / ModelRatio</text><g class="wb"><circle cx="732" cy="688" r="8"/><text x="732" y="691.5">写</text></g></g>
+  <g class="n cf"><rect x="754" y="678" width="150" height="44" rx="6"/><text class="t" x="764" y="696">写 GroupRatio</text><text class="s" x="764" y="712">用户分组加价</text><g class="wb"><circle cx="894" cy="688" r="8"/><text x="894" y="691.5">写</text></g></g>
+  <g class="n cf"><rect x="916" y="678" width="150" height="44" rx="6"/><text class="t" x="926" y="696">自动禁用/恢复开关</text><text class="s" x="926" y="712">PUT /api/option/</text><g class="wb"><circle cx="1056" cy="688" r="8"/><text x="1056" y="691.5">写</text></g></g>
+  <g class="n cf"><rect x="1078" y="678" width="150" height="44" rx="6"/><text class="t" x="1088" y="696">修改管理员密码</text><text class="s" x="1088" y="712">其他会话失效</text></g>
+  <rect class="zone" x="40" y="760" width="1370" height="104" rx="8"/><text class="t" x="56" y="782" font-size="12" font-weight="600" fill="#1a202c">图例</text>
+  <g class="n pg"><rect x="56" y="794" width="180" height="44" rx="6"/><text class="t" x="66" y="812">页面</text><text class="s" x="66" y="828">左侧导航进入</text></g>
+  <g class="n md"><rect x="252" y="794" width="180" height="44" rx="6"/><text class="t" x="262" y="812">弹窗 modal</text><text class="s" x="262" y="828">居中，Esc 关闭</text></g>
+  <g class="n dr"><rect x="448" y="794" width="180" height="44" rx="6"/><text class="t" x="458" y="812">抽屉 drawer</text><text class="s" x="458" y="828">右侧滑出</text></g>
+  <g class="n cf"><rect x="644" y="794" width="180" height="44" rx="6"/><text class="t" x="654" y="812">确认框</text><text class="s" x="654" y="828">破坏性或写入操作</text></g>
+  <g class="n jp"><rect x="840" y="794" width="180" height="44" rx="22"/><text class="t" x="850" y="812">跳转</text><text class="s" x="850" y="828">去往其他页面，可带筛选</text></g>
+  <g class="n ac"><rect x="1036" y="794" width="180" height="44" rx="6"/><text class="t" x="1046" y="812">页内操作</text><text class="s" x="1046" y="828">菜单、展开、测试等</text></g>
+  <g class="wb"><circle cx="1250" cy="810" r="8"/><text x="1250" y="813.5">写</text></g><text class="n" x="1264" y="814" font-size="11" fill="#4a5261">该操作会写 NewAPI</text>
+  <path class="ln d" d="M1240 836 H1290"/><text x="1298" y="840" font-size="11" fill="#4a5261">打开浮层</text>
+</svg>

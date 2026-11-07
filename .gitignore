@@ -1,0 +1,20 @@
+# 参考源码与临时文件（体积大或已过期，不提交）
+temp/
+
+# 工具本地数据
+.codegraph/*
+!.codegraph/.gitignore
+.playwright-mcp/
+.omo/run-continuation/
+
+# 构建产物与依赖（后续编码阶段）
+node_modules/
+dist/
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*
+!.env.example
+.venv/
+venv/
