@@ -1,0 +1,140 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { toast } from 'sonner';
+import { api } from '@/api/endpoints';
+import { errorText } from '@/api/errors';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+
+export const channelModelsKey = (channelId: number) => ['channel-models', channelId] as const;
+
+/** 输入文本转分数：空串为 null，非法返回 undefined。 */
+function parseFraction(text: string): number | null | undefined {
+  const trimmed = text.trim();
+  if (trimmed === '') return null;
+  const value = Number(trimmed);
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+export function useModelDiscountMutation(channelId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { model: string; discount: number | null }) => api.setModelDiscount(channelId, input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: channelModelsKey(channelId) });
+      void qc.invalidateQueries({ queryKey: ['channels'] });
+    },
+    onError: (e: Error) => toast.error(errorText(e)),
+  });
+}
+
+/** 模型级上游分组折扣覆盖：失焦或 Enter 提交，空值表示沿用渠道折扣。 */
+export function DiscountCell({
+  channelId,
+  model,
+  override,
+  fallback,
+}: {
+  channelId: number;
+  model: string;
+  override: number | null;
+  fallback: number;
+}) {
+  const mutation = useModelDiscountMutation(channelId);
+  const initial = override === null ? '' : String(override);
+  const [text, setText] = useState(initial);
+  const [syncedFrom, setSyncedFrom] = useState(initial);
+  if (syncedFrom !== initial) {
+    setSyncedFrom(initial);
+    setText(initial);
+  }
+
+  const commit = () => {
+    if (text.trim() === initial) return;
+    const discount = parseFraction(text);
+    if (discount === undefined) {
+      toast.error('上游分组折扣必须大于 0，留空表示沿用渠道折扣');
+      setText(initial);
+      return;
+    }
+    mutation.mutate({ model, discount });
+  };
+
+  return (
+    <Input
+      className="h-6 w-24 text-right tabular-nums"
+      inputMode="decimal"
+      value={text}
+      placeholder={`沿用 ${fallback}`}
+      disabled={mutation.isPending}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Escape') setText(initial);
+      }}
+    />
+  );
+}
+
+/** 缓存价覆盖：读 / 写相对输入价的比例。 */
+export function CacheOverridePopover({ channelId }: { channelId: number }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [readText, setReadText] = useState('');
+  const [writeText, setWriteText] = useState('');
+  const save = useMutation({
+    mutationFn: (body: { read?: number | null; write?: number | null }) => api.setCacheOverride(channelId, body),
+    onSuccess: () => {
+      toast.success('已更新缓存价覆盖');
+      void qc.invalidateQueries({ queryKey: channelModelsKey(channelId) });
+      setOpen(false);
+    },
+    onError: (e: Error) => toast.error(errorText(e)),
+  });
+
+  const submit = () => {
+    const read = parseFraction(readText);
+    const write = parseFraction(writeText);
+    if (read === undefined || write === undefined) {
+      toast.error('缓存价比例必须大于 0');
+      return;
+    }
+    const body: { read?: number | null; write?: number | null } = {};
+    if (read !== null) body.read = read;
+    if (write !== null) body.write = write;
+    if (Object.keys(body).length === 0) {
+      toast.info('请至少填写一项，或使用「清除覆盖」');
+      return;
+    }
+    save.mutate(body);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button size="sm" variant="outline">缓存价覆盖</Button>
+      </PopoverTrigger>
+      <PopoverContent className="grid gap-2">
+        <div className="text-sm text-muted-foreground">
+          相对输入价的比例，只对本渠道生效。留空的项保持不变。
+        </div>
+        <label className="grid gap-1 text-sm">
+          缓存读比例
+          <Input inputMode="decimal" value={readText} placeholder="例如 0.1" onChange={(e) => setReadText(e.target.value)} />
+        </label>
+        <label className="grid gap-1 text-sm">
+          缓存写比例
+          <Input inputMode="decimal" value={writeText} placeholder="例如 1.25" onChange={(e) => setWriteText(e.target.value)} />
+        </label>
+        <div className="flex justify-between pt-1">
+          <Button size="sm" variant="ghost" disabled={save.isPending} onClick={() => save.mutate({ read: null, write: null })}>
+            清除覆盖
+          </Button>
+          <Button size="sm" disabled={save.isPending} onClick={submit}>保存</Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}

@@ -18,6 +18,21 @@ export function formatNumber(v: number | null | undefined, digits = 2): string {
   return v.toFixed(digits);
 }
 
+/** 保留有效数字（默认 4 位），去掉多余的 0；空值显示「—」。 */
+export function formatSignificant(v: number | null | undefined, digits = 4): string {
+  if (v === null || v === undefined) return '—';
+  if (v === 0) return '0';
+  const text = Number(v.toPrecision(digits)).toString();
+  return text.includes('e') ? v.toPrecision(digits) : text;
+}
+
+/** 小数形式的比例显示为带符号的百分比，如 0.123 → +12.3%。 */
+export function formatPercent(fraction: number | null | undefined): string {
+  if (fraction === null || fraction === undefined) return '—';
+  const percent = fraction * 100;
+  return `${percent > 0 ? '+' : ''}${percent.toFixed(1)}%`;
+}
+
 export type DurationUnit = 'm' | 'h' | 'd';
 
 export interface ParsedInterval {

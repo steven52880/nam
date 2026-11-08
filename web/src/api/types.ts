@@ -144,6 +144,7 @@ export interface LoginFailure {
 }
 
 export * from './types-channels';
+export * from './types-pricing';
 
 export interface PasswordInput {
   old_password: string;

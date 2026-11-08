@@ -299,6 +299,10 @@ components:
         discount_source: { type: string, enum: [auto, manual] }
         currency_rate: { type: number, nullable: true }
         channel_cost: { type: number, nullable: true, description: 折扣 × 上游货币汇率 }
+        balance_usd: { type: number, nullable: true, description: 上游余额（美元） }
+        balance_cny: { type: number, nullable: true, description: 上游余额折合人民币（× 上游货币汇率） }
+        unit_cost: { type: number, nullable: true, description: '单次成本（元）：标准请求 1000 输入（200 缓存）+ 500 输出；缺价时为空' }
+        unit_cost_model: { type: string, description: 计算单次成本所用模型（测试模型，缺价则取最便宜的有价模型） }
         sync_state: { type: string, enum: [synced, draft, draft_create, draft_delete, drift, error] }
         dirty_fields: { type: array, items: { type: string } }
         drift_fields: { type: array, items: { type: string } }
@@ -366,6 +370,75 @@ components:
             group: { type: string }
             channel_type: { type: integer }
             duplicate: { type: boolean, description: 名称已存在于 NewAPI 或草稿 }
+    OfficialPrice:
+      type: object
+      description: 解析后的原厂价（美元 / 百万 token，或美元 / 次）。手动覆盖优先于价格库。
+      properties:
+        model: { type: string, description: 价格库里的名字（别名映射后） }
+        input: { type: number, nullable: true }
+        output: { type: number, nullable: true }
+        cache_read: { type: number, nullable: true }
+        cache_write_5m: { type: number, nullable: true }
+        cache_write_1h: { type: number, nullable: true }
+        per_request: { type: number, nullable: true }
+        source: { type: string, description: 价格库来源（litellm / manual）或 override }
+    NewAPIPrice:
+      type: object
+      description: NewAPI 当前生效的模型价格，由选项 ModelRatio（×2）、CompletionRatio、CacheRatio、CreateCacheRatio、ModelPrice 换算。
+      properties:
+        input: { type: number, nullable: true, description: ModelRatio × 2（美元 / 百万 token） }
+        output: { type: number, nullable: true, description: 输入 × CompletionRatio；选项里没有时为空 }
+        cache_read: { type: number, nullable: true, description: 输入 × CacheRatio；选项里没有时为空 }
+        cache_write: { type: number, nullable: true }
+        per_request: { type: number, nullable: true }
+        unknown: { type: array, items: { type: string, enum: [output, cache_read] }, description: 选项里没有的字段，界面标为「未知」，不参与偏差比较（NewAPI 对部分模型有内置默认值，见 M0 ④） }
+    PriceRow:
+      type: object
+      properties:
+        model: { type: string }
+        vendor: { type: string }
+        aliases: { type: array, items: { type: string } }
+        official: { allOf: [{ $ref: '#/components/schemas/OfficialPrice' }], nullable: true, description: 空 = 缺价 }
+        source: { type: string }
+        newapi: { allOf: [{ $ref: '#/components/schemas/NewAPIPrice' }], nullable: true, description: 空 = NewAPI 没有配置该模型 }
+        deviation:
+          type: object
+          nullable: true
+          description: NewAPI 相对原厂价的偏差（小数，0.05 = +5%），按字段比较；无法比较的字段为空
+          properties:
+            input: { type: number, nullable: true }
+            output: { type: number, nullable: true }
+            cache_read: { type: number, nullable: true }
+            per_request: { type: number, nullable: true }
+        channel_count: { type: integer }
+        status: { type: string, enum: [normal, deviation, no_price, per_request] }
+    PriceOverrideInput:
+      type: object
+      properties:
+        per_request_mode: { type: boolean }
+        input: { type: number, nullable: true, description: 按 token 计费时必填，> 0 }
+        output: { type: number, nullable: true }
+        cache_read: { type: number, nullable: true }
+        cache_write_5m: { type: number, nullable: true }
+        cache_write_1h: { type: number, nullable: true }
+        per_request: { type: number, nullable: true, description: 按次计费时必填，> 0 }
+        remark: { type: string }
+    ChannelModelRow:
+      type: object
+      properties:
+        model: { type: string }
+        official: { type: string }
+        price: { allOf: [{ $ref: '#/components/schemas/OfficialPrice' }], nullable: true }
+        upstream_input: { type: number, nullable: true }
+        derived: { type: number, nullable: true, description: 由上游价推算的折扣 }
+        deviation: { type: number, nullable: true }
+        deviates: { type: boolean }
+        reason: { type: string }
+        override: { type: number, nullable: true, description: 模型级折扣覆盖 }
+        effective: { type: number }
+        cost_in_per_m: { type: number, nullable: true }
+        cost_out_per_m: { type: number, nullable: true }
+        cost_per_request: { type: number, nullable: true }
     DriftDetail:
       type: object
       properties:
@@ -602,6 +675,64 @@ paths:
     get:
       summary: NewAPI 渠道页链接。嵌入模式返回同源路径，独立模式返回 NewAPI 地址 + 路径
       responses: { '200': { description: 'data = {url}，路径为 /console/channel?id=<id>' } }
+  /channels/{id}/models:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    get:
+      summary: 渠道的模型明细（原厂价、推算折扣、模型级覆盖、成本）
+      responses: { '200': { description: 'data = {channel_id, name, vendor, discount, discount_source, derived_median, currency_rate, test_model, models: ChannelModelRow[]}' }, '404': { description: 渠道不存在 } }
+  /channels/{id}/model-discount:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    put:
+      summary: 设置或清除模型级上游分组折扣（只写 nam.db，记审计 channel/model_discount）
+      requestBody: { content: { application/json: { schema: { type: object, required: [model], properties: { model: { type: string }, discount: { type: number, nullable: true, description: 必须 > 0；null = 清除 } } } } } }
+      responses: { '200': { description: 'data = {模型: 折扣}（更新后的全部覆盖）' }, '400': { description: 折扣不合法，或渠道未被 nam 管理 } }
+  /channels/{id}/cache-override:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    put:
+      summary: 设置或清除渠道缓存价覆盖（占输入价的比例；只写 nam.db，记审计 channel/cache_override）
+      requestBody: { content: { application/json: { schema: { type: object, properties: { read: { type: number, nullable: true, minimum: 0 }, write: { type: number, nullable: true, minimum: 0 } }, description: 两项都为空 = 清除 } } } }
+      responses: { '200': { description: 'data = {read?, write?}' }, '400': { description: 比例不合法，或渠道未被 nam 管理 } }
+  /prices:
+    get:
+      summary: 模型与价格表：站内每个模型一行（NewAPI 渠道模型 ∪ 厂商模型），只读 NewAPI 选项
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [all, normal, deviation, no_price, per_request] } }
+        - { name: vendor, in: query, schema: { type: string } }
+        - { name: q, in: query, schema: { type: string }, description: 模型名或别名；前缀命中排在中间命中前面 }
+      responses: { '200': { description: 'data = {items: PriceRow[], counts: {all, normal, deviation, no_price, per_request}, note}。counts 按厂商和搜索过滤后统计，不受 status 影响；默认缺价的排在前面' } }
+  /prices/sync:
+    post:
+      summary: 立即同步价格库（运行 price_book 任务并等待完成，等同 /jobs/price_book?wait=1）
+      responses: { '200': { description: 'data = JobStatus（last_message 形如“获取 N 条，更新 M 个，缺价 K 个”）' }, '500': { description: 任务失败，data 为 JobStatus } }
+  /prices/{model}:
+    parameters: [{ name: model, in: path, required: true, schema: { type: string } }]
+    get:
+      summary: 模型明细：原厂价、价格库行、手动覆盖、指向它的别名、使用它的渠道及成本
+      responses: { '200': { description: 'data = {model, official_name, official, book, override, aliases, channels: [{id, name, vendor, discount, override, cost_in_per_m, cost_out_per_m, cost_per_request}]}' } }
+  /prices/{model}/override:
+    parameters: [{ name: model, in: path, required: true, schema: { type: string } }]
+    put:
+      summary: 手动覆盖原厂价（只写 nam.db）
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/PriceOverrideInput' } } } }
+      responses: { '200': { description: data = PriceOverride }, '400': { description: 价格必须是不小于 0 的有限数；按 token 必须有输入价，按次必须有单次价 } }
+    delete:
+      summary: 清除手动覆盖
+      responses: { '200': { description: ok } }
+  /aliases:
+    get:
+      summary: 全部别名，按原厂模型分组
+      responses: { '200': { description: 'data = [{official, aliases: string[]}]' } }
+  /aliases/{official}:
+    parameters: [{ name: official, in: path, required: true, schema: { type: string } }]
+    put:
+      summary: 替换某个原厂模型的全部别名（只写 nam.db）
+      requestBody: { content: { application/json: { schema: { type: object, required: [aliases], properties: { aliases: { type: array, items: { type: string } } } } } } }
+      responses: { '200': { description: 'data = {official, aliases}' }, '400': { description: 别名与原厂名相同，或已是价格库中的模型名 }, '409': { description: 别名已属于另一个原厂模型 } }
+  /upstreams/{id}/derive:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    post:
+      summary: 折扣推算预览：该上游每个渠道的上游分组折扣推算结果，不写任何东西
+      responses: { '200': { description: 'data = {upstream_id, channels: [{channel_id, name, group, discount, discount_source, derivation: {median, models: ModelDiscount[]}}]}' }, '404': { description: 上游不存在 } }
   /upstreams/{id}/credential:
     parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
     get:

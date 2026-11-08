@@ -57,6 +57,8 @@ func (s *Server) Register(g *gin.RouterGroup) {
 	s.registerUpstreamRoutes(p)
 	s.registerVendorRoutes(p)
 	s.registerChannelRoutes(p)
+	s.registerChannelPricingRoutes(p)
+	s.registerPriceRoutes(p)
 
 	// raw NewAPI channels (read only passthrough, for M1 acceptance and debugging)
 	p.GET("/newapi/channels", s.listNewAPIChannels)

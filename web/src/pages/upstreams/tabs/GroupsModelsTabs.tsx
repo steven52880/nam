@@ -4,6 +4,7 @@ import { api } from '@/api/endpoints';
 import { errorText } from '@/api/errors';
 import { Button } from '@/components/ui/button';
 import { formatNumber, formatTime } from '@/lib/format';
+import { DeriveSection } from './DeriveSection';
 
 export function GroupsTab({ upstreamId }: { upstreamId: number }) {
   const qc = useQueryClient();
@@ -57,7 +58,8 @@ export function ModelsTab({ upstreamId }: { upstreamId: number }) {
 
   return (
     <div className="grid gap-2 p-4">
-      <span className="text-sm text-muted-foreground">共 {list.length} 条上游模型价格（美元 / 百万，按上游额度计）</span>
+      <DeriveSection upstreamId={upstreamId} />
+      <span className="text-sm text-muted-foreground">共 {list.length} 条上游模型价格（美元 / 百万，按上游额度计，已换算到各分组）</span>
       <div className="max-h-[60vh] overflow-auto rounded border">
         <table className="w-max min-w-full text-base">
           <thead className="sticky top-0 bg-muted text-left text-sm text-muted-foreground">

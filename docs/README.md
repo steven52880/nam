@@ -1,6 +1,6 @@
 # nam 项目文档索引与开工指引
 
-nam（newapi-manager）是给 clansty 版 NewAPI 用的上游管理工具。**M0 实测、M1 骨架、M1.5 嵌入、M2 上游与渠道已完成**，下一步是 M3（价格与余额）。<u>代码结构、运行和测试方法见 `docs/development.md`</u>。
+nam（newapi-manager）是给 clansty 版 NewAPI 用的上游管理工具。**M0 实测、M1 骨架、M1.5 嵌入、M2 上游与渠道、M3 价格与余额已完成**，下一步是 M4（统计）。<u>代码结构、运行和测试方法见 `docs/development.md`</u>。
 
 ## 文档
 
@@ -60,9 +60,9 @@ nam（newapi-manager）是给 clansty 版 NewAPI 用的上游管理工具。**M0
 
 - **Go 1.25.14 已装在 `D:\Go`**，用户环境变量已设好；下载依赖要走代理 `127.0.0.1:7890`。
 - **M0 已完成**：结论在 `docs/m0-findings.md`。第 ⑦ 项（sub2api）<u>还需要主人提供账号</u>；**P2 不需要**；Gemini 走 type=58 计费有问题，待定。
-- **M1 / M1.5 / M2 已完成**：详见 `docs/development.md` 的"当前进度"。
+- **M1 / M1.5 / M2 / M3 已完成**：详见 `docs/development.md` 的"当前进度"。
 - **第 19 轮修订**已写进需求和计划：Gemini 只建原生渠道（type=24）、`UserUsableGroups` 必须含 `auto` 等。
-- **下一步是 M3**。
+- **下一步是 M4**（统计）。
 
 ### 给新 Agent 的提醒
 

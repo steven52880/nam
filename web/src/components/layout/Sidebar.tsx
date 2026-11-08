@@ -4,14 +4,18 @@ import { api } from '@/api/endpoints';
 import { Badge } from '@/components/ui/misc';
 import { cn } from '@/lib/utils';
 import { useChannelList } from '@/pages/channels/useChannels';
+import { usePriceCounts } from '@/pages/pricing/usePrices';
 import { NAV_GROUPS } from './nav';
 
 export function Sidebar() {
   const upstreams = useQuery({ queryKey: ['upstreams'], queryFn: api.upstreams });
   const channels = useChannelList();
+  const priceCounts = usePriceCounts();
+  const attention = priceCounts.data ? priceCounts.data.no_price + priceCounts.data.deviation : undefined;
   const counts: Record<string, number | undefined> = {
     upstreams: upstreams.data?.length,
     channels: channels.data?.items.length,
+    pricing: attention,
   };
   const draftCount = channels.data?.draft_count ?? 0;
 
@@ -44,7 +48,11 @@ export function Sidebar() {
                   <span className="flex-1 truncate">{item.label}</span>
                   {item.reserved && <Badge>预留</Badge>}
                   {item.badge === 'channels' && draftCount > 0 && <Badge tone="warning" title="待应用草稿">{draftCount}</Badge>}
-                  {count !== undefined && <Badge tone="accent">{count}</Badge>}
+                  {count !== undefined && (
+                    <Badge tone={item.badge === 'pricing' ? (count > 0 ? 'warning' : 'neutral') : 'accent'} title={item.badge === 'pricing' ? '缺价 + 偏差的模型数' : undefined}>
+                      {count}
+                    </Badge>
+                  )}
                 </NavLink>
               );
             })}

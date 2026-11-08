@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/steven52880/nam/internal/crypto"
+	"github.com/steven52880/nam/internal/pricing"
 	"github.com/steven52880/nam/internal/resp"
 	"github.com/steven52880/nam/internal/store"
 	"github.com/steven52880/nam/ports"
@@ -185,7 +186,13 @@ func (s *Service) List(ctx context.Context) ([]Row, error) {
 	if err != nil {
 		return nil, err
 	}
-	return st.rows(), nil
+	rows := st.rows()
+	book, err := pricing.LoadBook(ctx, s.St)
+	if err != nil {
+		return nil, err
+	}
+	priceRows(rows, st, book)
+	return rows, nil
 }
 
 // DraftCount returns the number of pending drafts.

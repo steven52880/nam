@@ -2,8 +2,9 @@ import type { ChannelRow } from '@/api/types';
 import type { GridColumn } from '@/components/data-grid';
 import { Badge } from '@/components/ui/misc';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/misc';
-import { formatNumber } from '@/lib/format';
+import { formatNumber, formatSignificant } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { costStyle, type CostRange } from './costColor';
 import { STATUS_LABELS, SYNC_LABELS } from './constants';
 import { copyText, formatDiscount, validateCell } from './edits';
 
@@ -15,6 +16,10 @@ const STATS_REASON = '统计列由系统计算，不能编辑';
 interface ColumnOptions {
   onOpenModels: (row: ChannelRow) => void;
   onOpenDrift: (row: ChannelRow) => void;
+  /** 当前可见行的上游渠道成本价范围，用于颜色梯度。 */
+  channelCostRange: CostRange | null;
+  /** 当前可见行的单次成本范围。 */
+  unitCostRange: CostRange | null;
 }
 
 function readOnly(
@@ -58,7 +63,24 @@ function SyncBadge({ row, onOpenDrift }: { row: ChannelRow; onOpenDrift: (row: C
   return <Badge tone={row.sync_state === 'draft_delete' ? 'danger' : 'accent'}>{label}</Badge>;
 }
 
-export function buildChannelColumns({ onOpenModels, onOpenDrift }: ColumnOptions): GridColumn<ChannelRow>[] {
+function balanceCell(row: ChannelRow) {
+  if (row.balance_usd === null && row.balance_cny === null) return <span className="text-muted-foreground">{DASH}</span>;
+  return (
+    <span className="tabular-nums">
+      {row.balance_usd === null ? DASH : `$${formatNumber(row.balance_usd)}`}
+      <span className="ml-1 text-xs text-muted-foreground">
+        {row.balance_cny === null ? '' : `≈ ¥${formatNumber(row.balance_cny)}`}
+      </span>
+    </span>
+  );
+}
+
+export function buildChannelColumns({
+  onOpenModels,
+  onOpenDrift,
+  channelCostRange,
+  unitCostRange,
+}: ColumnOptions): GridColumn<ChannelRow>[] {
   return [
     {
       id: 'status',
@@ -130,7 +152,26 @@ export function buildChannelColumns({ onOpenModels, onOpenDrift }: ColumnOptions
     readOnly('channel_cost', '上游渠道成本价', (r) => r.channel_cost, COST_REASON, {
       width: 120,
       align: 'right',
-      cell: (r) => formatNumber(r.channel_cost, 3),
+      cell: (r) => <span style={costStyle(r.channel_cost, channelCostRange)}>{formatNumber(r.channel_cost, 3)}</span>,
+    }),
+    readOnly('unit_cost', '单次成本（元）', (r) => r.unit_cost, '单次成本由价格与折扣计算，不能编辑', {
+      width: 120,
+      align: 'right',
+      cell: (r) => (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span style={costStyle(r.unit_cost, unitCostRange)}>{formatSignificant(r.unit_cost, 4)}</span>
+          </TooltipTrigger>
+          <TooltipContent>
+            按 {r.unit_cost_model || '—'} 的标准请求计算（1000 输入，其中 200 缓存，500 输出）
+          </TooltipContent>
+        </Tooltip>
+      ),
+    }),
+    readOnly('balance', '余额', (r) => r.balance_usd, '余额来自上游同步，不能编辑', {
+      width: 150,
+      align: 'right',
+      cell: balanceCell,
     }),
     {
       id: 'priority',

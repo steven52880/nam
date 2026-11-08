@@ -72,8 +72,9 @@ func Mount(engine *gin.Engine) error {
 			return nil
 		}
 		c, err := core.New(core.Config{
-			DBPath: dbPath(),
-			Secret: secret,
+			DBPath:       dbPath(),
+			Secret:       secret,
+			PriceBookURL: os.Getenv("NAM_PRICE_BOOK_URL"), // empty = LiteLLM on GitHub
 			PanicHook: func(name string, recovered any, _ []byte) {
 				common.SysError(fmt.Sprintf("nam: recovered panic in %s: %v", name, recovered))
 			},

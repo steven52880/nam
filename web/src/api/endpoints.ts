@@ -1,5 +1,6 @@
 import { request } from './client';
 import type {
+  AliasEntry,
   ApplyResponse,
   AuditLog,
   AuditQuery,
@@ -7,11 +8,20 @@ import type {
   BatchPreview,
   BatchRequest,
   BatchSpec,
+  CacheOverrideInput,
   ChannelChange,
   ChannelList,
+  ChannelModels,
   ChannelTestResult,
   CheckResult,
+  DeriveChannel,
   DriftDetail,
+  ModelDiscountInput,
+  PriceDetail,
+  PriceList,
+  PriceOverride,
+  PriceQuery,
+  PriceSyncResult,
   IssuesPayload,
   Page,
   PasswordInput,
@@ -87,6 +97,24 @@ export const api = {
   testChannel: (id: number, model: string) =>
     request<ChannelTestResult>(`/channels/${id}/test`, { method: 'POST', body: { model } }),
   newapiLink: (id: number) => request<{ url: string }>(`/channels/${id}/newapi-link`),
+
+  channelModels: (id: number) => request<ChannelModels>(`/channels/${id}/models`),
+  setModelDiscount: (id: number, body: ModelDiscountInput) =>
+    request<null>(`/channels/${id}/model-discount`, { method: 'PUT', body }),
+  setCacheOverride: (id: number, body: CacheOverrideInput) =>
+    request<null>(`/channels/${id}/cache-override`, { method: 'PUT', body }),
+
+  prices: (query: PriceQuery) => request<PriceList>('/prices', { query: { ...query } }),
+  priceDetail: (model: string) => request<PriceDetail>(`/prices/${encodeURIComponent(model)}`),
+  setPriceOverride: (model: string, body: PriceOverride) =>
+    request<null>(`/prices/${encodeURIComponent(model)}/override`, { method: 'PUT', body }),
+  clearPriceOverride: (model: string) =>
+    request<null>(`/prices/${encodeURIComponent(model)}/override`, { method: 'DELETE' }),
+  syncPrices: () => request<PriceSyncResult>('/prices/sync', { method: 'POST' }),
+  aliases: () => request<AliasEntry[]>('/aliases'),
+  setAliases: (official: string, aliases: string[]) =>
+    request<null>(`/aliases/${encodeURIComponent(official)}`, { method: 'PUT', body: { aliases } }),
+  deriveUpstream: (id: number) => request<DeriveChannel[]>(`/upstreams/${id}/derive`, { method: 'POST' }),
 
   vendors: () => request<Vendor[]>('/vendors'),
   createVendor: (body: VendorInput) => request<Vendor>('/vendors', { method: 'POST', body }),

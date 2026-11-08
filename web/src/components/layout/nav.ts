@@ -15,7 +15,7 @@ export interface NavItem {
   to: string;
   label: string;
   icon: LucideIcon;
-  badge?: 'upstreams' | 'channels';
+  badge?: 'upstreams' | 'channels' | 'pricing';
   reserved?: boolean;
   description: string;
 }
@@ -38,7 +38,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/upstreams', label: '上游', icon: Network, badge: 'upstreams', description: '管理上游站点、凭证与上游货币汇率' },
       { to: '/channels', label: '渠道', icon: Boxes, badge: 'channels', description: '渠道表格、草稿与应用变更' },
-      { to: '/pricing', label: '模型与价格', icon: Tags, description: '厂商售价、原厂价与偏差检查' },
+      { to: '/pricing', label: '模型与价格', icon: Tags, badge: 'pricing', description: '厂商售价、原厂价与偏差检查' },
       { to: '/routing', label: '路由策略', icon: GitBranch, reserved: true, description: '按成本分层的优先级与权重建议（预留）' },
     ],
   },

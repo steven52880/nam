@@ -40,7 +40,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	c, err := core.New(core.Config{DBPath: cfg.DBPath, Secret: cfg.Secret}, p)
+	c, err := core.New(core.Config{DBPath: cfg.DBPath, Secret: cfg.Secret, PriceBookURL: os.Getenv("NAM_PRICE_BOOK_URL")}, p)
 	if err != nil {
 		return err
 	}

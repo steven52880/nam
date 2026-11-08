@@ -23,6 +23,7 @@ func (s *Server) registerUpstreamRoutes(p *gin.RouterGroup) {
 	p.GET("/upstreams/:id/groups", s.listGroups)
 	p.GET("/upstreams/:id/models", s.listUpstreamModels)
 	p.POST("/upstreams/:id/models/fetch", s.fetchUpstreamModels)
+	p.POST("/upstreams/:id/derive", s.deriveUpstream)
 }
 
 func withTimeout(c *gin.Context, d time.Duration) (context.Context, context.CancelFunc) {

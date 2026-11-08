@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/steven52880/nam/internal/pricing"
 	"github.com/steven52880/nam/internal/resp"
 	"github.com/steven52880/nam/internal/store"
 	"gorm.io/gorm"
@@ -72,10 +73,10 @@ type BatchRequest struct {
 	Priority   int64    `json:"priority"`
 	Weight     uint     `json:"weight"`
 	Tag        string   `json:"tag"`
-	// TestModel per vendor; empty → first model of that vendor in the request order.
-	// (M3 replaces the fallback with "cheapest model by official price".)
+	// TestModel per vendor; empty → cheapest model of that vendor by official price
+	// (first model when none is priced).
 	TestModel map[string]string `json:"test_model"`
-	// Discount per token id (string key); empty → derived from upstream group ratio, else 1.
+	// Discount per token id (string key, manual); empty → derived from upstream prices, else 1.
 	Discount map[string]float64 `json:"discount"`
 }
 
@@ -118,22 +119,31 @@ func (s *Service) BatchPreview(ctx context.Context, req BatchRequest) (items []B
 	for _, r := range st.rows() {
 		existing[r.Name] = true
 	}
+	book, err := pricing.LoadBook(ctx, s.St)
+	if err != nil {
+		return nil, nil, err
+	}
 	for _, tid := range req.TokenIDs {
 		tok, ok := st.tokens[tid]
 		if !ok || tok.UpstreamID != up.ID {
 			return nil, nil, resp.Invalid(fmt.Sprintf("令牌 %d 不属于该上游", tid))
 		}
-		disc := 1.0
-		if d, ok := req.Discount[fmt.Sprint(tid)]; ok && d > 0 {
-			disc = d
-		}
+		manual, hasManual := req.Discount[fmt.Sprint(tid)]
+		hasManual = hasManual && manual > 0
 		for _, vname := range vendorOrder {
 			v := st.vendors.byName[vname]
 			models := byVendor[vname]
 			name := ChannelName(up.Name, tok.Name, vname)
 			test := req.TestModel[vname]
 			if test == "" {
-				test = models[0]
+				test = testModelFor(book, models)
+			}
+			// 上游分组折扣: manual from the wizard, else derived from upstream prices, else 1.
+			disc, src := 1.0, store.DiscountAuto
+			if hasManual {
+				disc, src = manual, store.DiscountManual
+			} else if d, err := pricing.DeriveFor(ctx, s.St, book, pricing.ChannelInput{UpstreamID: up.ID, Group: tok.Group, Models: models}); err == nil && d.Median != nil {
+				disc = pricing.RoundDiscount(*d.Median)
 			}
 			typ := st.vendors.channelTypeFor(vname)
 			base := up.BaseURL
@@ -142,7 +152,7 @@ func (s *Service) BatchPreview(ctx context.Context, req BatchRequest) (items []B
 				CreateSpec: CreateSpec{
 					Fields: Fields{Name: &name, Type: &typ, BaseURL: &base, Models: &models, Group: &group,
 						Priority: &req.Priority, Weight: &req.Weight, Tag: &req.Tag, TestModel: &test, Status: ptrInt(1)},
-					Ext: ExtFields{UpstreamID: &upID, TokenID: &tokID, Vendor: &vn, Discount: &disc},
+					Ext: ExtFields{UpstreamID: &upID, TokenID: &tokID, Vendor: &vn, Discount: &disc, DiscountSource: &src},
 				},
 				Name: name, TokenName: tok.Name, Vendor: vname, Group: group, ChannelType: typ, Duplicate: existing[name],
 			}

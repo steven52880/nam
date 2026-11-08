@@ -41,6 +41,8 @@ type Config struct {
 	WebFS fs.FS
 	// PanicHook is called on recovered background panics (e.g. log to NewAPI SysError).
 	PanicHook safego.PanicHook
+	// PriceBookURL overrides the LiteLLM price list URL (tests). Empty = BerriAI's default.
+	PriceBookURL string
 }
 
 // Core is a running nam instance.
@@ -116,7 +118,7 @@ func (c *Core) registerJobs() {
 	}
 	c.sched.Register(scheduler.Job{Name: scheduler.JobBalance, Title: "余额同步", Default: 30 * time.Minute, Fn: c.balanceJob})
 	c.sched.Register(scheduler.Job{Name: scheduler.JobRatio, Title: "倍率同步", Default: 6 * time.Hour, Fn: c.ratioJob})
-	c.sched.Register(scheduler.Job{Name: scheduler.JobPriceBook, Title: "价格库同步", Default: 24 * time.Hour, Fn: noop("price_book")})
+	c.sched.Register(scheduler.Job{Name: scheduler.JobPriceBook, Title: "价格库同步", Default: 24 * time.Hour, Fn: c.priceBookJob})
 	c.sched.Register(scheduler.Job{Name: scheduler.JobAnnouncements, Title: "公告检查", Default: 6 * time.Hour, Fn: noop("announcements")})
 	c.sched.Register(scheduler.Job{Name: scheduler.JobPullLogs, Title: "日志拉取", Default: 2 * time.Minute, Fn: noop("pull_logs")})
 	c.sched.Register(scheduler.Job{Name: scheduler.JobPricing, Title: "定价计算", Default: 30 * time.Minute, Fn: noop("pricing")})

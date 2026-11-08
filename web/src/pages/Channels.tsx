@@ -11,6 +11,7 @@ import { ApplyDialog } from './channels/ApplyDialog';
 import { BatchWizard } from './channels/wizard/BatchWizard';
 import { ChannelToolbar } from './channels/ChannelToolbar';
 import { buildChannelColumns, rowClass } from './channels/columns';
+import { costRangeOf } from './channels/costColor';
 import { COLUMN_FIELDS, type GroupMode } from './channels/constants';
 import { DriftDialog } from './channels/DriftDialog';
 import { distinct, EMPTY_FILTERS, filterChannels, groupKeyOf, rowKey, type ChannelFilters } from './channels/filter';
@@ -62,9 +63,17 @@ export default function ChannelsPage() {
     [rows, range],
   );
 
+  const channelCostRange = useMemo(() => costRangeOf(visible.map((r) => r.channel_cost)), [visible]);
+  const unitCostRange = useMemo(() => costRangeOf(visible.map((r) => r.unit_cost)), [visible]);
   const columns = useMemo(
-    () => buildChannelColumns({ onOpenModels: setModelRow, onOpenDrift: setDriftRow }),
-    [],
+    () =>
+      buildChannelColumns({
+        onOpenModels: setModelRow,
+        onOpenDrift: setDriftRow,
+        channelCostRange,
+        unitCostRange,
+      }),
+    [channelCostRange, unitCostRange],
   );
   const rowById = useMemo(() => new Map(rows.map((r) => [rowKey(r), r])), [rows]);
 

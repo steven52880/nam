@@ -89,6 +89,10 @@ type Row struct {
 	DiscountSource string   `json:"discount_source"` // auto / manual
 	CurrencyRate   *float64 `json:"currency_rate"`   // 上游货币汇率
 	ChannelCost    *float64 `json:"channel_cost"`    // 上游渠道成本价 = 折扣 × 汇率
+	BalanceUSD     *float64 `json:"balance_usd"`     // 上游余额（美元）
+	BalanceCNY     *float64 `json:"balance_cny"`     // 折合人民币
+	UnitCost       *float64 `json:"unit_cost"`       // 单次成本（元）：标准请求 1000 输入（200 缓存）+ 500 输出
+	UnitCostModel  string   `json:"unit_cost_model"` // 计算单次成本所用模型
 
 	SyncState   string   `json:"sync_state"`
 	DirtyFields []string `json:"dirty_fields"`

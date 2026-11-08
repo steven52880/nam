@@ -58,6 +58,11 @@ export interface ChannelRow {
   discount_source: DiscountSource;
   currency_rate: number | null;
   channel_cost: number | null;
+  balance_usd: number | null;
+  balance_cny: number | null;
+  /** 单次成本（元）：标准请求 1000 输入其中 200 缓存 + 500 输出。 */
+  unit_cost: number | null;
+  unit_cost_model: string;
   sync_state: SyncState;
   dirty_fields: string[];
   drift_fields: string[];
