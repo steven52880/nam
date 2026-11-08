@@ -3,11 +3,17 @@ import { NavLink } from 'react-router-dom';
 import { api } from '@/api/endpoints';
 import { Badge } from '@/components/ui/misc';
 import { cn } from '@/lib/utils';
+import { useChannelList } from '@/pages/channels/useChannels';
 import { NAV_GROUPS } from './nav';
 
 export function Sidebar() {
   const upstreams = useQuery({ queryKey: ['upstreams'], queryFn: api.upstreams });
-  const counts: Record<string, number | undefined> = { upstreams: upstreams.data?.length };
+  const channels = useChannelList();
+  const counts: Record<string, number | undefined> = {
+    upstreams: upstreams.data?.length,
+    channels: channels.data?.items.length,
+  };
+  const draftCount = channels.data?.draft_count ?? 0;
 
   return (
     <aside className="flex w-48 shrink-0 flex-col border-r bg-card">
@@ -37,6 +43,7 @@ export function Sidebar() {
                   <item.icon className="h-3.5 w-3.5 shrink-0" />
                   <span className="flex-1 truncate">{item.label}</span>
                   {item.reserved && <Badge>预留</Badge>}
+                  {item.badge === 'channels' && draftCount > 0 && <Badge tone="warning" title="待应用草稿">{draftCount}</Badge>}
                   {count !== undefined && <Badge tone="accent">{count}</Badge>}
                 </NavLink>
               );

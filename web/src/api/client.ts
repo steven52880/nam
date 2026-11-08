@@ -44,7 +44,7 @@ function isEnvelope(v: unknown): v is Envelope<unknown> {
 }
 
 export interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   query?: Record<string, string | number | boolean | undefined>;
   /** 为 true 时 401/403 不触发全局跳转（登录等场景）。 */

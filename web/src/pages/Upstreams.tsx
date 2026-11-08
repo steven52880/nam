@@ -1,8 +1,10 @@
-﻿import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
+import { errorText } from '@/api/errors';
 import type { Upstream } from '@/api/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -12,15 +14,28 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { formatNumber, formatTime } from '@/lib/format';
 import { allTags, CRED_LABELS, splitTags, TYPE_OPTIONS } from './upstreams/constants';
 import { UpstreamDrawer } from './upstreams/UpstreamDrawer';
-import { CreateUpstreamDialog } from './upstreams/UpstreamForm';
+import { AddUpstreamWizard } from './upstreams/wizard/AddUpstreamWizard';
 
 const ALL = 'all';
-const HEADERS = ['名称和地址', '类型', '标签', '上游货币汇率', '凭证状态', '余额（美元）', '折合人民币', '令牌数', '渠道数', '最近同步', '错误'];
-const RIGHT_ALIGNED = new Set([3, 5, 6, 7, 8]);
+const HEADERS = ['', '名称和地址', '类型', '标签', '上游货币汇率', '凭证状态', '余额（美元）', '折合人民币', '令牌数', '渠道数', '最近同步', '错误', ''];
+const RIGHT_ALIGNED = new Set([4, 6, 7, 8, 9]);
+const SYNC_ALL = ['tokens', 'groups', 'balance'];
 
-function Row({ u, onOpen }: { u: Upstream; onOpen: () => void }) {
+interface RowProps {
+  u: Upstream;
+  checked: boolean;
+  syncing: boolean;
+  onCheck: () => void;
+  onOpen: () => void;
+  onSync: () => void;
+}
+
+function Row({ u, checked, syncing, onCheck, onOpen, onSync }: RowProps) {
   return (
     <tr className="cursor-pointer border-t hover:bg-accent/40" onClick={onOpen}>
+      <td className="px-3" onClick={(e) => e.stopPropagation()}>
+        <input type="checkbox" checked={checked} onChange={onCheck} />
+      </td>
       <td className="h-8 px-3">
         <div className="font-medium leading-4">{u.name}</div>
         <div className="max-w-56 truncate text-xs leading-4 text-muted-foreground">{u.base_url}</div>
@@ -37,6 +52,9 @@ function Row({ u, onOpen }: { u: Upstream; onOpen: () => void }) {
       <td className="px-3 text-right tabular-nums">{u.channel_count}</td>
       <td className="whitespace-nowrap px-3 tabular-nums">{formatTime(u.last_sync_at)}</td>
       <td className="max-w-48 truncate px-3 text-destructive" title={u.last_sync_error}>{u.last_sync_error}</td>
+      <td className="px-3" onClick={(e) => e.stopPropagation()}>
+        <Button size="sm" variant="outline" disabled={syncing} onClick={onSync}>{syncing ? '同步中…' : '立即同步'}</Button>
+      </td>
     </tr>
   );
 }
@@ -47,7 +65,38 @@ export default function UpstreamsPage() {
   const [tag, setTag] = useState(ALL);
   const [search, setSearch] = useState('');
   const [creating, setCreating] = useState(false);
+  const [checked, setChecked] = useState<Set<number>>(new Set());
+  const qc = useQueryClient();
   const query = useQuery({ queryKey: ['upstreams'], queryFn: api.upstreams });
+
+  const sync = useMutation({
+    mutationFn: async (ids: number[]) => {
+      const failures: string[] = [];
+      for (const id of ids) {
+        try {
+          const results = await api.syncUpstream(id, SYNC_ALL);
+          for (const r of results) if (!r.ok) failures.push(`${r.what}: ${r.error ?? '失败'}`);
+        } catch (e) {
+          failures.push(errorText(e));
+        }
+      }
+      return failures;
+    },
+    onSuccess: (failures) => {
+      if (failures.length > 0) toast.error(`同步有失败：${failures.join('；')}`);
+      else toast.success('同步完成');
+      void qc.invalidateQueries({ queryKey: ['upstreams'] });
+      void qc.invalidateQueries({ queryKey: ['upstream-tokens'] });
+      void qc.invalidateQueries({ queryKey: ['upstream-groups'] });
+    },
+  });
+  const toggleChecked = (id: number) =>
+    setChecked((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   const list = useMemo(() => query.data ?? [], [query.data]);
   const openId = Number(params.get('open')) || null;
@@ -77,6 +126,9 @@ export default function UpstreamsPage() {
       <PageHeader title="上游" description="管理上游站点、凭证和上游货币汇率。" />
       <div className="flex flex-wrap items-center gap-2">
         <Button onClick={() => setCreating(true)}><Plus className="h-3.5 w-3.5" />新增上游</Button>
+        <Button variant="outline" disabled={checked.size === 0 || sync.isPending} onClick={() => sync.mutate([...checked])}>
+          批量同步{checked.size > 0 && `（${checked.size}）`}
+        </Button>
         <Select value={type} onValueChange={setType}>
           <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -98,12 +150,22 @@ export default function UpstreamsPage() {
           <thead className="bg-muted text-left text-sm text-muted-foreground">
             <tr>
               {HEADERS.map((h, i) => (
-                <th key={h} className={`h-7 whitespace-nowrap px-3 font-medium ${RIGHT_ALIGNED.has(i) ? 'text-right' : ''}`}>{h}</th>
+                <th key={`${h}-${i}`} className={`h-7 whitespace-nowrap px-3 font-medium ${RIGHT_ALIGNED.has(i) ? 'text-right' : ''}`}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {filtered.map((u) => <Row key={u.id} u={u} onOpen={() => setOpen(u.id)} />)}
+            {filtered.map((u) => (
+              <Row
+                key={u.id}
+                u={u}
+                checked={checked.has(u.id)}
+                syncing={sync.isPending && sync.variables?.includes(u.id) === true}
+                onCheck={() => toggleChecked(u.id)}
+                onOpen={() => setOpen(u.id)}
+                onSync={() => sync.mutate([u.id])}
+              />
+            ))}
             {query.isLoading && <tr><td colSpan={HEADERS.length} className="h-16 text-center text-muted-foreground">加载中…</td></tr>}
             {query.isError && <tr><td colSpan={HEADERS.length} className="h-16 text-center text-destructive">{query.error.message}</td></tr>}
             {query.isSuccess && filtered.length === 0 && (
@@ -119,7 +181,7 @@ export default function UpstreamsPage() {
           </tbody>
         </table>
       </div>
-      <CreateUpstreamDialog open={creating} onOpenChange={setCreating} />
+      <AddUpstreamWizard open={creating} onOpenChange={setCreating} />
       <UpstreamDrawer upstream={opened} onClose={() => setOpen(null)} />
     </div>
   );

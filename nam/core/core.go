@@ -15,10 +15,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/steven52880/nam/internal/api"
 	"github.com/steven52880/nam/internal/audit"
+	"github.com/steven52880/nam/internal/channels"
 	"github.com/steven52880/nam/internal/crypto"
 	"github.com/steven52880/nam/internal/safego"
 	"github.com/steven52880/nam/internal/scheduler"
 	"github.com/steven52880/nam/internal/store"
+	"github.com/steven52880/nam/internal/upstream"
+	"github.com/steven52880/nam/internal/vendors"
 	"github.com/steven52880/nam/ports"
 	"github.com/steven52880/nam/webdist"
 )
@@ -48,6 +51,9 @@ type Core struct {
 	server *api.Server
 	audit  *audit.Recorder
 	ports  ports.Ports
+
+	channels *channels.Service
+	syncer   *upstream.Syncer
 }
 
 // New opens nam.db, wires services and returns a Core. Call Start to run jobs.
@@ -92,24 +98,29 @@ func New(cfg Config, p ports.Ports) (*Core, error) {
 
 	sch := scheduler.New(st)
 	c := &Core{cfg: cfg, store: st, sched: sch, audit: rec, ports: wrapped}
-	c.server = &api.Server{Deps: api.Deps{Store: st, Box: box, Audit: rec, Sched: sch, Ports: wrapped, Version: Version}}
+	c.channels = &channels.Service{St: st, Box: box, Channels: wrapped.Channels}
+	c.syncer = &upstream.Syncer{St: st, Box: box, HTTP: &http.Client{Timeout: 30 * time.Second}, Audit: rec}
+	c.server = &api.Server{Deps: api.Deps{
+		Store: st, Box: box, Audit: rec, Sched: sch, Ports: wrapped, Version: Version,
+		Channels: c.channels, Syncer: c.syncer, Vendors: &vendors.Service{St: st},
+	}}
 	c.registerJobs()
 	return c, nil
 }
 
-// registerJobs registers every background job. Bodies are filled in by later milestones;
-// until then they are no-ops so the scheduler, UI and API contract are stable.
+// registerJobs registers every background job. Bodies not yet implemented are no-ops so the
+// scheduler, UI and API contract are stable.
 func (c *Core) registerJobs() {
 	noop := func(string) scheduler.Func {
 		return func(ctx context.Context) (string, error) { return "未实现", nil }
 	}
-	c.sched.Register(scheduler.Job{Name: scheduler.JobBalance, Title: "余额同步", Default: 30 * time.Minute, Fn: noop("balance")})
-	c.sched.Register(scheduler.Job{Name: scheduler.JobRatio, Title: "倍率同步", Default: 6 * time.Hour, Fn: noop("ratio")})
+	c.sched.Register(scheduler.Job{Name: scheduler.JobBalance, Title: "余额同步", Default: 30 * time.Minute, Fn: c.balanceJob})
+	c.sched.Register(scheduler.Job{Name: scheduler.JobRatio, Title: "倍率同步", Default: 6 * time.Hour, Fn: c.ratioJob})
 	c.sched.Register(scheduler.Job{Name: scheduler.JobPriceBook, Title: "价格库同步", Default: 24 * time.Hour, Fn: noop("price_book")})
 	c.sched.Register(scheduler.Job{Name: scheduler.JobAnnouncements, Title: "公告检查", Default: 6 * time.Hour, Fn: noop("announcements")})
 	c.sched.Register(scheduler.Job{Name: scheduler.JobPullLogs, Title: "日志拉取", Default: 2 * time.Minute, Fn: noop("pull_logs")})
 	c.sched.Register(scheduler.Job{Name: scheduler.JobPricing, Title: "定价计算", Default: 30 * time.Minute, Fn: noop("pricing")})
-	c.sched.Register(scheduler.Job{Name: scheduler.JobConsistency, Title: "一致性检查", Default: 10 * time.Minute, Fn: noop("consistency")})
+	c.sched.Register(scheduler.Job{Name: scheduler.JobConsistency, Title: "一致性检查", Default: 10 * time.Minute, Fn: c.consistencyJob})
 	c.sched.Register(scheduler.Job{Name: scheduler.JobCleanup, Title: "日志清理", Default: 24 * time.Hour, Fn: noop("cleanup")})
 	c.sched.Register(scheduler.Job{Name: scheduler.JobBackup, Title: "备份", Default: 24 * time.Hour, Fn: c.backupJob})
 }

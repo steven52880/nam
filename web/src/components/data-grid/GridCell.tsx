@@ -9,6 +9,7 @@ interface GridCellProps<T> {
   selected: boolean;
   focused: boolean;
   dirty: boolean;
+  className?: string;
   editing: boolean;
   onCommit: (value: string) => void;
   onCancel: () => void;
@@ -28,6 +29,7 @@ export function GridCell<T>({
   selected,
   focused,
   dirty,
+  className,
   editing,
   onCommit,
   onCancel,
@@ -47,6 +49,7 @@ export function GridCell<T>({
         dirty && 'bg-warning/20',
         selected && 'bg-primary/15',
         focused && 'outline outline-2 -outline-offset-2 outline-primary',
+        className,
       )}
     >
       {dirty && <span className="absolute left-0 top-0 h-0 w-0 border-l-[6px] border-t-[6px] border-l-warning border-t-transparent" />}

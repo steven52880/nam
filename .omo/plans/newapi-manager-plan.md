@@ -57,7 +57,7 @@
 | 项目 | 做法 | 原因 |
 |---|---|---|
 | 错误日志 | docker-compose 中加环境变量 `ERROR_LOG_ENABLED=true` | 默认关闭；不开启就无法按渠道统计失败次数 |
-| 渠道类型 | 渠道一律用 type=58 PassThrough，base_url 填上游站点根地址（不带 /v1） | 原样转发 OpenAI、Responses、Claude、Gemini 四种格式，一把 key 走三家；type=1 会把 Claude/Gemini 请求转换成 chat/completions |
+| 渠道类型 | 渠道类型由厂商决定：一般厂商用 type=58 PassThrough，**Gemini 厂商用 type=24（Gemini 原生）**；base_url 填上游站点根地址（不带 /v1） | type=58 原样转发 OpenAI、Responses、Claude 格式；**第 19 轮：M0 ① 实测 Gemini 原生格式经 type=58 不按上游 usage 计费，所以 Gemini 只建原生渠道** |
 | 自动禁用 | 开启 `AutomaticDisableChannelEnabled`，同时开启 `AutomaticEnableChannelEnabled` | 内置的错误禁用和定时恢复已经满足"只测被禁用的渠道" |
 | 定时测试 | `monitor_setting.auto_test_channel_enabled=false`，`auto_test_channel_minutes` 按需设置 | 关闭全量测试后，调度循环只测自动禁用的渠道（channel-test.go:1126-1136）；需在 M0 实测确认 |
 | 测试模型 | 工具为每个渠道写 `test_model`（选该渠道最便宜的模型） | 测试同样要走价格计算，模型没有定价时测试会直接失败 |
@@ -186,7 +186,7 @@
     - 冷启动：该厂商 7 天内没有流量时，取 priority 最高的那一层渠道的上游渠道成本价的平均值。
 
 写入 NewAPI 的内容（只有这几项）：
-- `GroupRatio`（每个厂商分组一项）、`AutoGroups`（厂商分组顺序）、`UserUsableGroups`（加入厂商分组）。
+- `GroupRatio`（每个厂商分组一项）、`AutoGroups`（厂商分组顺序）、`UserUsableGroups`（加入厂商分组，**并且必须包含 `auto`**，否则 auto 令牌被 403 拒绝，见 M0 ⑫）。
 - `Price` 和 `USDExchangeRate`（随站点汇率）。
 - 计算由定时任务或"立即计算"触发；"自动写入"开关关闭时只计算不写入。
 - 模型价格（`ModelRatio`、`CompletionRatio`、`CacheRatio`、`CreateCacheRatio`、`ModelPrice`）**不写**。
@@ -420,7 +420,8 @@
 | 不用 auto 的令牌会绕过厂商分组倍率机制 | nam 不开启 NewAPI 的"默认使用 auto 分组"；告知用户令牌选 auto；令牌页的厂商分组名仅作展示；已记为已知限制 |
 | NewAPI 实际生效的模型价格与原厂价不一致（例如硬编码的 `CompletionRatio`） | 偏差检查超过 5% 在"模型与价格"页警告，不自动写入；写模型价格只能手动、先预览再确认；M0 ④ 实测校准 |
 | 创建渠道的接口不返回 ID | 渠道名称使用 `nam-<上游>-<令牌>-<厂商>-<短 ID>`，创建后搜索精确匹配；之后用 NewAPI 的 ID 作为主键 |
-| PUT 不能把非指针字段清零（例如 status=0、models 为空） | 改状态用 1、2、3；需要清空模型时改为删除渠道再重建 |
+| PUT 不能把非指针字段清零（status、models、name、group）；指针字段（priority、weight、tag、base_url、test_model）可以清零（M0 ③） | 改状态用 1、2、3；需要清空模型时改为删除渠道再重建；适配器更新时先读后合并、始终发送指针字段 |
+| NewAPI 的 SQLite 默认 `journal_mode=delete`，不是 WAL（M0 ⑩） | 嵌入模式读日志用短查询、小批量；nam 自己的 `nam.db` 用 WAL |
 | 渠道的 group 字段只有 varchar(64) | 厂商分组名保持简短（例如 claude、openai、gemini） |
 | 公开价格库缺失模型或缺缓存价 | 用手动覆盖和别名映射；缺价的模型不计入参考成本价并告警 |
 | 上游改版导致适配器失效 | 每个适配器有错误计数；连续失败就告警并停止自动更新相关的上游分组折扣 |

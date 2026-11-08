@@ -143,6 +143,8 @@ export interface LoginFailure {
   locked_until?: number;
 }
 
+export * from './types-channels';
+
 export interface PasswordInput {
   old_password: string;
   new_password: string;

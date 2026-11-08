@@ -10,9 +10,11 @@ import { Switch } from '@/components/ui/misc';
 import { useSession } from '@/hooks/useSession';
 import { formatNumber, formatTime, parseGoDuration, toGoDuration, type ParsedInterval } from '@/lib/format';
 import { IntervalRow, JOB_ORDER } from './settings/IntervalRow';
+import { VendorSection } from './settings/VendorSection';
 
 const SECTIONS = [
   ['connection', 'NewAPI 连接'],
+  ['vendors', '厂商分组'],
   ['pricing', '定价参数'],
   ['schedule', '调度间隔'],
   ['retention', '日志保留'],
@@ -105,7 +107,7 @@ export default function SettingsPage() {
         <a href="#rate" onClick={(e) => { e.preventDefault(); document.getElementById('rate')?.scrollIntoView({ behavior: 'smooth' }); }}
           className="flex h-7 items-center rounded px-2 text-muted-foreground hover:bg-accent hover:text-foreground">站点汇率</a>
       </nav>
-      <div className="flex min-w-0 max-w-3xl flex-1 flex-col gap-3 overflow-y-auto pr-1">
+      <div className="flex min-w-0 max-w-4xl flex-1 flex-col gap-3 overflow-y-auto pr-1">
         <PageHeader title="设置" actions={<Button disabled={!valid || save.isPending || !settings.data} onClick={() => save.mutate()}>保存</Button>} />
         <Section id="connection" title="NewAPI 连接">
           <Line label="运行模式">{session.mode === 'embedded' ? '嵌入模式' : '独立模式'}</Line>
@@ -114,6 +116,9 @@ export default function SettingsPage() {
           <Line label="地址">{b?.address || '—'}</Line>
           <Line label="最近请求">{formatTime(b?.last_request_at ?? 0)}</Line>
           <Line label="最近错误">{b?.last_error || '无'}</Line>
+        </Section>
+        <Section id="vendors" title="厂商分组">
+          <VendorSection />
         </Section>
         <Section id="pricing" title="定价参数">
           <Line label="变化保护阈值">

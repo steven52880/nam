@@ -2,25 +2,29 @@
 package api
 
 import (
-	"errors"
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 	"github.com/steven52880/nam/internal/audit"
+	"github.com/steven52880/nam/internal/channels"
 	"github.com/steven52880/nam/internal/crypto"
+	"github.com/steven52880/nam/internal/resp"
 	"github.com/steven52880/nam/internal/scheduler"
 	"github.com/steven52880/nam/internal/store"
+	"github.com/steven52880/nam/internal/upstream"
+	"github.com/steven52880/nam/internal/vendors"
 	"github.com/steven52880/nam/ports"
 )
 
 // Deps are the core services handlers use.
 type Deps struct {
-	Store   *store.Store
-	Box     *crypto.Box
-	Audit   *audit.Recorder
-	Sched   *scheduler.Scheduler
-	Ports   ports.Ports // Channels/Options are already audit-wrapped
-	Version string
+	Store    *store.Store
+	Box      *crypto.Box
+	Audit    *audit.Recorder
+	Sched    *scheduler.Scheduler
+	Ports    ports.Ports // Channels/Options are already audit-wrapped
+	Channels *channels.Service
+	Syncer   *upstream.Syncer
+	Vendors  *vendors.Service
+	Version  string
 }
 
 // Server holds handler dependencies.
@@ -28,53 +32,10 @@ type Server struct {
 	Deps
 }
 
-// Envelope is the uniform response shape (same as NewAPI).
-type Envelope struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
-	Data    any    `json:"data,omitempty"`
-}
-
-func ok(c *gin.Context, data any) {
-	c.JSON(http.StatusOK, Envelope{Success: true, Data: data})
-}
-
-// fail writes an error. HTTP status reflects the class so the frontend can branch.
-func fail(c *gin.Context, status int, err error) {
-	msg := "error"
-	if err != nil {
-		msg = err.Error()
-	}
-	c.AbortWithStatusJSON(status, Envelope{Success: false, Message: msg})
-}
-
-func failFrom(c *gin.Context, err error) {
-	switch {
-	case errors.Is(err, ports.ErrNotFound), errors.Is(err, store.ErrNotFound):
-		fail(c, http.StatusNotFound, err)
-	case errors.Is(err, scheduler.ErrUnknownJob):
-		fail(c, http.StatusNotFound, err)
-	default:
-		var ve *ValidationError
-		if errors.As(err, &ve) {
-			fail(c, http.StatusBadRequest, err)
-			return
-		}
-		fail(c, http.StatusInternalServerError, err)
-	}
-}
-
-// ValidationError marks bad input.
-type ValidationError struct{ Msg string }
-
-func (e *ValidationError) Error() string { return e.Msg }
-
-func invalid(msg string) error { return &ValidationError{Msg: msg} }
-
 // Register mounts all routes on g (= /api/nam). Public routes are mounted before auth.
 func (s *Server) Register(g *gin.RouterGroup) {
 	auth := s.Ports.Auth
-	g.GET("/ping", func(c *gin.Context) { ok(c, "pong") })
+	g.GET("/ping", func(c *gin.Context) { resp.OK(c, "pong") })
 	if rr, okRR := auth.(ports.RouteRegistrar); okRR {
 		rr.RegisterPublicRoutes(g)
 	}
@@ -93,6 +54,9 @@ func (s *Server) Register(g *gin.RouterGroup) {
 	p.PUT("/upstreams/:id", s.updateUpstream)
 	p.DELETE("/upstreams/:id", s.deleteUpstream)
 	p.GET("/upstreams/:id/credential", auth.SecureMiddleware(), s.revealCredential)
+	s.registerUpstreamRoutes(p)
+	s.registerVendorRoutes(p)
+	s.registerChannelRoutes(p)
 
 	// raw NewAPI channels (read only passthrough, for M1 acceptance and debugging)
 	p.GET("/newapi/channels", s.listNewAPIChannels)

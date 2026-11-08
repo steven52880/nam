@@ -17,9 +17,14 @@ import { Input, Textarea } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger, Badge } from '@/components/ui/misc';
 import { formatNumber, formatTime } from '@/lib/format';
 import { CRED_LABELS } from './constants';
+import { errorText } from '@/api/errors';
+import { AdapterTab } from './tabs/AdapterTab';
+import { CredentialDialog, TestUpstreamDialog } from './tabs/CredentialDialogs';
+import { GroupsTab, ModelsTab } from './tabs/GroupsModelsTabs';
+import { TokensTab } from './tabs/TokensTab';
 import { Field, TypeSelect } from './UpstreamForm';
 
-const OTHER_TABS = ['分组倍率', '上游模型价格', '令牌', '公告', '适配器配置', '同步日志'];
+const PLACEHOLDER_TABS = ['公告', '同步日志'];
 
 function Overview({ u, onClose }: { u: Upstream; onClose: () => void }) {
   const qc = useQueryClient();
@@ -30,6 +35,8 @@ function Overview({ u, onClose }: { u: Upstream; onClose: () => void }) {
   const [remark, setRemark] = useState(u.remark);
   const [rate, setRate] = useState(String(u.currency_rate));
   const [confirmDel, setConfirmDel] = useState(false);
+  const [credOpen, setCredOpen] = useState(false);
+  const [testOpen, setTestOpen] = useState(false);
 
   const rateNum = Number(rate);
   const valid = name.trim() !== '' && /^https?:\/\//i.test(baseUrl.trim()) && rateNum > 0;
@@ -41,7 +48,19 @@ function Overview({ u, onClose }: { u: Upstream; onClose: () => void }) {
       return api.updateUpstream(u.id, body);
     },
     onSuccess: () => { toast.success('已保存'); refresh(); },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(errorText(e)),
+  });
+  const syncNow = useMutation({
+    mutationFn: () => api.syncUpstream(u.id, ['tokens', 'groups', 'balance']),
+    onSuccess: (results) => {
+      const bad = results.filter((r) => !r.ok);
+      if (bad.length > 0) toast.error(`同步有失败：${bad.map((r) => r.error ?? r.what).join('；')}`);
+      else toast.success('已同步');
+      refresh();
+      void qc.invalidateQueries({ queryKey: ['upstream-tokens', u.id] });
+      void qc.invalidateQueries({ queryKey: ['upstream-groups', u.id] });
+    },
+    onError: (e: Error) => toast.error(errorText(e)),
   });
   const del = useMutation({
     mutationFn: () => api.deleteUpstream(u.id),
@@ -73,13 +92,20 @@ function Overview({ u, onClose }: { u: Upstream; onClose: () => void }) {
       <div className="flex items-center gap-2">
         <span className="text-muted-foreground">凭证状态：</span>
         {u.has_credential ? <Badge tone="success">已配置（{CRED_LABELS[u.cred_type] ?? u.cred_type}）</Badge> : <Badge tone="warning">未配置</Badge>}
-        <Button size="sm" variant="outline" disabled title="后续里程碑提供">更换凭证</Button>
-        <Button size="sm" variant="outline" disabled title="后续里程碑提供">测试连通性</Button>
+        <Button size="sm" variant="outline" onClick={() => setCredOpen(true)}>更换凭证</Button>
+        <Button size="sm" variant="outline" onClick={() => setTestOpen(true)}>测试连通性</Button>
       </div>
       <div className="flex justify-between border-t pt-3">
         <Button variant="destructive" onClick={() => setConfirmDel(true)}>删除上游</Button>
-        <Button disabled={!valid || save.isPending} onClick={() => save.mutate()}>保存</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" disabled={syncNow.isPending} onClick={() => syncNow.mutate()}>
+            {syncNow.isPending ? '同步中…' : '立即同步'}
+          </Button>
+          <Button disabled={!valid || save.isPending} onClick={() => save.mutate()}>保存</Button>
+        </div>
       </div>
+      <CredentialDialog upstream={u} open={credOpen} onOpenChange={setCredOpen} />
+      <TestUpstreamDialog upstream={u} open={testOpen} onOpenChange={setTestOpen} />
       <Dialog open={confirmDel} onOpenChange={setConfirmDel}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
@@ -117,11 +143,19 @@ export function UpstreamDrawer({ upstream, onClose }: { upstream: Upstream | nul
           <Tabs defaultValue="overview" className="flex min-h-0 flex-1 flex-col">
             <TabsList className="px-3">
               <TabsTrigger value="overview">概览</TabsTrigger>
-              {OTHER_TABS.map((t) => <TabsTrigger key={t} value={t}>{t}</TabsTrigger>)}
+              <TabsTrigger value="groups">分组倍率</TabsTrigger>
+              <TabsTrigger value="models">上游模型价格</TabsTrigger>
+              <TabsTrigger value="tokens">令牌</TabsTrigger>
+              <TabsTrigger value="adapter">适配器配置</TabsTrigger>
+              {PLACEHOLDER_TABS.map((t) => <TabsTrigger key={t} value={t}>{t}</TabsTrigger>)}
             </TabsList>
             <div className="min-h-0 flex-1 overflow-y-auto">
               <TabsContent value="overview"><Overview key={upstream.id + upstream.updated_at} u={upstream} onClose={onClose} /></TabsContent>
-              {OTHER_TABS.map((t) => (
+              <TabsContent value="groups"><GroupsTab upstreamId={upstream.id} /></TabsContent>
+              <TabsContent value="models"><ModelsTab upstreamId={upstream.id} /></TabsContent>
+              <TabsContent value="tokens"><TokensTab upstream={upstream} /></TabsContent>
+              <TabsContent value="adapter"><AdapterTab key={upstream.id + upstream.updated_at} upstream={upstream} /></TabsContent>
+              {PLACEHOLDER_TABS.map((t) => (
                 <TabsContent key={t} value={t}>
                   <div className="m-4 flex h-32 items-center justify-center rounded border border-dashed text-muted-foreground">「{t}」将在后续里程碑实现</div>
                 </TabsContent>

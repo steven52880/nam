@@ -14,6 +14,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useSession } from '@/hooks/useSession';
+import { ApplyDialog } from '@/pages/channels/ApplyDialog';
+import { useChannelList } from '@/pages/channels/useChannels';
 import { useTheme } from '@/hooks/useTheme';
 import { ConnectionStatus } from './ConnectionStatus';
 import { GlobalSearch } from './GlobalSearch';
@@ -25,6 +27,9 @@ export function TopBar() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [pwOpen, setPwOpen] = useState(false);
+  const [applyOpen, setApplyOpen] = useState(false);
+  const channels = useChannelList();
+  const draftCount = channels.data?.draft_count ?? 0;
 
   const logout = useMutation({
     mutationFn: api.logout,
@@ -45,9 +50,10 @@ export function TopBar() {
       <GlobalSearch />
       <div className="flex-1" />
       <ConnectionStatus />
-      <Button variant="outline" disabled title="草稿功能将在后续里程碑提供">
-        待应用草稿 0
+      <Button variant="outline" onClick={() => setApplyOpen(true)} title="查看并应用草稿">
+        待应用草稿 {draftCount}
       </Button>
+      <ApplyDialog open={applyOpen} onOpenChange={setApplyOpen} />
       <Button variant="ghost" size="icon" onClick={toggle} title="切换主题">
         {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
       </Button>

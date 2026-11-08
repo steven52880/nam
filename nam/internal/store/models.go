@@ -133,7 +133,17 @@ type Vendor struct {
 	Models    string `json:"models"`  // JSON array of exact model names
 	Pattern   string `json:"pattern"` // optional regex
 	Order     int    `json:"order"`   // position in AutoGroups
+	// ChannelType is the NewAPI channel type nam uses for this vendor's channels.
+	// 58 = PassThrough (OpenAI/Claude formats). Gemini vendors use 24 (native Gemini):
+	// M0 ① showed PassThrough does not bill Gemini-native usage correctly.
+	ChannelType int `gorm:"not null;default:58" json:"channel_type"`
 }
+
+// NewAPI channel types nam creates.
+const (
+	ChannelTypePassThrough = 58
+	ChannelTypeGemini      = 24
+)
 
 // Pricing modes and states.
 const (

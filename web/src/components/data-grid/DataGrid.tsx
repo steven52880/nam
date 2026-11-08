@@ -7,31 +7,21 @@ import {
   type VisibilityState,
 } from '@tanstack/react-table';
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight } from 'lucide-react';
-import { useCallback, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type KeyboardEvent,
+} from 'react';
 import { toast } from 'sonner';
 import { useGridSelection } from '@/lib/selection/useGridSelection';
 import { cn } from '@/lib/utils';
 import { ColumnVisibilityMenu, GridHintBar } from './GridChrome';
 import { GridCell, cellText } from './GridCell';
-import type { GridColumn, GridRange } from './types';
-
-export interface DataGridProps<T> {
-  data: T[];
-  columns: GridColumn<T>[];
-  getRowId: (row: T) => string;
-  /** 分组键；提供后按键分组并显示可折叠的组标题行。 */
-  groupBy?: (row: T) => string;
-  groupSummary?: (groupKey: string, rows: T[]) => ReactNode;
-  isDirty?: (rowId: string, columnId: string) => boolean;
-  /** 单元格提交（已通过校验）。 */
-  onEdit?: (rowId: string, columnId: string, value: string) => void;
-  /** Ctrl+C。返回文本时写入系统剪贴板。 */
-  onCopy?: (range: GridRange) => string | void;
-  /** Ctrl+V。text 为剪贴板文本。 */
-  onPaste?: (range: GridRange, text: string) => void;
-  toolbar?: ReactNode;
-  className?: string;
-}
+import type { DataGridProps, GridColumn, GridRange } from './types';
 
 type Item<T> = { kind: 'group'; key: string; rows: T[] } | { kind: 'row'; id: string; row: T };
 
@@ -47,6 +37,11 @@ export function DataGrid<T>({
   onPaste,
   toolbar,
   className,
+  rowClassName,
+  cellClassName,
+  onRowContextMenu,
+  onFocusRowChange,
+  onSelectionChange,
 }: DataGridProps<T>) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -121,10 +116,25 @@ export function DataGrid<T>({
         toast.info(col.readOnlyReason ?? `「${col.header}」为只读列，不能编辑`);
         return;
       }
+      if (col.openEditor) {
+        const row = rowById.get(rowId);
+        if (row) col.openEditor(row);
+        return;
+      }
       setEditing({ rowId, columnId });
     },
-    [colMap],
+    [colMap, rowById],
   );
+
+  const selectedRange = sel.rect;
+  useEffect(() => {
+    onSelectionChange?.(selectedRange);
+  }, [selectedRange, onSelectionChange]);
+
+  const focusRowId = sel.focus?.rowId ?? null;
+  useEffect(() => {
+    onFocusRowChange?.(focusRowId);
+  }, [focusRowId, onFocusRowChange]);
 
   const commit = useCallback(
     (rowId: string, columnId: string, value: string) => {
@@ -236,7 +246,11 @@ export function DataGrid<T>({
                   </td>
                 </tr>
               ) : (
-                <tr key={item.id} className="hover:bg-accent/40">
+                <tr
+                  key={item.id}
+                  className={cn('hover:bg-accent/40', rowClassName?.(item.row))}
+                  onContextMenu={onRowContextMenu ? (e) => onRowContextMenu(item.row, e) : undefined}
+                >
                   {visibleCols.map((vc) => {
                     const col = colMap.get(vc.id);
                     if (!col) return null;
@@ -250,6 +264,7 @@ export function DataGrid<T>({
                         selected={sel.isSelected(item.id, vc.id)}
                         focused={sel.isFocus(item.id, vc.id)}
                         dirty={isDirty?.(item.id, vc.id) ?? false}
+                        className={cellClassName?.(item.row, vc.id)}
                         editing={isEditing}
                         onStartEdit={() => startEdit(item.id, vc.id)}
                         onCommit={(v) => commit(item.id, vc.id, v)}

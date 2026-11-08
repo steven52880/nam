@@ -153,6 +153,228 @@ components:
         error: { type: string }
         operator: { type: string }
         rollback_of: { type: integer, nullable: true }
+    Token:
+      type: object
+      description: 上游令牌。<u>永远不返回 key</u>，只返回 key_hint（前 5 位…后 4 位）。
+      properties:
+        id: { type: integer }
+        upstream_id: { type: integer }
+        remote_id: { type: string, description: 上游上的令牌 id；手动录入为空 }
+        name: { type: string }
+        group: { type: string }
+        key_hint: { type: string }
+        quota_usd: { type: number, nullable: true }
+        unlimited: { type: boolean }
+        status: { type: integer, description: 1 启用；0 = 上游已删除但仍有渠道在用 }
+        manual: { type: boolean }
+        updated_at: { type: integer }
+    UpstreamGroup:
+      type: object
+      properties:
+        id: { type: integer }
+        upstream_id: { type: integer }
+        name: { type: string }
+        ratio: { type: number }
+        desc: { type: string }
+        updated_at: { type: integer }
+    UpstreamModelPrice:
+      type: object
+      properties:
+        id: { type: integer }
+        upstream_id: { type: integer }
+        group: { type: string }
+        model: { type: string }
+        model_ratio: { type: number, nullable: true }
+        input: { type: number, nullable: true, description: 上游美元 / 百万 token }
+        output: { type: number, nullable: true }
+        cache_read: { type: number, nullable: true }
+        cache_write: { type: number, nullable: true }
+        per_request: { type: number, nullable: true }
+        updated_at: { type: integer }
+    ProbeResponse:
+      type: object
+      properties:
+        adapter: { type: string, description: 识别出站点的适配器（先试 newapi，再试 generic） }
+        type: { type: string }
+        evidence: { type: string }
+        version: { type: string }
+    CheckResult:
+      type: object
+      description: 添加上游向导的连通性检查。
+      properties:
+        name: { type: string, enum: [站点可达, 凭证有效, 令牌列表, 分组倍率, 公告] }
+        ok: { type: boolean }
+        skipped: { type: boolean, description: 该上游类型不支持这项 }
+        message: { type: string }
+        ms: { type: integer }
+    SyncResult:
+      type: object
+      properties:
+        what: { type: string, enum: [tokens, groups, balance] }
+        ok: { type: boolean }
+        count: { type: integer }
+        error: { type: string }
+    VendorInput:
+      type: object
+      properties:
+        name: { type: string, maxLength: 64 }
+        group_name: { type: string, maxLength: 64, pattern: '^[a-zA-Z0-9_-]+$', description: 对应 NewAPI 分组（varchar(64)） }
+        models: { type: array, items: { type: string }, description: 一个模型只能属于一个厂商 }
+        pattern: { type: string, description: 可选正则 }
+        channel_type: { type: integer, enum: [58, 24], default: 58 }
+    Vendor:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        group_name: { type: string }
+        models: { type: string, description: JSON 数组字符串 }
+        model_list: { type: array, items: { type: string } }
+        pattern: { type: string }
+        order: { type: integer }
+        channel_type: { type: integer }
+        channel_count: { type: integer }
+    Fields:
+      type: object
+      description: 草稿可改的 NewAPI 渠道字段；未出现 = 不改。key 不在其中，应用时由令牌解析。
+      properties:
+        name: { type: string }
+        base_url: { type: string }
+        models: { type: array, items: { type: string } }
+        group: { type: string }
+        priority: { type: integer }
+        weight: { type: integer, minimum: 0 }
+        tag: { type: string }
+        status: { type: integer, enum: [1, 2, 3] }
+        test_model: { type: string }
+        type: { type: integer, description: 仅新建时有效 }
+    ExtFields:
+      type: object
+      description: 只存 nam 的字段，不写 NewAPI。
+      properties:
+        upstream_id: { type: integer }
+        token_id: { type: integer }
+        vendor: { type: string }
+        discount: { type: number, exclusiveMinimum: true, minimum: 0, description: 上游分组折扣 }
+        discount_source: { type: string, enum: [auto, manual] }
+    Change:
+      type: object
+      required: [channel_id]
+      properties:
+        channel_id: { type: integer, description: ">0 现有渠道；<0 尚未创建的草稿" }
+        fields: { $ref: '#/components/schemas/Fields' }
+        ext: { $ref: '#/components/schemas/ExtFields' }
+    ValidationIssue:
+      type: object
+      properties:
+        channel_id: { type: integer }
+        name: { type: string }
+        field: { type: string }
+        message: { type: string }
+    Row:
+      type: object
+      description: 渠道表一行：NewAPI 值叠加未应用的草稿值。
+      properties:
+        id: { type: integer }
+        type: { type: integer }
+        name: { type: string }
+        status: { type: integer }
+        base_url: { type: string }
+        models: { type: array, items: { type: string } }
+        group: { type: string }
+        priority: { type: integer }
+        weight: { type: integer }
+        tag: { type: string }
+        test_model: { type: string }
+        response_time: { type: integer }
+        test_time: { type: integer }
+        used_quota: { type: integer }
+        managed: { type: boolean }
+        upstream_id: { type: integer, nullable: true }
+        upstream_name: { type: string }
+        token_id: { type: integer, nullable: true }
+        token_name: { type: string }
+        vendor: { type: string }
+        discount: { type: number }
+        discount_source: { type: string, enum: [auto, manual] }
+        currency_rate: { type: number, nullable: true }
+        channel_cost: { type: number, nullable: true, description: 折扣 × 上游货币汇率 }
+        sync_state: { type: string, enum: [synced, draft, draft_create, draft_delete, drift, error] }
+        dirty_fields: { type: array, items: { type: string } }
+        drift_fields: { type: array, items: { type: string } }
+        draft_id: { type: integer }
+        draft_op: { type: string, enum: [create, update, delete] }
+        draft_error: { type: string }
+    FieldChange:
+      type: object
+      properties:
+        field: { type: string }
+        old: {}
+        new: {}
+        newapi: { type: boolean, description: false = 只改 nam，不写 NewAPI }
+    PlanItem:
+      type: object
+      properties:
+        draft_id: { type: integer }
+        channel_id: { type: integer }
+        op: { type: string, enum: [create, update, delete] }
+        name: { type: string }
+        changes: { type: array, items: { $ref: '#/components/schemas/FieldChange' } }
+        request:
+          type: object
+          nullable: true
+          description: 将发给 NewAPI 的请求；只改 nam 字段时为空。创建时 key 不展示。
+          properties:
+            method: { type: string }
+            path: { type: string }
+            body: {}
+    Result:
+      type: object
+      properties:
+        draft_id: { type: integer }
+        channel_id: { type: integer, description: 创建成功后为新 id }
+        op: { type: string }
+        name: { type: string }
+        ok: { type: boolean }
+        error: { type: string }
+    CreateSpec:
+      type: object
+      properties:
+        fields: { $ref: '#/components/schemas/Fields' }
+        ext: { $ref: '#/components/schemas/ExtFields' }
+    BatchRequest:
+      type: object
+      required: [upstream_id, token_ids, models]
+      description: 批量创建向导：一个上游、若干令牌、一批模型；按厂商拆分，每个（令牌 × 厂商）一个渠道。
+      properties:
+        upstream_id: { type: integer }
+        token_ids: { type: array, items: { type: integer } }
+        models: { type: array, items: { type: string } }
+        priority: { type: integer }
+        weight: { type: integer }
+        tag: { type: string }
+        test_model: { type: object, additionalProperties: { type: string }, description: 厂商名 → 测试模型 }
+        discount: { type: object, additionalProperties: { type: number }, description: 令牌 id → 上游分组折扣 }
+    BatchPreviewItem:
+      allOf:
+        - { $ref: '#/components/schemas/CreateSpec' }
+        - type: object
+          properties:
+            name: { type: string }
+            token_name: { type: string }
+            vendor: { type: string }
+            group: { type: string }
+            channel_type: { type: integer }
+            duplicate: { type: boolean, description: 名称已存在于 NewAPI 或草稿 }
+    DriftDetail:
+      type: object
+      properties:
+        channel_id: { type: integer }
+        name: { type: string }
+        fields:
+          type: array
+          description: old = nam 上次应用的值；new = NewAPI 现在的值
+          items: { $ref: '#/components/schemas/FieldChange' }
 paths:
   /ping:
     get:
@@ -211,8 +433,175 @@ paths:
       requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/UpstreamInput' } } } }
       responses: { '200': { description: data = Upstream } }
     delete:
-      summary: 删除上游（M2 起同时把其渠道的删除加入草稿）
+      summary: 删除上游；其渠道的删除加入草稿（新建草稿直接丢弃），需在草稿里应用才会真正删除 NewAPI 渠道
+      responses: { '200': { description: 'data = {deleted_channels}' } }
+  /upstreams/probe:
+    post:
+      summary: 自动识别站点类型（先试 newapi，再试 generic，不需要凭证）
+      requestBody: { content: { application/json: { schema: { type: object, required: [base_url], properties: { base_url: { type: string } } } } } }
+      responses: { '200': { description: data = ProbeResponse }, '400': { description: 地址不合法 }, '502': { description: 两种适配器都无法识别，message 列出原因 } }
+  /upstreams/test:
+    post:
+      summary: 连通性检查（向导用，不保存）
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/UpstreamInput' } } } }
+      responses: { '200': { description: 'data = CheckResult[]（5 项）' }, '400': { description: 校验失败（含 generic 的 adapter_config） } }
+  /upstreams/{id}/test:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    post:
+      summary: 对已保存的上游做连通性检查
+      responses: { '200': { description: 'data = CheckResult[]' }, '404': { description: 不存在 } }
+  /upstreams/{id}/sync:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    post:
+      summary: 同步令牌 / 分组倍率与模型价格 / 余额；上游不支持的项视为成功（无操作）
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { what: { type: array, items: { type: string, enum: [tokens, groups, balance] }, description: 默认三项全做 } } }
+      responses: { '200': { description: 'data = SyncResult[]；单项失败不影响其他项' }, '404': { description: 不存在 } }
+  /upstreams/{id}/tokens:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    get:
+      summary: 令牌列表（不含 key）
+      responses: { '200': { description: 'data = Token[]' } }
+    post:
+      summary: 手动录入令牌（key 加密保存）
+      requestBody: { content: { application/json: { schema: { type: object, required: [name, key], properties: { name: { type: string }, group: { type: string }, key: { type: string } } } } } }
+      responses: { '200': { description: data = Token }, '400': { description: 校验失败 } }
+  /upstreams/{id}/tokens/remote:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    post:
+      summary: 在上游站点上创建令牌并保存（写入上游，记审计）
+      requestBody: { content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string }, group: { type: string }, quota_usd: { type: number, nullable: true, description: 空 = 不限额 } } } } } }
+      responses: { '200': { description: data = Token }, '400': { description: 校验失败或该类型不支持 }, '502': { description: 上游报错 } }
+  /upstreams/{id}/tokens/{tid}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+      - { name: tid, in: path, required: true, schema: { type: integer } }
+    delete:
+      summary: 删除令牌（只删 nam 的记录）；被渠道使用时拒绝
+      responses: { '200': { description: ok }, '404': { description: 不存在 }, '409': { description: 仍被渠道使用 } }
+  /upstreams/{id}/groups:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    get:
+      summary: 上游分组倍率（同步结果）
+      responses: { '200': { description: 'data = UpstreamGroup[]' } }
+  /upstreams/{id}/models:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    get:
+      summary: 上游模型价格（同步结果）
+      responses: { '200': { description: 'data = UpstreamModelPrice[]' } }
+  /upstreams/{id}/models/fetch:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    post:
+      summary: 用某个令牌的 key 调上游 /v1/models，返回模型 id
+      requestBody: { content: { application/json: { schema: { type: object, required: [token_id], properties: { token_id: { type: integer } } } } } }
+      responses: { '200': { description: 'data = {models: string[]}' }, '404': { description: 令牌不存在 }, '502': { description: 上游报错 } }
+  /vendors:
+    get:
+      summary: 厂商列表（按 AutoGroups 顺序）
+      responses: { '200': { description: 'data = Vendor[]' } }
+    post:
+      summary: 新增厂商。M2 只写 nam，不写 NewAPI 的 GroupRatio / AutoGroups（M5）
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/VendorInput' } } } }
+      responses: { '200': { description: data = Vendor }, '400': { description: 校验失败 }, '409': { description: 名称或分组重复，或模型已属于另一个厂商（message 同时写出两个厂商名） } }
+  /vendors/order:
+    put:
+      summary: 调整顺序（必须包含全部厂商）
+      requestBody: { content: { application/json: { schema: { type: object, required: [ids], properties: { ids: { type: array, items: { type: integer } } } } } } }
+      responses: { '200': { description: ok }, '400': { description: ids 不完整或重复 } }
+  /vendors/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    put:
+      summary: 修改厂商；仍有渠道使用时不能改名称和分组
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/VendorInput' } } } }
+      responses: { '200': { description: data = Vendor }, '400': { description: 校验失败 }, '404': { description: 不存在 }, '409': { description: 冲突 } }
+    delete:
+      summary: 删除厂商；仍有渠道使用时拒绝
+      responses: { '200': { description: ok }, '404': { description: 不存在 }, '409': { description: 仍有渠道使用 } }
+  /channels:
+    get:
+      summary: 渠道表（NewAPI 渠道 + 待创建草稿，叠加未应用的草稿值）
+      responses: { '200': { description: 'data = {items: Row[], draft_count}' } }
+  /channels/drafts:
+    patch:
+      summary: 保存编辑为草稿；先校验整套渠道，不通过则一条都不保存
+      requestBody: { content: { application/json: { schema: { type: object, required: [changes], properties: { changes: { type: array, items: { $ref: '#/components/schemas/Change' } } } } } } }
+      responses:
+        '200': { description: 'data = {issues: []}' }
+        '400': { description: 'data = {issues: ValidationIssue[]}（校验失败）；或请求本身不合法（无 data）' }
+    delete:
+      summary: 丢弃草稿
+      requestBody: { content: { application/json: { schema: { type: object, properties: { ids: { type: array, items: { type: integer } } } } } } }
+      responses: { '200': { description: 省略 ids = 丢弃全部草稿 } }
+  /channels/batch/preview:
+    post:
+      summary: 批量创建预览（不写任何东西）
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/BatchRequest' } } } }
+      responses: { '200': { description: 'data = {items: BatchPreviewItem[], unassigned: string[]}（没有厂商的模型被跳过）' } }
+  /channels/batch:
+    post:
+      summary: 批量创建渠道草稿（需再「应用」才会写 NewAPI）
+      requestBody:
+        content:
+          application/json:
+            schema:
+              description: 传 BatchRequest 由服务端展开，或传 specs 直接提交预览（可编辑后的）条目
+              allOf:
+                - { $ref: '#/components/schemas/BatchRequest' }
+                - { type: object, properties: { specs: { type: array, items: { $ref: '#/components/schemas/CreateSpec' } } } }
+      responses:
+        '200': { description: 'data = {ids: int[]}（负数临时 id）' }
+        '400': { description: 'data = {issues: ValidationIssue[]}，或没有可创建的渠道' }
+  /channels/delete:
+    post:
+      summary: 标记删除（现有渠道进入删除草稿；新建草稿直接丢弃）
+      requestBody: { content: { application/json: { schema: { type: object, required: [ids], properties: { ids: { type: array, items: { type: integer } } } } } } }
       responses: { '200': { description: ok } }
+  /channels/plan:
+    get:
+      summary: 应用预览
+      parameters: [{ name: ids, in: query, schema: { type: string }, description: 逗号分隔的渠道 id；省略 = 全部草稿 }]
+      responses: { '200': { description: 'data = PlanItem[]（先删除，再更新，最后创建）' } }
+  /channels/apply:
+    post:
+      summary: 应用草稿，逐条写 NewAPI（全部经审计）；失败的草稿保留并带错误
+      requestBody: { content: { application/json: { schema: { type: object, properties: { ids: { type: array, items: { type: integer } } } } } } }
+      responses:
+        '200': { description: 'data = {results: Result[], success, failed}' }
+        '400': { description: 'data = {issues: ValidationIssue[]}，校验失败时一条都不写' }
+  /channels/{id}/drift:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    get:
+      summary: 漂移明细（nam 上次应用的值 vs NewAPI 现在的值）
+      responses: { '200': { description: data = DriftDetail }, '404': { description: 渠道不存在 } }
+  /channels/{id}/drift/accept:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    post:
+      summary: 接受 NewAPI 的当前值（只更新 nam 的记录，不写 NewAPI）
+      responses: { '200': { description: ok }, '404': { description: 渠道不存在或未被管理 } }
+  /channels/{id}/drift/overwrite:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    post:
+      summary: 生成「写回 nam 记录值」的更新草稿；仍需「应用」
+      responses: { '200': { description: ok }, '400': { description: 没有上次应用的记录 }, '404': { description: 渠道不存在 } }
+  /channels/{id}/adopt:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    post:
+      summary: 纳入管理现有 NewAPI 渠道（记录当前值作为基线，不写 NewAPI）
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/ExtFields' } } } }
+      responses: { '200': { description: ok }, '404': { description: 渠道不存在 } }
+  /channels/{id}/test:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    post:
+      summary: 调用 NewAPI 的渠道测试
+      requestBody: { content: { application/json: { schema: { type: object, properties: { model: { type: string } } } } } }
+      responses: { '200': { description: 'data = {success, message, duration}' }, '502': { description: NewAPI 报错 } }
+  /channels/{id}/newapi-link:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    get:
+      summary: NewAPI 渠道页链接。嵌入模式返回同源路径，独立模式返回 NewAPI 地址 + 路径
+      responses: { '200': { description: 'data = {url}，路径为 /console/channel?id=<id>' } }
   /upstreams/{id}/credential:
     parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
     get:
