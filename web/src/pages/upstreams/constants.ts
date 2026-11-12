@@ -7,6 +7,7 @@ export const TYPE_OPTIONS: Array<[UpstreamType, string]> = [
   ['onehub', 'onehub'],
   ['official', 'official'],
   ['generic', 'generic'],
+  ['rightcode', 'rightcode'],
 ];
 
 export const CRED_OPTIONS: Array<[CredType, string]> = [
@@ -26,10 +27,28 @@ export const CRED_LABELS: Record<string, string> = {
   sub2api_session: '登录令牌（自动续期）',
 };
 
+/** 是否需要填平台用户 ID：access_token / cookie 需要，Right Code 只用 token 做 Bearer，不需要。 */
+export function needsUserId(type: UpstreamType, credType: CredType): boolean {
+  if (type === 'rightcode') return false;
+  return credType === 'access_token' || credType === 'cookie';
+}
+
+/** 凭证方式的下拉标签：Right Code 的 access_token 实际填的是 user_token，没有用户 ID。 */
+export function credOptionLabel(type: UpstreamType, credType: CredType, fallback: string): string {
+  if (type === 'rightcode' && credType === 'access_token') return 'Access Token（user_token）';
+  return fallback;
+}
+
 /** 按上游类型过滤可选的凭证方式：cookie 只给 newapi / onehub，sub2api_session 只给 sub2api（排在最前）。 */
 export function credOptionsFor(type: UpstreamType): Array<[CredType, string]> {
   const label = (c: CredType) => CRED_OPTIONS.find(([v]) => v === c)?.[1] ?? c;
   const common = CRED_OPTIONS.filter(([v]) => v !== 'cookie' && v !== 'sub2api_session');
+  // Right Code 登录需要腾讯验证码，只能手填浏览器里的 user_token。
+  if (type === 'rightcode') {
+    return common
+      .filter(([v]) => v === 'access_token' || v === '')
+      .map(([v, l]) => [v, credOptionLabel(type, v, l)] as [CredType, string]);
+  }
   if (type === 'newapi' || type === 'onehub') {
     const [first, ...rest] = common;
     return first ? [first, ['cookie', label('cookie')], ...rest] : common;

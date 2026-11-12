@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input, Textarea } from '@/components/ui/input';
 import { Label } from '@/components/ui/misc';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { credOptionsWithCurrent, TYPE_OPTIONS } from './constants';
+import { credOptionsWithCurrent, needsUserId, TYPE_OPTIONS } from './constants';
 
 const USER_ID_SNIPPET = "JSON.parse(localStorage.getItem('user')).id";
 const TOKEN_SNIPPET = "Object.keys(localStorage).filter(k=>/token/i.test(k)).forEach(k=>console.log(k, localStorage.getItem(k)))";
@@ -102,14 +102,23 @@ export function CredentialFields({
     );
   }
   if (credType === 'access_token') {
+    const isRightcode = upstreamType === 'rightcode';
     return (
       <>
-        <Field label="Access Token">
+        <Field label={isRightcode ? 'user_token' : 'Access Token'}>
           <Input type="password" autoComplete="off" value={value.access_token ?? ''} onChange={(e) => onChange({ ...value, access_token: e.target.value })} />
         </Field>
-        <Field label="用户 ID">
-          <Input inputMode="numeric" value={userId} onChange={(e) => onUserId(e.target.value)} />
-        </Field>
+        {(!upstreamType || needsUserId(upstreamType, 'access_token')) && (
+          <Field label="用户 ID">
+            <Input inputMode="numeric" value={userId} onChange={(e) => onUserId(e.target.value)} />
+          </Field>
+        )}
+        {isRightcode && (
+          <HelpBox>
+            <div>在浏览器登录 Right Code，按 F12 → 应用（Application）→ 本地存储（Local Storage）→ 复制 <code className="font-mono">userToken</code> 的值。</div>
+            <div className="text-muted-foreground">账号开启了 token 轮换时，到期后需要重新填写。</div>
+          </HelpBox>
+        )}
       </>
     );
   }

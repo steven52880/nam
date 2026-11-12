@@ -236,7 +236,7 @@ func TestNewAPIListModelsSortedUnique(t *testing.T) {
 }
 
 func TestRegistryTypes(t *testing.T) {
-	if got := fmt.Sprint(Types()); got != "[generic newapi official onehub sk-key sub2api]" {
+	if got := fmt.Sprint(Types()); got != "[generic newapi official onehub rightcode sk-key sub2api]" {
 		t.Fatalf("got %s", got)
 	}
 }

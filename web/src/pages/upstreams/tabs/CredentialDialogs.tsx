@@ -6,10 +6,10 @@ import { errorText } from '@/api/errors';
 import type { Credential, CredType, Upstream, UpstreamInput, UpstreamType } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { allowsCredType, defaultCredType } from '../constants';
+import { allowsCredType, defaultCredType, needsUserId } from '../constants';
 import { CredentialPicker } from '../UpstreamForm';
 import { CheckList } from '../wizard/StepTest';
-import { credentialValid, usesUserId } from '../wizard/state';
+import { credentialValid } from '../wizard/state';
 
 function initialCredType(upstream: Upstream, type: UpstreamType): CredType {
   if (type === upstream.type) return upstream.cred_type || defaultCredType(type);
@@ -31,7 +31,7 @@ function CredentialForm({ upstream, type, onOpenChange }: { upstream: Upstream; 
     mutationFn: () => {
       const body: UpstreamInput = { cred_type: credType, credential: credType ? cred : {} };
       if (typeChanged) body.type = type;
-      if (usesUserId(credType) && userId) body.platform_user_id = Number(userId);
+      if (needsUserId(type, credType) && userId) body.platform_user_id = Number(userId);
       return api.updateUpstream(upstream.id, body);
     },
     onSuccess: () => {

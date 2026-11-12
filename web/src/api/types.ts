@@ -28,7 +28,7 @@ export interface BackendInfo {
   last_error: string;
 }
 
-export type UpstreamType = 'newapi' | 'sk-key' | 'sub2api' | 'onehub' | 'official' | 'generic';
+export type UpstreamType = 'newapi' | 'sk-key' | 'sub2api' | 'onehub' | 'official' | 'generic' | 'rightcode';
 export type CredType = '' | 'access_token' | 'password' | 'sk_key' | 'cookie' | 'sub2api_session';
 
 export interface Credential {

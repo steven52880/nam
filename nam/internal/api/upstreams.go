@@ -58,6 +58,7 @@ type UpstreamView struct {
 var upstreamTypes = map[string]bool{
 	store.UpstreamNewAPI: true, store.UpstreamSKKey: true, store.UpstreamSub2API: true,
 	store.UpstreamOneHub: true, store.UpstreamOfficial: true, store.UpstreamGeneric: true,
+	store.UpstreamRightCode: true,
 }
 
 var credTypes = map[string]bool{

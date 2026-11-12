@@ -4,12 +4,13 @@ import "time"
 
 // Upstream types.
 const (
-	UpstreamNewAPI   = "newapi"
-	UpstreamSKKey    = "sk-key"
-	UpstreamSub2API  = "sub2api"
-	UpstreamOneHub   = "onehub"
-	UpstreamOfficial = "official"
-	UpstreamGeneric  = "generic"
+	UpstreamNewAPI    = "newapi"
+	UpstreamSKKey     = "sk-key"
+	UpstreamSub2API   = "sub2api"
+	UpstreamOneHub    = "onehub"
+	UpstreamOfficial  = "official"
+	UpstreamGeneric   = "generic"
+	UpstreamRightCode = "rightcode"
 )
 
 // Credential types.

@@ -1,5 +1,5 @@
 import type { Credential, CredType, UpstreamInput, UpstreamTestInput, UpstreamType } from '@/api/types';
-import { allowsCredType, defaultCredType } from '../constants';
+import { allowsCredType, defaultCredType, needsUserId } from '../constants';
 
 export interface UpstreamDraft {
   name: string;
@@ -37,7 +37,7 @@ export function credentialValid(type: UpstreamType, credType: CredType, c: Crede
   const uid = userId.trim();
   switch (credType) {
     case 'access_token':
-      return !!c.access_token?.trim() && /^\d+$/.test(uid);
+      return !!c.access_token?.trim() && (!needsUserId(type, credType) || /^\d+$/.test(uid));
     case 'password':
       return !!c.username?.trim() && !!c.password;
     case 'sk_key':
@@ -74,18 +74,13 @@ export function credPatchForType(
   return {};
 }
 
-/** 需要同时提交平台用户 ID 的凭证方式。 */
-export function usesUserId(credType: CredType): boolean {
-  return credType === 'access_token' || credType === 'cookie';
-}
-
 export function toTestInput(draft: UpstreamDraft): UpstreamTestInput {
   return {
     type: draft.type,
     base_url: draft.baseUrl.trim(),
     cred_type: draft.credType,
     credential: draft.credential,
-    platform_user_id: usesUserId(draft.credType) ? Number(draft.userId) || 0 : 0,
+    platform_user_id: needsUserId(draft.type, draft.credType) ? Number(draft.userId) || 0 : 0,
     adapter_config: '',
   };
 }
@@ -101,6 +96,6 @@ export function toCreateInput(draft: UpstreamDraft): UpstreamInput {
     remark: draft.remark.trim(),
   };
   if (draft.credType) body.credential = draft.credential;
-  if (usesUserId(draft.credType) && draft.userId) body.platform_user_id = Number(draft.userId);
+  if (needsUserId(draft.type, draft.credType) && draft.userId) body.platform_user_id = Number(draft.userId);
   return body;
 }
