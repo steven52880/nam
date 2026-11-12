@@ -246,7 +246,15 @@ func (s *Service) saveChanges(ctx context.Context, changes []Change) ([]Validati
 		if has {
 			body = parseDraft(d)
 		}
-		body.Fields = mergeFields(body.Fields, ch.Fields)
+		fields := ch.Fields
+		if ch.Ext.Vendor != nil && *ch.Ext.Vendor != "" && fields.Group == nil {
+			// 改厂商带动分组；未知厂商留给 validateRows 报错
+			if v, known := st.vendors.byName[*ch.Ext.Vendor]; known {
+				g := v.GroupName
+				fields.Group = &g
+			}
+		}
+		body.Fields = mergeFields(body.Fields, fields)
 		body.Ext = mergeExt(body.Ext, ch.Ext)
 		if ch.Ext.Discount != nil && ch.Ext.DiscountSource == nil {
 			m := store.DiscountManual

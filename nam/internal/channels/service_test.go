@@ -2,6 +2,7 @@ package channels
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -49,10 +50,11 @@ func p[T any](v T) *T { return &v }
 
 func (e *env) batch(t *testing.T, models ...string) []int {
 	t.Helper()
-	items, _, err := e.svc.BatchPreview(e.ctx, BatchRequest{UpstreamID: e.up.ID, TokenIDs: []uint{e.tok.ID}, Models: models, Weight: 1})
+	prev, err := e.svc.BatchPreview(e.ctx, BatchRequest{UpstreamID: e.up.ID, TokenIDs: []uint{e.tok.ID},
+		TokenModels: map[string][]string{fmt.Sprint(e.tok.ID): models}, Weight: 1})
 	must(t, err)
-	specs := make([]CreateSpec, len(items))
-	for i, it := range items {
+	specs := make([]CreateSpec, len(prev.Items))
+	for i, it := range prev.Items {
 		specs[i] = it.CreateSpec
 	}
 	ids, issues, err := e.svc.AddCreateDrafts(e.ctx, specs)
@@ -65,9 +67,10 @@ func (e *env) batch(t *testing.T, models ...string) []int {
 
 func TestBatchSplitsByVendorAndApplies(t *testing.T) {
 	e := newEnv(t)
-	items, unassigned, err := e.svc.BatchPreview(e.ctx, BatchRequest{UpstreamID: e.up.ID, TokenIDs: []uint{e.tok.ID},
-		Models: []string{"test-model", "gem-x", "mystery"}})
+	prev, err := e.svc.BatchPreview(e.ctx, BatchRequest{UpstreamID: e.up.ID, TokenIDs: []uint{e.tok.ID},
+		TokenModels: map[string][]string{fmt.Sprint(e.tok.ID): {"test-model", "gem-x", "mystery"}}})
 	must(t, err)
+	items, unassigned := prev.Items, prev.Unassigned
 	if len(items) != 2 || len(unassigned) != 1 || unassigned[0] != "mystery" {
 		t.Fatalf("items=%d unassigned=%v", len(items), unassigned)
 	}
@@ -166,8 +169,9 @@ func TestValidation(t *testing.T) {
 	if n, _ := e.svc.DraftCount(e.ctx); n != 0 {
 		t.Fatalf("invalid changes must not be saved: %d", n)
 	}
-	items, _, _ := e.svc.BatchPreview(e.ctx, BatchRequest{UpstreamID: e.up.ID, TokenIDs: []uint{e.tok.ID}, Models: []string{"test-model"}})
-	if !items[0].Duplicate {
+	prev, _ := e.svc.BatchPreview(e.ctx, BatchRequest{UpstreamID: e.up.ID, TokenIDs: []uint{e.tok.ID},
+		TokenModels: map[string][]string{fmt.Sprint(e.tok.ID): {"test-model"}}})
+	if len(prev.Items) == 0 || !prev.Items[0].Duplicate {
 		t.Fatal("duplicate not flagged")
 	}
 }

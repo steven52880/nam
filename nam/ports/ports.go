@@ -204,6 +204,15 @@ type Backend interface {
 	Info(ctx context.Context) (BackendInfo, error)
 }
 
+// ModelFetcher lists the models an upstream offers for a key, reusing NewAPI's own
+// "fetch models" logic. It has the same semantics as NewAPI POST /api/channel/fetch_models:
+// channelType 24 (Gemini) and Ollama use their native endpoints, every other type
+// requests {baseURL}/v1/models; an empty baseURL falls back to the channel type's default.
+// Implementations must never log or return the key.
+type ModelFetcher interface {
+	FetchModels(ctx context.Context, baseURL string, channelType int, key string) ([]string, error)
+}
+
 // Ports bundles every adapter implementation the core needs.
 type Ports struct {
 	Channels ChannelStore
@@ -211,6 +220,8 @@ type Ports struct {
 	Logs     LogSource
 	Auth     Auth
 	Backend  Backend
+	// Models is optional; Validate does not require it.
+	Models ModelFetcher
 }
 
 // Validate reports missing implementations.

@@ -1,6 +1,7 @@
 package channels
 
 import (
+	"fmt"
 	"math"
 	"testing"
 
@@ -18,8 +19,10 @@ func TestBatchDerivesDiscountAndRowsShowCost(t *testing.T) {
 	must(t, e.svc.St.DB.Create(&store.UpstreamModelPrice{UpstreamID: e.up.ID, Group: "a", Model: "test-model", Input: f(1.2)}).Error)
 	must(t, e.svc.St.DB.Model(&store.Upstream{}).Where("id = ?", e.up.ID).Update("balance_usd", 5.0).Error)
 
-	items, _, err := e.svc.BatchPreview(e.ctx, BatchRequest{UpstreamID: e.up.ID, TokenIDs: []uint{e.tok.ID}, Models: []string{"test-model"}, Weight: 1})
+	prev, err := e.svc.BatchPreview(e.ctx, BatchRequest{UpstreamID: e.up.ID, TokenIDs: []uint{e.tok.ID},
+		TokenModels: map[string][]string{fmt.Sprint(e.tok.ID): {"test-model"}}, Weight: 1})
 	must(t, err)
+	items := prev.Items
 	if len(items) != 1 || !near(*items[0].Ext.Discount, 0.4) || *items[0].Ext.DiscountSource != store.DiscountAuto {
 		t.Fatalf("derived discount: %+v", items[0].Ext)
 	}

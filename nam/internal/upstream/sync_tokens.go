@@ -21,6 +21,9 @@ func keyHint(key string) string {
 	return string(r[:5]) + "…" + string(r[len(r)-4:])
 }
 
+// KeyHint is the exported display form of a key (see keyHint).
+func KeyHint(key string) string { return keyHint(key) }
+
 // SyncTokens pulls the token list and upserts it. Returns the number of remote tokens.
 func (s *Syncer) SyncTokens(ctx context.Context, id uint) (int, error) {
 	u, site, ad, err := s.load(ctx, id)

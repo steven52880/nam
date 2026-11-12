@@ -17,6 +17,7 @@ func (s *Server) registerChannelRoutes(p *gin.RouterGroup) {
 	p.DELETE("/channels/drafts", s.discardDrafts)
 	p.POST("/channels/batch/preview", s.batchPreview)
 	p.POST("/channels/batch", s.batchCreate)
+	p.POST("/channels/match-tokens", s.matchTokens)
 	p.POST("/channels/delete", s.markDelete)
 	p.GET("/channels/plan", s.channelPlan)
 	p.POST("/channels/apply", s.applyChannels)
@@ -100,18 +101,12 @@ func (s *Server) batchPreview(c *gin.Context) {
 	if !resp.BindJSON(c, &req) {
 		return
 	}
-	items, unassigned, err := s.Channels.BatchPreview(c.Request.Context(), req)
+	res, err := s.Channels.BatchPreview(c.Request.Context(), req)
 	if err != nil {
 		resp.FailFrom(c, err)
 		return
 	}
-	if items == nil {
-		items = []channels.BatchPreviewItem{}
-	}
-	if unassigned == nil {
-		unassigned = []string{}
-	}
-	resp.OK(c, gin.H{"items": items, "unassigned": unassigned})
+	resp.OK(c, res)
 }
 
 // POST /channels/batch: either a BatchRequest (expanded server-side) or {specs:[CreateSpec]}.
@@ -126,12 +121,12 @@ func (s *Server) batchCreate(c *gin.Context) {
 	ctx := c.Request.Context()
 	specs := in.Specs
 	if len(specs) == 0 {
-		items, _, err := s.Channels.BatchPreview(ctx, in.BatchRequest)
+		prev, err := s.Channels.BatchPreview(ctx, in.BatchRequest)
 		if err != nil {
 			resp.FailFrom(c, err)
 			return
 		}
-		for _, it := range items {
+		for _, it := range prev.Items {
 			specs = append(specs, it.CreateSpec)
 		}
 	}

@@ -139,7 +139,8 @@ export interface DriftDetail {
 export interface BatchRequest {
   upstream_id: number;
   token_ids: number[];
-  models: string[];
+  /** 键是令牌 id 的字符串。 */
+  token_models: Record<string, string[]>;
   priority: number;
   weight: number;
   tag: string;
@@ -166,6 +167,27 @@ export interface BatchPreviewItem {
 export interface BatchPreview {
   items: BatchPreviewItem[];
   unassigned: string[];
+  /** 键是令牌 id 的字符串。 */
+  unassigned_by_token: Record<string, string[]>;
+  warnings: string[];
+}
+
+export interface MatchTokenItem {
+  channel_id: number;
+  token_id: number | null;
+  token_name: string;
+  created: boolean;
+  needs_manual: boolean;
+  message: string;
+}
+
+export interface MatchTokensRequest {
+  upstream_id: number;
+  channel_ids: number[];
+}
+
+export interface MatchTokensResponse {
+  items: MatchTokenItem[];
 }
 
 export interface CheckResult {
@@ -223,6 +245,8 @@ export interface UpstreamToken {
   manual: boolean;
   updated_at: number;
   channel_count?: number;
+  /** 本站要开放的模型列表。 */
+  models: string[];
 }
 
 export interface TokenInput {

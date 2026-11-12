@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/steven52880/nam/internal/store"
@@ -222,11 +223,11 @@ func (s *Service) applyUpdate(ctx context.Context, st *state, d store.ChannelDra
 	if !body.Fields.empty() {
 		p := toPatch(body.Fields)
 		if body.Ext.TokenID != nil {
-			key, err := s.tokenKey(st, *body.Ext.TokenID)
+			key, err := s.keyToWrite(ctx, st, d.ChannelID, *body.Ext.TokenID)
 			if err != nil {
 				return err
 			}
-			p.Key = &key
+			p.Key = key
 		}
 		if err := s.Channels.Update(ctx, d.ChannelID, p); err != nil {
 			return err
@@ -278,6 +279,30 @@ func applyExt(e store.ChannelExt, x ExtFields) store.ChannelExt {
 		e.DiscountSource = *x.DiscountSource
 	}
 	return e
+}
+
+// keyToWrite decides whether switching a channel to tokenID must write the key.
+// It returns nil (do not write) when the channel already holds that token's key, or when
+// the live key is unreadable (standalone) and this is the first adoption of the channel.
+func (s *Service) keyToWrite(ctx context.Context, st *state, channelID int, tokenID uint) (*string, error) {
+	key, err := s.tokenKey(st, tokenID)
+	if err != nil {
+		return nil, err
+	}
+	live, err := s.Channels.Get(ctx, channelID)
+	if err != nil {
+		return nil, err
+	}
+	liveKey := strings.TrimSpace(live.Key)
+	if liveKey == strings.TrimSpace(key) {
+		return nil, nil
+	}
+	prev, managed := st.ext[channelID]
+	firstAdoption := !managed || prev.TokenID == nil || *prev.TokenID == 0
+	if liveKey == "" && firstAdoption {
+		return nil, nil
+	}
+	return &key, nil
 }
 
 func (s *Service) tokenKey(st *state, tokenID uint) (string, error) {

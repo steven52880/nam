@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
-import { errorText } from '@/api/errors';
+import { errorText, issueText } from '@/api/errors';
 import type { ChannelChange, ChannelRow } from '@/api/types';
 import type { GridRange } from '@/components/data-grid';
 import { COPYABLE_COLUMNS } from './constants';
@@ -105,6 +105,45 @@ export function useChannelActions(rows: ChannelRow[]) {
     [byId, pasteMutation],
   );
 
+  /** 改上游：先匹配令牌，匹配到就一起写入草稿；需要手动时只写上游并提示选令牌。 */
+  const setUpstream = useMutation({
+    mutationFn: async ({ targets, upstreamId }: { targets: ChannelRow[]; upstreamId: number }) => {
+      const real = targets.filter((r) => r.id > 0 && r.sync_state !== 'draft_delete');
+      if (real.length === 0) throw new Error('所选渠道还没有应用到 NewAPI，不能设置上游');
+      const matched = await api.matchTokens({ upstream_id: upstreamId, channel_ids: real.map((r) => r.id) });
+      const manual: string[] = [];
+      const changes: ChannelChange[] = real.map((r) => {
+        const item = matched.items.find((i) => i.channel_id === r.id);
+        if (item && item.token_id !== null) return toChange(r.id, { fields: {}, ext: { upstream_id: upstreamId, token_id: item.token_id } });
+        manual.push(`${r.name}：${item?.message || '无法自动匹配令牌'}`);
+        return toChange(r.id, { fields: {}, ext: { upstream_id: upstreamId } });
+      });
+      const res = await api.patchDrafts(changes);
+      return { res, manual, count: changes.length };
+    },
+    onSuccess: ({ res, manual, count }) => {
+      toast.success(`已修改 ${count} 个渠道的上游`);
+      if (manual.length > 0) toast.warning(`请手动为以下渠道选择令牌：${manual.join('；')}`);
+      const issues = res.issues ?? [];
+      if (issues.length > 0) toast.warning(issues.map(issueText).join('；'));
+      void qc.invalidateQueries({ queryKey: CHANNELS_KEY });
+    },
+    onError: (e: Error) => {
+      toast.error(errorText(e));
+      void qc.invalidateQueries({ queryKey: CHANNELS_KEY });
+    },
+  });
+
+  const setToken = useCallback(
+    (row: ChannelRow, tokenId: number) => patch.mutate([toChange(row.id, { fields: {}, ext: { token_id: tokenId } })]),
+    [patch],
+  );
+
+  const setVendor = useCallback(
+    (row: ChannelRow, vendor: string) => patch.mutate([toChange(row.id, { fields: {}, ext: { vendor } })]),
+    [patch],
+  );
+
   const copyAsNew = useMutation({
     mutationFn: (row: ChannelRow) =>
       api.batchCreate([
@@ -161,5 +200,5 @@ export function useChannelActions(rows: ChannelRow[]) {
     onError: (e: Error) => toast.error(errorText(e)),
   });
 
-  return { edit, saveModels, setStatus, copy, paste, copyAsNew, remove, discard, openInNewapi };
+  return { edit, saveModels, setStatus, setUpstream, setToken, setVendor, copy, paste, copyAsNew, remove, discard, openInNewapi };
 }

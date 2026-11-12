@@ -92,6 +92,18 @@
     - **前端**：渠道页的单次成本、余额列和成本颜色梯度；模型明细下表（原厂价、上游价、推算折扣、模型级覆盖、缓存价覆盖）；"模型与价格"页（状态筛选、偏差、覆盖原厂价、别名）；上游抽屉的折扣推算。
     - **M3 QA**：接口级测试覆盖计划 §11.1 M3 第 1–4 步；真实 NewAPI 端到端 8 项（`temp/e2e/m3.ps1`）全部通过，M2 的 12 项回归也通过。
 
+- **M3.5 令牌与接管**（第 20 轮）
+    - **令牌模型列表**：`upstream_token.models`，同步令牌时不覆盖；`PUT /upstreams/:id/tokens/:tid/models` 保存。
+    - **拉取模型**：新增可选端口 `ports.ModelFetcher`，嵌入模式直接调 NewAPI 的 `controller.FetchModels`，独立模式调 `POST /api/channel/fetch_models`；失败时退回上游适配器的 `ListModels`。
+    - **批量创建**：请求改用 `token_models`（按令牌给模型），不传时用令牌保存的模型；<u>一个令牌跨厂商才拆成多个渠道</u>，预览给出 `warnings`。
+    - **接管已有渠道**
+        - `POST /channels/match-tokens` 用渠道 key 匹配该上游的令牌，匹配不到就新建一条手动令牌；只写 `nam.db`。
+        - 独立模式拿不到渠道 key，或渠道有多个 key 时，返回 `needs_manual`，要手动选令牌。
+        - 设置厂商时，分组自动改成该厂商的分组。
+        - 应用时，令牌 key 和渠道当前 key 相同，或首次接管又读不到当前 key，<u>都不改 NewAPI 里的 key</u>。
+    - **M3.5 QA**：接口级测试见 `channels/m35_test.go`、`core/m35_test.go`；真实 NewAPI 端到端 23 项（`temp/e2e/m35.ps1`）全部通过，M2 的 12 项、M3 的 8 项回归也通过。
+    - **前端**：上游抽屉编辑令牌模型并"从上游拉取"；批量创建向导第 3 步按令牌选模型；渠道表的上游、令牌、厂商可以直接改，多选后可批量设置上游。`npm run build` 通过，<u>还没在浏览器里点过</u>。
+
 ### 下一步要处理的事
 
 - **M4 统计**：增量拉日志、`stats_hourly` 聚合、"最新"档直查、看板、清理原始日志、补丁 P1。
@@ -101,4 +113,4 @@
     - NewAPI 选项表里没有的补全倍率、缓存倍率，在"模型与价格"页显示为"未知"，不参与偏差比较（NewAPI 代码里有内置默认值）。
     - "在 NewAPI 中打开"的路径 `/console/channel?id=` 没在浏览器验证。
     - 密码方式登录上游时，如果对方开了 2FA 或 Turnstile 会失败。
-    - 端到端脚本：`temp/e2e/run.ps1 m2.ps1` 或 `m3.ps1`（需要先编译 `new-api-nam.exe` 和 `mock.exe`，见脚本）。
+    - 端到端脚本：`temp/e2e/run.ps1 m2.ps1`、`m3.ps1` 或 `m35.ps1`，每次运行前删掉 `temp/e2e` 下的 `one-api.db`、`nam.db`（需要先编译 `new-api-nam.exe` 和 `mock.exe`，见脚本）。

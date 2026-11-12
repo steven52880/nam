@@ -37,6 +37,8 @@ export const SYNC_FILTER_OPTIONS: Array<[SyncState, string]> = [
 export const COLUMN_FIELDS: Record<string, string[]> = {
   status: ['status'],
   name: ['name'],
+  upstream: ['upstream_id'],
+  token: ['token_id'],
   vendor: ['vendor', 'group'],
   models: ['models'],
   discount: ['discount', 'discount_source'],

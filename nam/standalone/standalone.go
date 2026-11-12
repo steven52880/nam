@@ -18,6 +18,7 @@ func build(cfg Config, c *Client) (ports.Ports, *Client, error) {
 		Logs:     logStore{c: c},
 		Auth:     NewAuth(cfg),
 		Backend:  backend{c: c, url: cfg.NewAPIURL},
+		Models:   modelFetcher{c: c},
 	}
 	return p, c, p.Validate()
 }

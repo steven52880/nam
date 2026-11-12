@@ -97,6 +97,7 @@ func New(cfg Config, p ports.Ports) (*Core, error) {
 	wrapped := p
 	wrapped.Channels = rec.Channels(p.Channels)
 	wrapped.Options = rec.Options(p.Options)
+	wrapped.Models = rec.Models(p.Models)
 
 	sch := scheduler.New(st)
 	c := &Core{cfg: cfg, store: st, sched: sch, audit: rec, ports: wrapped}

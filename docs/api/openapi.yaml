@@ -348,12 +348,12 @@ components:
         ext: { $ref: '#/components/schemas/ExtFields' }
     BatchRequest:
       type: object
-      required: [upstream_id, token_ids, models]
-      description: 批量创建向导：一个上游、若干令牌、一批模型；按厂商拆分，每个（令牌 × 厂商）一个渠道。
+      required: [upstream_id, token_ids]
+      description: 批量创建向导：一个上游、若干令牌；每个令牌的模型按厂商拆分，每个（令牌 × 厂商）一个渠道。
       properties:
         upstream_id: { type: integer }
         token_ids: { type: array, items: { type: integer } }
-        models: { type: array, items: { type: string } }
+        token_models: { type: object, additionalProperties: { type: array, items: { type: string } }, description: 令牌 id（字符串）→ 模型列表；缺省或为空时用该令牌保存的 models，两者都空则 400 并点名该令牌 }
         priority: { type: integer }
         weight: { type: integer }
         tag: { type: string }
@@ -370,6 +370,22 @@ components:
             group: { type: string }
             channel_type: { type: integer }
             duplicate: { type: boolean, description: 名称已存在于 NewAPI 或草稿 }
+    BatchPreview:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/BatchPreviewItem' } }
+        warnings: { type: array, items: { type: string }, description: 例如“令牌 X 的模型属于 2 个厂商，将拆成 2 个渠道” }
+        unassigned: { type: array, items: { type: string }, description: 没有厂商的模型（各令牌的并集，已排序）；这些模型被跳过 }
+        unassigned_by_token: { type: object, additionalProperties: { type: array, items: { type: string } }, description: 令牌 id（字符串）→ 该令牌没有厂商的模型 }
+    MatchTokenItem:
+      type: object
+      properties:
+        channel_id: { type: integer }
+        token_id: { type: integer, nullable: true, description: needs_manual 时为 null }
+        token_name: { type: string }
+        created: { type: boolean, description: 没有匹配到已有令牌，已新建手动令牌 }
+        needs_manual: { type: boolean, description: 拿不到 key 或是多 key 渠道，需手动选择令牌 }
+        message: { type: string }
     OfficialPrice:
       type: object
       description: 解析后的原厂价（美元 / 百万 token，或美元 / 次）。手动覆盖优先于价格库。
@@ -535,8 +551,8 @@ paths:
   /upstreams/{id}/tokens:
     parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
     get:
-      summary: 令牌列表（不含 key）
-      responses: { '200': { description: 'data = Token[]' } }
+      summary: 令牌列表（不含 key）；每个令牌带 models（本站模型列表，无则 []）
+      responses: { '200': { description: 'data = Token[]（含 models: string[]）' } }
     post:
       summary: 手动录入令牌（key 加密保存）
       requestBody: { content: { application/json: { schema: { type: object, required: [name, key], properties: { name: { type: string }, group: { type: string }, key: { type: string } } } } } }
@@ -554,6 +570,14 @@ paths:
     delete:
       summary: 删除令牌（只删 nam 的记录）；被渠道使用时拒绝
       responses: { '200': { description: ok }, '404': { description: 不存在 }, '409': { description: 仍被渠道使用 } }
+  /upstreams/{id}/tokens/{tid}/models:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+      - { name: tid, in: path, required: true, schema: { type: integer } }
+    put:
+      summary: 保存令牌的本站模型列表（去空格、去空项、去重并保持顺序）；只写 nam，记审计
+      requestBody: { content: { application/json: { schema: { type: object, required: [models], properties: { models: { type: array, items: { type: string } } } } } } }
+      responses: { '200': { description: data = Token }, '404': { description: 令牌不在该上游 } }
   /upstreams/{id}/groups:
     parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
     get:
@@ -568,7 +592,7 @@ paths:
     parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
     post:
       summary: 用某个令牌的 key 调上游 /v1/models，返回模型 id
-      requestBody: { content: { application/json: { schema: { type: object, required: [token_id], properties: { token_id: { type: integer } } } } } }
+      requestBody: { content: { application/json: { schema: { type: object, required: [token_id], properties: { token_id: { type: integer }, channel_type: { type: integer, default: 58, description: 可选；NewAPI 渠道类型，影响拉取方式（24 = Gemini） } } } } } }
       responses: { '200': { description: 'data = {models: string[]}' }, '404': { description: 令牌不存在 }, '502': { description: 上游报错 } }
   /vendors:
     get:
@@ -611,7 +635,17 @@ paths:
     post:
       summary: 批量创建预览（不写任何东西）
       requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/BatchRequest' } } } }
-      responses: { '200': { description: 'data = {items: BatchPreviewItem[], unassigned: string[]}（没有厂商的模型被跳过）' } }
+      responses:
+        '200': { description: 'data = BatchPreview（没有厂商的模型被跳过，见 unassigned / unassigned_by_token）', content: { application/json: { schema: { $ref: '#/components/schemas/BatchPreview' } } } }
+        '400': { description: 某个令牌没有模型（请求和令牌保存的都为空），或令牌不属于该上游 }
+  /channels/match-tokens:
+    post:
+      summary: 接管已有渠道：按渠道 key 匹配该上游的令牌；匹配不到则新建手动令牌（只写 nam.db，不写 NewAPI，不建草稿）
+      requestBody: { content: { application/json: { schema: { type: object, required: [upstream_id, channel_ids], properties: { upstream_id: { type: integer }, channel_ids: { type: array, items: { type: integer } } } } } } }
+      responses:
+        '200': { description: 'data = {items: MatchTokenItem[]}', content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/MatchTokenItem' } } } } } } }
+        '400': { description: 参数不合法 }
+        '404': { description: 上游不存在 }
   /channels/batch:
     post:
       summary: 批量创建渠道草稿（需再「应用」才会写 NewAPI）

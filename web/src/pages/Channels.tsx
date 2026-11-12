@@ -14,6 +14,7 @@ import { buildChannelColumns, rowClass } from './channels/columns';
 import { costRangeOf } from './channels/costColor';
 import { COLUMN_FIELDS, type GroupMode } from './channels/constants';
 import { DriftDialog } from './channels/DriftDialog';
+import { BulkUpstreamSelect } from './channels/EditableCells';
 import { distinct, EMPTY_FILTERS, filterChannels, groupKeyOf, rowKey, type ChannelFilters } from './channels/filter';
 import { ModelDetail } from './channels/ModelDetail';
 import { ModelEditorDialog } from './channels/ModelEditorDialog';
@@ -31,6 +32,7 @@ export default function ChannelsPage() {
   const rows = list.data?.items ?? NO_ROWS;
   const draftCount = list.data?.draft_count ?? 0;
   const actions = useChannelActions(rows);
+  const { setUpstream, setToken, setVendor } = actions;
 
   const [groupMode, setGroupMode] = useState<GroupMode>('upstream');
   const [filters, setFilters] = useState<ChannelFilters>(EMPTY_FILTERS);
@@ -46,12 +48,14 @@ export default function ChannelsPage() {
   const [wizardOpen, setWizardOpen] = useState(false);
 
   const batchParam = Number(params.get('batch')) || null;
+  const tokenParam = Number(params.get('token')) || null;
   const wizardVisible = wizardOpen || batchParam !== null;
   const closeWizard = (open: boolean) => {
     setWizardOpen(open);
     if (!open && params.has('batch')) {
       const next = new URLSearchParams(params);
       next.delete('batch');
+      next.delete('token');
       setParams(next, { replace: true });
     }
   };
@@ -70,10 +74,13 @@ export default function ChannelsPage() {
       buildChannelColumns({
         onOpenModels: setModelRow,
         onOpenDrift: setDriftRow,
+        onSetUpstream: (row, upstreamId) => setUpstream.mutate({ targets: [row], upstreamId }),
+        onSetToken: setToken,
+        onSetVendor: setVendor,
         channelCostRange,
         unitCostRange,
       }),
-    [channelCostRange, unitCostRange],
+    [channelCostRange, unitCostRange, setUpstream, setToken, setVendor],
   );
   const rowById = useMemo(() => new Map(rows.map((r) => [rowKey(r), r])), [rows]);
 
@@ -108,6 +115,10 @@ export default function ChannelsPage() {
         <>
           <Button size="sm" variant="outline" onClick={() => actions.setStatus(selectedRows, 1)}>批量启用（{selectedRows.length}）</Button>
           <Button size="sm" variant="outline" onClick={() => actions.setStatus(selectedRows, 2)}>批量禁用（{selectedRows.length}）</Button>
+          <BulkUpstreamSelect
+            count={selectedRows.length}
+            onPick={(upstreamId) => setUpstream.mutate({ targets: selectedRows, upstreamId })}
+          />
         </>
       )}
     </>
@@ -168,7 +179,7 @@ export default function ChannelsPage() {
       <DriftDialog row={driftRow} onClose={() => setDriftRow(null)} />
       <TestChannelDialog row={testRow} onClose={() => setTestRow(null)} />
       <ApplyDialog open={applyOpen} onOpenChange={setApplyOpen} />
-      <BatchWizard open={wizardVisible} onOpenChange={closeWizard} presetUpstreamId={batchParam} />
+      <BatchWizard open={wizardVisible} onOpenChange={closeWizard} presetUpstreamId={batchParam} presetTokenId={tokenParam} />
       <ConfirmDialog
         open={deleteRow !== null}
         onOpenChange={(open) => { if (!open) setDeleteRow(null); }}

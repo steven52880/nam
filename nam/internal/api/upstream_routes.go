@@ -20,6 +20,7 @@ func (s *Server) registerUpstreamRoutes(p *gin.RouterGroup) {
 	p.POST("/upstreams/:id/tokens", s.addManualToken)
 	p.POST("/upstreams/:id/tokens/remote", s.createRemoteToken)
 	p.DELETE("/upstreams/:id/tokens/:tid", s.deleteToken)
+	p.PUT("/upstreams/:id/tokens/:tid/models", s.setTokenModels)
 	p.GET("/upstreams/:id/groups", s.listGroups)
 	p.GET("/upstreams/:id/models", s.listUpstreamModels)
 	p.POST("/upstreams/:id/models/fetch", s.fetchUpstreamModels)
@@ -212,10 +213,14 @@ func (s *Server) fetchUpstreamModels(c *gin.Context) {
 		return
 	}
 	var in struct {
-		TokenID uint `json:"token_id"`
+		TokenID     uint `json:"token_id"`
+		ChannelType int  `json:"channel_type"`
 	}
 	if !resp.BindJSON(c, &in) {
 		return
+	}
+	if in.ChannelType == 0 {
+		in.ChannelType = 58
 	}
 	ctx, cancel := withTimeout(c, time.Minute)
 	defer cancel()
@@ -240,6 +245,15 @@ func (s *Server) fetchUpstreamModels(c *gin.Context) {
 		return
 	}
 	site.HTTP = s.Syncer.HTTP
+	var fetchErr error
+	if s.Ports.Models != nil {
+		models, err := s.Ports.Models.FetchModels(ctx, site.BaseURL, in.ChannelType, string(key))
+		if err == nil {
+			resp.OK(c, gin.H{"models": dedupeSorted(models)})
+			return
+		}
+		fetchErr = err
+	}
 	ad, err := upstream.Get(u.Type)
 	if err != nil {
 		resp.FailFrom(c, resp.Invalid(err.Error()))
@@ -247,8 +261,11 @@ func (s *Server) fetchUpstreamModels(c *gin.Context) {
 	}
 	models, err := ad.ListModels(ctx, site, string(key))
 	if err != nil {
+		if fetchErr != nil {
+			err = fetchErr
+		}
 		resp.FailFrom(c, resp.Upstream(err))
 		return
 	}
-	resp.OK(c, gin.H{"models": models})
+	resp.OK(c, gin.H{"models": dedupeSorted(models)})
 }

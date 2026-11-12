@@ -6,16 +6,24 @@ import { formatNumber, formatSignificant } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { costStyle, type CostRange } from './costColor';
 import { STATUS_LABELS, SYNC_LABELS } from './constants';
+import { TokenCell, UpstreamCell, VendorCell } from './EditableCells';
 import { copyText, formatDiscount, validateCell } from './edits';
 
 const DASH = '—';
-const VENDOR_REASON = '厂商决定分组，在批量创建或设置中修改';
+
+/** 这几列的单元格自带下拉，双击 / Enter 时不进入行内文本编辑。 */
+function noEditor(): void {
+  return undefined;
+}
 const COST_REASON = '上游渠道成本价 = 上游分组折扣 × 上游货币汇率，不能直接编辑';
 const STATS_REASON = '统计列由系统计算，不能编辑';
 
 interface ColumnOptions {
   onOpenModels: (row: ChannelRow) => void;
   onOpenDrift: (row: ChannelRow) => void;
+  onSetUpstream: (row: ChannelRow, upstreamId: number) => void;
+  onSetToken: (row: ChannelRow, tokenId: number) => void;
+  onSetVendor: (row: ChannelRow, vendor: string) => void;
   /** 当前可见行的上游渠道成本价范围，用于颜色梯度。 */
   channelCostRange: CostRange | null;
   /** 当前可见行的单次成本范围。 */
@@ -78,6 +86,9 @@ function balanceCell(row: ChannelRow) {
 export function buildChannelColumns({
   onOpenModels,
   onOpenDrift,
+  onSetUpstream,
+  onSetToken,
+  onSetVendor,
   channelCostRange,
   unitCostRange,
 }: ColumnOptions): GridColumn<ChannelRow>[] {
@@ -104,12 +115,33 @@ export function buildChannelColumns({
       accessor: (r) => r.name,
       validate: (v) => validateCell('name', v),
     },
-    readOnly('upstream', '上游', (r) => r.upstream_name, '上游在批量创建时确定，不能修改', { width: 110 }),
-    readOnly('token', '令牌', (r) => r.token_name, '令牌在批量创建时确定，不能修改', { width: 110 }),
-    readOnly('vendor', '厂商', (r) => r.vendor, VENDOR_REASON, {
-      width: 90,
-      cell: (r) => (r.vendor ? <span title={`NewAPI 分组：${r.group}`}>{r.vendor}</span> : <span className="text-muted-foreground">{DASH}</span>),
-    }),
+    {
+      id: 'upstream',
+      header: '上游',
+      width: 130,
+      editable: true,
+      openEditor: noEditor,
+      accessor: (r) => r.upstream_name,
+      cell: (r) => <UpstreamCell row={r} onChange={onSetUpstream} />,
+    },
+    {
+      id: 'token',
+      header: '令牌',
+      width: 130,
+      editable: true,
+      openEditor: noEditor,
+      accessor: (r) => r.token_name,
+      cell: (r) => <TokenCell row={r} onChange={onSetToken} />,
+    },
+    {
+      id: 'vendor',
+      header: '厂商',
+      width: 110,
+      editable: true,
+      openEditor: noEditor,
+      accessor: (r) => r.vendor,
+      cell: (r) => <VendorCell row={r} onChange={onSetVendor} />,
+    },
     {
       id: 'models',
       header: '模型',

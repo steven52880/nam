@@ -5,8 +5,15 @@ import { Badge } from '@/components/ui/misc';
 import { formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
-export function StepPreview({ preview }: { preview: UseMutationResult<BatchPreview, Error, BatchRequest> }) {
+interface StepPreviewProps {
+  preview: UseMutationResult<BatchPreview, Error, BatchRequest>;
+  tokenNames: Map<number, string>;
+}
+
+export function StepPreview({ preview, tokenNames }: StepPreviewProps) {
   const items = preview.data?.items ?? [];
+  const warnings = preview.data?.warnings ?? [];
+  const byToken = Object.entries(preview.data?.unassigned_by_token ?? {}).filter(([, models]) => models.length > 0);
   const unassigned = preview.data?.unassigned ?? [];
   const duplicates = items.filter((i) => i.duplicate).length;
 
@@ -14,10 +21,24 @@ export function StepPreview({ preview }: { preview: UseMutationResult<BatchPrevi
     <div className="grid gap-2">
       {preview.isPending && <div className="py-6 text-center text-muted-foreground">生成预览中…</div>}
       {preview.isError && <div className="rounded bg-destructive/10 px-2 py-1 text-sm text-destructive">{errorText(preview.error)}</div>}
-      {unassigned.length > 0 && (
+      {warnings.length > 0 && (
         <div className="rounded bg-warning/15 px-2 py-1 text-sm text-warning">
-          以下模型不属于任何厂商，不会生成渠道：{unassigned.join('，')}
+          {warnings.map((w) => <div key={w}>{w}</div>)}
         </div>
+      )}
+      {byToken.length > 0 ? (
+        <div className="rounded bg-warning/15 px-2 py-1 text-sm text-warning">
+          <div>以下模型不属于任何厂商，不会生成渠道：</div>
+          {byToken.map(([tokenId, models]) => (
+            <div key={tokenId}>{tokenNames.get(Number(tokenId)) ?? `令牌 ${tokenId}`}：{models.join('，')}</div>
+          ))}
+        </div>
+      ) : (
+        unassigned.length > 0 && (
+          <div className="rounded bg-warning/15 px-2 py-1 text-sm text-warning">
+            以下模型不属于任何厂商，不会生成渠道：{unassigned.join('，')}
+          </div>
+        )
       )}
       {duplicates > 0 && (
         <div className="rounded bg-destructive/10 px-2 py-1 text-sm text-destructive">

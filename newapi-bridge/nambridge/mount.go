@@ -32,6 +32,7 @@ func newPorts() ports.Ports {
 		Logs:     logSource{},
 		Auth:     authAdapter{},
 		Backend:  backendInfo{},
+		Models:   modelFetcher{},
 	}
 }
 

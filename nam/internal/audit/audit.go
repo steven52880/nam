@@ -104,6 +104,23 @@ func (r *Recorder) Options(inner ports.OptionStore) ports.OptionStore {
 	return &auditedOptions{inner: inner, r: r}
 }
 
+// Models wraps a ModelFetcher. Fetching is read-only, so nothing is recorded and the key
+// is never logged; a nil fetcher stays nil so callers can keep testing for presence.
+func (r *Recorder) Models(inner ports.ModelFetcher) ports.ModelFetcher {
+	if inner == nil {
+		return nil
+	}
+	return &auditedModels{inner: inner}
+}
+
+type auditedModels struct {
+	inner ports.ModelFetcher
+}
+
+func (a *auditedModels) FetchModels(ctx context.Context, baseURL string, channelType int, key string) ([]string, error) {
+	return a.inner.FetchModels(ctx, baseURL, channelType, key)
+}
+
 type auditedChannels struct {
 	inner ports.ChannelStore
 	r     *Recorder

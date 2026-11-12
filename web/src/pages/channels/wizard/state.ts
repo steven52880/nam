@@ -3,7 +3,8 @@ import type { BatchRequest } from '@/api/types';
 export interface WizardState {
   upstreamId: number | null;
   tokenIds: number[];
-  models: string[];
+  /** 每个已选令牌要开放的模型，初始值取令牌保存的模型列表。 */
+  tokenModels: Record<number, string[]>;
   priority: string;
   weight: string;
   tag: string;
@@ -14,7 +15,7 @@ export interface WizardState {
 export const INITIAL_WIZARD: WizardState = {
   upstreamId: null,
   tokenIds: [],
-  models: [],
+  tokenModels: {},
   priority: '0',
   weight: '10',
   tag: '',
@@ -28,6 +29,11 @@ export function isInt(text: string, min?: number): boolean {
   return /^-?\d+$/.test(text.trim()) && (min === undefined || Number(text) >= min);
 }
 
+/** 所有已选令牌的模型合集（去重）。 */
+export function allSelectedModels(state: WizardState): string[] {
+  return [...new Set(state.tokenIds.flatMap((id) => state.tokenModels[id] ?? []))];
+}
+
 export function buildBatchRequest(state: WizardState): BatchRequest | null {
   if (state.upstreamId === null) return null;
   const discount: Record<string, number> = {};
@@ -39,10 +45,12 @@ export function buildBatchRequest(state: WizardState): BatchRequest | null {
   for (const [vendor, model] of Object.entries(state.testModels)) {
     if (model.trim()) testModel[vendor] = model.trim();
   }
+  const tokenModels: Record<string, string[]> = {};
+  for (const id of state.tokenIds) tokenModels[String(id)] = state.tokenModels[id] ?? [];
   return {
     upstream_id: state.upstreamId,
     token_ids: state.tokenIds,
-    models: state.models,
+    token_models: tokenModels,
     priority: Number(state.priority),
     weight: Number(state.weight),
     tag: state.tag.trim(),

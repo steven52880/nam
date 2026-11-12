@@ -8,8 +8,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { cn } from '@/lib/utils';
 import { CHANNELS_KEY } from '../useChannels';
 import { StepDefaults } from './StepDefaults';
-import { StepModels } from './StepModels';
 import { StepPreview } from './StepPreview';
+import { StepTokenModels } from './StepTokenModels';
 import { StepTokens } from './StepTokens';
 import { StepUpstream } from './StepUpstream';
 import { buildBatchRequest, INITIAL_WIZARD, isInt, STEP_TITLES, type WizardState } from './state';
@@ -19,9 +19,11 @@ interface BatchWizardProps {
   onOpenChange: (open: boolean) => void;
   /** 从上游抽屉进入时预选的上游；此时直接从第 2 步开始。 */
   presetUpstreamId?: number | null;
+  /** 从上游抽屉的令牌行进入时预选的令牌。 */
+  presetTokenId?: number | null;
 }
 
-export function BatchWizard({ open, onOpenChange, presetUpstreamId }: BatchWizardProps) {
+export function BatchWizard({ open, onOpenChange, presetUpstreamId, presetTokenId }: BatchWizardProps) {
   const qc = useQueryClient();
   const [step, setStep] = useState(0);
   const [state, setState] = useState<WizardState>(INITIAL_WIZARD);
@@ -29,13 +31,13 @@ export function BatchWizard({ open, onOpenChange, presetUpstreamId }: BatchWizar
   useEffect(() => {
     if (!open) return;
     if (presetUpstreamId) {
-      setState({ ...INITIAL_WIZARD, upstreamId: presetUpstreamId });
+      setState({ ...INITIAL_WIZARD, upstreamId: presetUpstreamId, tokenIds: presetTokenId ? [presetTokenId] : [] });
       setStep(1);
     } else {
       setState(INITIAL_WIZARD);
       setStep(0);
     }
-  }, [open, presetUpstreamId]);
+  }, [open, presetUpstreamId, presetTokenId]);
 
   const patch = (next: Partial<WizardState>) => setState((cur) => ({ ...cur, ...next }));
   const tokens = useQuery({
@@ -44,6 +46,18 @@ export function BatchWizard({ open, onOpenChange, presetUpstreamId }: BatchWizar
     enabled: state.upstreamId !== null,
   });
   const tokenNames = useMemo(() => new Map((tokens.data ?? []).map((t) => [t.id, t.name])), [tokens.data]);
+
+  // 新选中的令牌，把它已保存的模型列表作为初始值。
+  useEffect(() => {
+    const data = tokens.data;
+    if (!data) return;
+    const fill: Record<number, string[]> = {};
+    for (const id of state.tokenIds) {
+      const token = data.find((t) => t.id === id);
+      if (token && state.tokenModels[id] === undefined) fill[id] = token.models ?? [];
+    }
+    if (Object.keys(fill).length > 0) setState((cur) => ({ ...cur, tokenModels: { ...fill, ...cur.tokenModels } }));
+  }, [tokens.data, state.tokenIds, state.tokenModels]);
 
   const preview = useMutation({ mutationFn: api.batchPreview, onError: (e: Error) => toast.error(errorText(e)) });
   const create = useMutation({
@@ -68,28 +82,29 @@ export function BatchWizard({ open, onOpenChange, presetUpstreamId }: BatchWizar
   const canNext = [
     state.upstreamId !== null,
     state.tokenIds.length > 0,
-    state.models.length > 0,
+    state.tokenIds.length > 0 && state.tokenIds.every((id) => (state.tokenModels[id] ?? []).length > 0),
     isInt(state.priority) && isInt(state.weight, 0),
   ][step] ?? false;
   const previewItems = preview.data?.items ?? [];
   const canCreate = previewItems.length > 0 && previewItems.every((i) => !i.duplicate) && !create.isPending;
 
   const body = () => {
-    if (step === 0) return <StepUpstream value={state.upstreamId} onChange={(id) => patch({ upstreamId: id, tokenIds: [] })} />;
+    if (step === 0) return <StepUpstream value={state.upstreamId} onChange={(id) => patch({ upstreamId: id, tokenIds: [], tokenModels: {} })} />;
     if (state.upstreamId === null) return null;
     if (step === 1) return <StepTokens upstreamId={state.upstreamId} value={state.tokenIds} onChange={(ids) => patch({ tokenIds: ids })} />;
     if (step === 2) {
       return (
-        <StepModels
+        <StepTokenModels
           upstreamId={state.upstreamId}
-          firstTokenId={state.tokenIds[0] ?? null}
-          value={state.models}
-          onChange={(models) => patch({ models })}
+          tokens={tokens.data ?? []}
+          tokenIds={state.tokenIds}
+          value={state.tokenModels}
+          onChange={(id, models) => setState((cur) => ({ ...cur, tokenModels: { ...cur.tokenModels, [id]: models } }))}
         />
       );
     }
     if (step === 3) return <StepDefaults state={state} tokenNames={tokenNames} onChange={patch} />;
-    return <StepPreview preview={preview} />;
+    return <StepPreview preview={preview} tokenNames={tokenNames} />;
   };
 
   return (

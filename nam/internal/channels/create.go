@@ -64,15 +64,16 @@ func (s *Service) AddCreateDrafts(ctx context.Context, specs []CreateSpec) ([]in
 	return ids, nil, s.St.DB.WithContext(ctx).Create(&drafts).Error
 }
 
-// BatchRequest is the batch-create wizard input: one upstream, several tokens, a model
-// list that is split by vendor (one channel per token × vendor).
+// BatchRequest is the batch-create wizard input: one upstream, several tokens, and a model
+// list per token that is split by vendor (one channel per token × vendor).
 type BatchRequest struct {
-	UpstreamID uint     `json:"upstream_id"`
-	TokenIDs   []uint   `json:"token_ids"`
-	Models     []string `json:"models"`
-	Priority   int64    `json:"priority"`
-	Weight     uint     `json:"weight"`
-	Tag        string   `json:"tag"`
+	UpstreamID uint   `json:"upstream_id"`
+	TokenIDs   []uint `json:"token_ids"`
+	// TokenModels per token id (string key); empty → the token's stored Models.
+	TokenModels map[string][]string `json:"token_models"`
+	Priority    int64               `json:"priority"`
+	Weight      uint                `json:"weight"`
+	Tag         string              `json:"tag"`
 	// TestModel per vendor; empty → cheapest model of that vendor by official price
 	// (first model when none is priced).
 	TestModel map[string]string `json:"test_model"`
@@ -91,29 +92,44 @@ type BatchPreviewItem struct {
 	Duplicate   bool   `json:"duplicate"` // name already exists in NewAPI or drafts
 }
 
-// BatchPreview expands a batch request into channel specs (no writes).
-// Models without a vendor are returned in `unassigned` and skipped.
-func (s *Service) BatchPreview(ctx context.Context, req BatchRequest) (items []BatchPreviewItem, unassigned []string, err error) {
-	st, err := s.load(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-	up, ok := st.ups[req.UpstreamID]
-	if !ok {
-		return nil, nil, resp.Invalid("上游不存在")
-	}
-	byVendor := map[string][]string{}
-	var vendorOrder []string
-	for _, m := range dedupe(req.Models) {
+// BatchPreviewResult is the wizard preview: the channels to create plus what was skipped.
+type BatchPreviewResult struct {
+	Items             []BatchPreviewItem  `json:"items"`
+	Warnings          []string            `json:"warnings"`
+	Unassigned        []string            `json:"unassigned"`          // sorted union over all tokens
+	UnassignedByToken map[string][]string `json:"unassigned_by_token"` // token id → models without a vendor
+}
+
+// tokenVendorSplit groups one token's models by owning vendor (first-seen vendor order).
+func tokenVendorSplit(st *state, models []string) (byVendor map[string][]string, order, unassigned []string) {
+	byVendor = map[string][]string{}
+	for _, m := range models {
 		v := st.vendors.ownerOf(m)
 		if v == "" {
 			unassigned = append(unassigned, m)
 			continue
 		}
 		if _, seen := byVendor[v]; !seen {
-			vendorOrder = append(vendorOrder, v)
+			order = append(order, v)
 		}
 		byVendor[v] = append(byVendor[v], m)
+	}
+	return byVendor, order, unassigned
+}
+
+// BatchPreview expands a batch request into channel specs (no writes). Each token's
+// models (request override, else the token's stored list) are split by vendor, one item
+// per (token, vendor). Models without a vendor are reported and skipped.
+func (s *Service) BatchPreview(ctx context.Context, req BatchRequest) (BatchPreviewResult, error) {
+	out := BatchPreviewResult{Items: []BatchPreviewItem{}, Warnings: []string{}, Unassigned: []string{},
+		UnassignedByToken: map[string][]string{}}
+	st, err := s.load(ctx)
+	if err != nil {
+		return out, err
+	}
+	up, ok := st.ups[req.UpstreamID]
+	if !ok {
+		return out, resp.Invalid("上游不存在")
 	}
 	existing := map[string]bool{}
 	for _, r := range st.rows() {
@@ -121,12 +137,31 @@ func (s *Service) BatchPreview(ctx context.Context, req BatchRequest) (items []B
 	}
 	book, err := pricing.LoadBook(ctx, s.St)
 	if err != nil {
-		return nil, nil, err
+		return out, err
 	}
+	unionSet := map[string]bool{}
 	for _, tid := range req.TokenIDs {
 		tok, ok := st.tokens[tid]
 		if !ok || tok.UpstreamID != up.ID {
-			return nil, nil, resp.Invalid(fmt.Sprintf("令牌 %d 不属于该上游", tid))
+			return out, resp.Invalid(fmt.Sprintf("令牌 %d 不属于该上游", tid))
+		}
+		tokModels := dedupe(req.TokenModels[fmt.Sprint(tid)])
+		if len(tokModels) == 0 {
+			tokModels = dedupe(tok.Models)
+		}
+		if len(tokModels) == 0 {
+			return out, resp.Invalid(fmt.Sprintf("令牌 %s 没有模型：请先在令牌上设置模型列表，或在向导中为它选择模型", tok.Name))
+		}
+		byVendor, vendorOrder, miss := tokenVendorSplit(st, tokModels)
+		if len(miss) > 0 {
+			sort.Strings(miss)
+			out.UnassignedByToken[fmt.Sprint(tid)] = miss
+			for _, m := range miss {
+				unionSet[m] = true
+			}
+		}
+		if len(vendorOrder) > 1 {
+			out.Warnings = append(out.Warnings, fmt.Sprintf("令牌 %s 的模型属于 %d 个厂商，将拆成 %d 个渠道", tok.Name, len(vendorOrder), len(vendorOrder)))
 		}
 		manual, hasManual := req.Discount[fmt.Sprint(tid)]
 		hasManual = hasManual && manual > 0
@@ -157,11 +192,14 @@ func (s *Service) BatchPreview(ctx context.Context, req BatchRequest) (items []B
 				Name: name, TokenName: tok.Name, Vendor: vname, Group: group, ChannelType: typ, Duplicate: existing[name],
 			}
 			existing[name] = true
-			items = append(items, it)
+			out.Items = append(out.Items, it)
 		}
 	}
-	sort.Strings(unassigned)
-	return items, unassigned, nil
+	for m := range unionSet {
+		out.Unassigned = append(out.Unassigned, m)
+	}
+	sort.Strings(out.Unassigned)
+	return out, nil
 }
 
 // ChannelName builds nam-<upstream>-<token>-<vendor>, trimmed to NewAPI-friendly length.

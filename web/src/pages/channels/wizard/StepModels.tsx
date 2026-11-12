@@ -30,17 +30,17 @@ export function vendorOf(model: string, vendors: Vendor[]): Vendor | null {
 
 interface StepModelsProps {
   upstreamId: number;
-  firstTokenId: number | null;
+  tokenId: number | null;
   value: string[];
   onChange: (models: string[]) => void;
 }
 
-export function StepModels({ upstreamId, firstTokenId, value, onChange }: StepModelsProps) {
+export function StepModels({ upstreamId, tokenId, value, onChange }: StepModelsProps) {
   const vendors = useQuery({ queryKey: ['vendors'], queryFn: api.vendors });
   const list = vendors.data ?? [];
 
   const fetchModels = useMutation({
-    mutationFn: () => api.fetchUpstreamModels(upstreamId, firstTokenId ?? 0),
+    mutationFn: () => api.fetchUpstreamModels(upstreamId, tokenId ?? 0),
     onSuccess: (res) => {
       onChange(uniq([...value, ...res.models]));
       toast.success(`已从上游拉取 ${res.models.length} 个模型`);
@@ -78,9 +78,9 @@ export function StepModels({ upstreamId, firstTokenId, value, onChange }: StepMo
           <Button
             size="sm"
             variant="outline"
-            disabled={firstTokenId === null || fetchModels.isPending}
+            disabled={tokenId === null || fetchModels.isPending}
             onClick={() => fetchModels.mutate()}
-            title="用已选的第一个令牌请求上游 /v1/models"
+            title="用该令牌的 key 请求上游模型列表"
           >
             {fetchModels.isPending ? '拉取中…' : '从上游拉取'}
           </Button>

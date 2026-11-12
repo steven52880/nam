@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/misc';
 import { formatNumber } from '@/lib/format';
 import { Field } from '../UpstreamForm';
+import { TokenModelsEditor } from './TokenModelsEditor';
 
 type TokenDialog = 'manual' | 'remote' | null;
 
@@ -68,6 +69,7 @@ export function TokensTab({ upstream }: { upstream: Upstream }) {
   const navigate = useNavigate();
   const [dialog, setDialog] = useState<TokenDialog>(null);
   const [removing, setRemoving] = useState<UpstreamToken | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
   const tokens = useQuery({ queryKey: ['upstream-tokens', upstream.id], queryFn: () => api.upstreamTokens(upstream.id) });
   const list = tokens.data ?? [];
   const canRemote = upstream.type === 'newapi' || upstream.type === 'onehub';
@@ -104,28 +106,45 @@ export function TokensTab({ upstream }: { upstream: Upstream }) {
         <table className="w-full text-base">
           <thead className="bg-muted text-left text-sm text-muted-foreground">
             <tr>
-              {['令牌名', 'key', '分组', '额度（美元）', '状态', '渠道', ''].map((h) => <th key={h || 'op'} className="h-7 whitespace-nowrap px-2 font-medium">{h}</th>)}
+              {['令牌名', 'key', '分组', '额度（美元）', '状态', '模型', '渠道', ''].map((h) => <th key={h || 'op'} className="h-7 whitespace-nowrap px-2 font-medium">{h}</th>)}
             </tr>
           </thead>
           <tbody>
             {list.map((t) => (
-              <tr key={t.id} className="h-8 border-t">
-                <td className="px-2 font-medium">{t.name}{t.manual && <Badge className="ml-1">手动</Badge>}</td>
-                <td className="px-2 text-muted-foreground">{t.key_hint || '—'}</td>
-                <td className="px-2">{t.group || '—'}</td>
-                <td className="px-2 text-right tabular-nums">{t.unlimited ? '不限' : formatNumber(t.quota_usd)}</td>
-                <td className="px-2">{t.status === 1 ? <Badge tone="success">启用</Badge> : <Badge>停用</Badge>}</td>
-                <td className="px-2">{(t.channel_count ?? 0) > 0 ? <Badge tone="accent">已建 {t.channel_count}</Badge> : <span className="text-muted-foreground">未建</span>}</td>
-                <td className="whitespace-nowrap px-2 text-right">
-                  {(t.channel_count ?? 0) === 0 && (
-                    <Button size="sm" variant="outline" onClick={() => navigate(`/channels?batch=${upstream.id}`)}>建渠道</Button>
-                  )}
-                  <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setRemoving(t)}>删除</Button>
-                </td>
-              </tr>
+              <Fragment key={t.id}>
+                <tr className="h-8 border-t">
+                  <td className="px-2 font-medium">{t.name}{t.manual && <Badge className="ml-1">手动</Badge>}</td>
+                  <td className="px-2 text-muted-foreground">{t.key_hint || '—'}</td>
+                  <td className="px-2">{t.group || '—'}</td>
+                  <td className="px-2 text-right tabular-nums">{t.unlimited ? '不限' : formatNumber(t.quota_usd)}</td>
+                  <td className="px-2">{t.status === 1 ? <Badge tone="success">启用</Badge> : <Badge>停用</Badge>}</td>
+                  <td className="px-2">
+                    <button
+                      type="button"
+                      className="cursor-pointer text-primary hover:underline"
+                      title="点击展开 / 收起模型编辑"
+                      onClick={() => setExpandedId(expandedId === t.id ? null : t.id)}
+                    >
+                      {(t.models ?? []).length} 个模型
+                    </button>
+                  </td>
+                  <td className="px-2">{(t.channel_count ?? 0) > 0 ? <Badge tone="accent">已建 {t.channel_count}</Badge> : <span className="text-muted-foreground">未建</span>}</td>
+                  <td className="whitespace-nowrap px-2 text-right">
+                    {(t.channel_count ?? 0) === 0 && (
+                      <Button size="sm" variant="outline" onClick={() => navigate(`/channels?batch=${upstream.id}&token=${t.id}`)}>建渠道</Button>
+                    )}
+                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setRemoving(t)}>删除</Button>
+                  </td>
+                </tr>
+                {expandedId === t.id && (
+                  <tr className="border-t">
+                    <td colSpan={8} className="p-0"><TokenModelsEditor upstreamId={upstream.id} token={t} /></td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
-            {tokens.isLoading && <tr><td colSpan={7} className="h-12 text-center text-muted-foreground">加载中…</td></tr>}
-            {tokens.isSuccess && list.length === 0 && <tr><td colSpan={7} className="h-12 text-center text-muted-foreground">还没有令牌</td></tr>}
+            {tokens.isLoading && <tr><td colSpan={8} className="h-12 text-center text-muted-foreground">加载中…</td></tr>}
+            {tokens.isSuccess && list.length === 0 && <tr><td colSpan={8} className="h-12 text-center text-muted-foreground">还没有令牌</td></tr>}
           </tbody>
         </table>
       </div>

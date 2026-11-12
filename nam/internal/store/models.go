@@ -66,7 +66,10 @@ type UpstreamToken struct {
 	Unlimited  bool     `json:"unlimited"`
 	Status     int      `json:"status"`
 	Manual     bool     `json:"manual"`
-	UpdatedAt  int64    `json:"updated_at"`
+	// Models is the local-site model list for channels built on this token (U10).
+	// Chosen by the operator; token sync never overwrites it.
+	Models    []string `gorm:"serializer:json" json:"models"`
+	UpdatedAt int64    `json:"updated_at"`
 }
 
 // UpstreamModelPrice is per-model upstream pricing returned by adapter Pricing.

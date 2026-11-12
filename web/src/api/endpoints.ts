@@ -16,6 +16,8 @@ import type {
   CheckResult,
   DeriveChannel,
   DriftDetail,
+  MatchTokensRequest,
+  MatchTokensResponse,
   ModelDiscountInput,
   PriceDetail,
   PriceList,
@@ -74,8 +76,13 @@ export const api = {
     request<null>(`/upstreams/${id}/tokens/${tokenId}`, { method: 'DELETE' }),
   upstreamGroups: (id: number) => request<UpstreamGroup[]>(`/upstreams/${id}/groups`),
   upstreamModels: (id: number) => request<UpstreamModel[]>(`/upstreams/${id}/models`),
-  fetchUpstreamModels: (id: number, tokenId: number) =>
-    request<{ models: string[] }>(`/upstreams/${id}/models/fetch`, { method: 'POST', body: { token_id: tokenId } }),
+  setTokenModels: (id: number, tokenId: number, models: string[]) =>
+    request<UpstreamToken>(`/upstreams/${id}/tokens/${tokenId}/models`, { method: 'PUT', body: { models } }),
+  fetchUpstreamModels: (id: number, tokenId: number, channelType?: number) =>
+    request<{ models: string[] }>(`/upstreams/${id}/models/fetch`, {
+      method: 'POST',
+      body: { token_id: tokenId, channel_type: channelType },
+    }),
 
   channels: () => request<ChannelList>('/channels'),
   patchDrafts: (changes: ChannelChange[]) =>
@@ -84,6 +91,8 @@ export const api = {
     request<null>('/channels/drafts', { method: 'DELETE', body: ids ? { ids } : {} }),
   batchPreview: (body: BatchRequest) =>
     request<BatchPreview>('/channels/batch/preview', { method: 'POST', body }),
+  matchTokens: (body: MatchTokensRequest) =>
+    request<MatchTokensResponse>('/channels/match-tokens', { method: 'POST', body }),
   batchCreate: (specs: BatchSpec[]) =>
     request<{ ids: number[] }>('/channels/batch', { method: 'POST', body: { specs } }),
   deleteChannels: (ids: number[]) => request<null>('/channels/delete', { method: 'POST', body: { ids } }),

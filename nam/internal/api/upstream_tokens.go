@@ -35,7 +35,60 @@ func (s *Server) listTokens(c *gin.Context) {
 		resp.FailFrom(c, err)
 		return
 	}
+	for i := range ts {
+		if ts[i].Models == nil {
+			ts[i].Models = []string{}
+		}
+	}
 	resp.OK(c, ts)
+}
+
+// PUT /upstreams/:id/tokens/:tid/models {models}: save the token's local-site model list.
+func (s *Server) setTokenModels(c *gin.Context) {
+	id, okID := parseID(c)
+	if !okID {
+		return
+	}
+	tid, okTID := parseUintParam(c, "tid")
+	if !okTID {
+		return
+	}
+	var in struct {
+		Models []string `json:"models"`
+	}
+	if !resp.BindJSON(c, &in) {
+		return
+	}
+	ctx := c.Request.Context()
+	var t store.UpstreamToken
+	if err := s.Store.DB.WithContext(ctx).Where("id = ? AND upstream_id = ?", tid, id).First(&t).Error; err != nil {
+		resp.FailFrom(c, store.ErrNotFound)
+		return
+	}
+	t.Models, t.UpdatedAt = cleanModelList(in.Models), time.Now().Unix()
+	// Save (not a map Update): the json serializer only runs on struct writes.
+	if err := s.Store.DB.WithContext(ctx).Save(&t).Error; err != nil {
+		resp.FailFrom(c, err)
+		return
+	}
+	s.Audit.Record(ctx, store.AuditLog{Kind: store.AuditUpstream, Target: "upstream:" + strconv.Itoa(int(id)), Action: "set_token_models",
+		Summary: fmt.Sprintf("设置令牌 %s 的模型列表（%d 个）", t.Name, len(t.Models))})
+	resp.OK(c, t)
+}
+
+// cleanModelList trims, drops empty entries and dedupes, keeping order. Never nil.
+func cleanModelList(in []string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, m := range in {
+		m = strings.TrimSpace(m)
+		if m == "" || seen[m] {
+			continue
+		}
+		seen[m] = true
+		out = append(out, m)
+	}
+	return out
 }
 
 // POST /upstreams/:id/tokens {name, group, key}: record a token created by hand.

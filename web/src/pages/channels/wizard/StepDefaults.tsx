@@ -4,7 +4,7 @@ import { api } from '@/api/endpoints';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/misc';
 import { vendorModels, vendorOf } from './StepModels';
-import { isInt, type WizardState } from './state';
+import { allSelectedModels, isInt, type WizardState } from './state';
 
 interface StepDefaultsProps {
   state: WizardState;
@@ -26,11 +26,12 @@ export function StepDefaults({ state, tokenNames, onChange }: StepDefaultsProps)
   const vendors = useQuery({ queryKey: ['vendors'], queryFn: api.vendors });
   const list = vendors.data ?? [];
 
-  const vendorNames = [...new Set(state.models.map((m) => vendorOf(m, list)?.name).filter((n): n is string => !!n))];
+  const selectedModels = allSelectedModels(state);
+  const vendorNames = [...new Set(selectedModels.map((m) => vendorOf(m, list)?.name).filter((n): n is string => !!n))];
   const defaultTestModel = (vendorName: string) => {
     const vendor = list.find((v) => v.name === vendorName);
     if (!vendor) return '';
-    return state.models.find((m) => vendorModels(vendor).includes(m)) ?? '';
+    return selectedModels.find((m) => vendorModels(vendor).includes(m)) ?? '';
   };
 
   const missingKey = vendorNames

@@ -56,7 +56,11 @@ func (m *m2) setupChannels() (uint, map[string]int) {
 	for _, tk := range tokens {
 		ids = append(ids, tk.ID)
 	}
-	req := map[string]any{"upstream_id": up.ID, "token_ids": ids, "models": []string{"test-model"}, "weight": 1}
+	tokenModels := map[string][]string{}
+	for _, id := range ids {
+		tokenModels[strconv.Itoa(int(id))] = []string{"test-model"}
+	}
+	req := map[string]any{"upstream_id": up.ID, "token_ids": ids, "token_models": tokenModels, "weight": 1}
 	m.must("POST", "/channels/batch", req)
 	m.must("POST", "/channels/apply", map[string]any{})
 	live, _ := m.fake.List(context.Background())

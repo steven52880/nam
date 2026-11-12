@@ -68,7 +68,11 @@ func TestM2EndToEnd(t *testing.T) {
 	for _, tk := range tokens {
 		ids = append(ids, tk.ID)
 	}
-	req := map[string]any{"upstream_id": up.ID, "token_ids": ids, "models": []string{"test-model", "mystery"}, "weight": 1}
+	tokenModels := map[string][]string{}
+	for _, id := range ids {
+		tokenModels[strconv.Itoa(int(id))] = []string{"test-model", "mystery"}
+	}
+	req := map[string]any{"upstream_id": up.ID, "token_ids": ids, "token_models": tokenModels, "weight": 1}
 	var prev struct {
 		Items      []struct{ Name string } `json:"items"`
 		Unassigned []string                `json:"unassigned"`
