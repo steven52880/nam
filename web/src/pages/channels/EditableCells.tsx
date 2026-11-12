@@ -87,6 +87,9 @@ export function VendorCell({ row, onChange }: VendorCellProps) {
         </SelectTrigger>
         <SelectContent>
           {(vendors.data ?? []).map((v) => <SelectItem key={v.id} value={v.name}>{v.name}</SelectItem>)}
+          {vendors.isSuccess && (vendors.data ?? []).length === 0 && (
+            <div className="px-2 py-1.5 text-sm text-muted-foreground">还没有厂商，请先到「设置 → 厂商分组」添加</div>
+          )}
         </SelectContent>
       </Select>
     </div>

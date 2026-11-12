@@ -41,7 +41,7 @@ function VendorDialog({ form, onClose }: { form: VendorForm | null; onClose: () 
       const body: VendorInput = {
         name: draft.name.trim(),
         group_name: draft.groupName.trim() || draft.name.trim(),
-        models: JSON.stringify(draft.models),
+        models: draft.models,
         channel_type: draft.channelType,
       };
       return draft.id === null ? api.createVendor(body) : api.updateVendor(draft.id, body);

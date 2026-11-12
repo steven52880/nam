@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -35,12 +36,50 @@ func (s *Server) listTokens(c *gin.Context) {
 		resp.FailFrom(c, err)
 		return
 	}
+	ids := make([]uint, len(ts))
 	for i := range ts {
+		ids[i] = ts[i].ID
 		if ts[i].Models == nil {
 			ts[i].Models = []string{}
 		}
 	}
-	resp.OK(c, ts)
+	counts, err := s.tokenChannelCounts(c.Request.Context(), ids)
+	if err != nil {
+		resp.FailFrom(c, err)
+		return
+	}
+	out := make([]tokenView, len(ts))
+	for i, t := range ts {
+		out[i] = tokenView{UpstreamToken: t, ChannelCount: counts[t.ID]}
+	}
+	resp.OK(c, out)
+}
+
+// tokenView is a token plus the number of channels (applied or drafted) built on it.
+type tokenView struct {
+	store.UpstreamToken
+	ChannelCount int `json:"channel_count"`
+}
+
+// tokenChannelCounts returns the channel_ext reference count per token id in one grouped query.
+func (s *Server) tokenChannelCounts(ctx context.Context, ids []uint) (map[uint]int, error) {
+	counts := map[uint]int{}
+	if len(ids) == 0 {
+		return counts, nil
+	}
+	type row struct {
+		ID uint
+		N  int
+	}
+	var rows []row
+	if err := s.Store.DB.WithContext(ctx).Model(&store.ChannelExt{}).Where("token_id IN ?", ids).
+		Select("token_id as id, count(*) as n").Group("token_id").Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		counts[r.ID] = r.N
+	}
+	return counts, nil
 }
 
 // PUT /upstreams/:id/tokens/:tid/models {models}: save the token's local-site model list.

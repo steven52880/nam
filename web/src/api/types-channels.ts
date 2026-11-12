@@ -228,7 +228,7 @@ export interface Vendor {
 export interface VendorInput {
   name: string;
   group_name: string;
-  models: string;
+  models: string[];
   pattern?: string;
   channel_type: 58 | 24;
 }
