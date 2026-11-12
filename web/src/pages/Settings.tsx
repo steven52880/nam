@@ -9,12 +9,14 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/misc';
 import { useSession } from '@/hooks/useSession';
 import { formatNumber, formatTime, parseGoDuration, toGoDuration, type ParsedInterval } from '@/lib/format';
+import { CacheTestSection } from './settings/CacheTestSection';
 import { IntervalRow, JOB_ORDER } from './settings/IntervalRow';
 import { VendorSection } from './settings/VendorSection';
 
 const SECTIONS = [
   ['connection', 'NewAPI 连接'],
   ['vendors', '厂商分组'],
+  ['cachetest', '缓存率测试'],
   ['pricing', '定价参数'],
   ['schedule', '调度间隔'],
   ['retention', '日志保留'],
@@ -119,6 +121,9 @@ export default function SettingsPage() {
         </Section>
         <Section id="vendors" title="厂商分组">
           <VendorSection />
+        </Section>
+        <Section id="cachetest" title="缓存率测试">
+          <CacheTestSection />
         </Section>
         <Section id="pricing" title="定价参数">
           <Line label="变化保护阈值">

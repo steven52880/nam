@@ -101,10 +101,7 @@ func (s *Service) createMatchToken(ctx context.Context, upstreamID uint, ch port
 		return store.UpstreamToken{}, err
 	}
 	t := store.UpstreamToken{UpstreamID: upstreamID, Name: uniqueTokenName(ch.Name, ch.ID, names), Key: sealed,
-		KeyHint: upstream.KeyHint(key), Status: 1, Manual: true, Models: dedupe(ch.Models), UpdatedAt: time.Now().Unix()}
-	if t.Models == nil {
-		t.Models = []string{}
-	}
+		KeyHint: upstream.KeyHint(key), Status: 1, Manual: true, UpdatedAt: time.Now().Unix()}
 	if err := s.St.DB.WithContext(ctx).Create(&t).Error; err != nil {
 		return t, err
 	}

@@ -7,6 +7,8 @@ export interface MenuItem {
   onSelect: () => void;
   destructive?: boolean;
   disabled?: boolean;
+  /** 悬停提示，常用于说明为什么禁用。 */
+  title?: string;
 }
 
 interface RowContextMenuProps {
@@ -54,6 +56,7 @@ export function RowContextMenu({ state, items, onClose }: RowContextMenuProps) {
           key={item.label}
           variant="ghost"
           disabled={item.disabled}
+          title={item.title}
           className={`h-7 w-full justify-start font-normal ${item.destructive ? 'text-destructive' : ''}`}
           onClick={() => {
             onClose();

@@ -211,6 +211,7 @@ export function DataGrid<T>({
                   <th
                     key={vc.id}
                     style={{ minWidth: col?.width ?? 100 }}
+                    title={col?.headerTitle}
                     onClick={vc.getCanSort() ? vc.getToggleSortingHandler() : undefined}
                     className={cn(
                       'h-7 border-b border-r px-2 text-left text-sm font-medium text-muted-foreground',

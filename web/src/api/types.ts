@@ -104,7 +104,7 @@ export interface JobStatus {
 
 export type Settings = Record<string, string>;
 
-export type AuditKind = 'channel' | 'price' | 'setting' | 'upstream';
+export type AuditKind = 'channel' | 'price' | 'setting' | 'upstream' | 'cache_test';
 export type AuditTrigger = 'auto' | 'manual';
 export type AuditResult = 'ok' | 'fail' | 'skipped';
 

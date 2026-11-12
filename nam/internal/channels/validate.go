@@ -2,26 +2,19 @@ package channels
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/steven52880/nam/internal/store"
+	"github.com/steven52880/nam/internal/vendors"
 )
 
 // vendorIndex answers "which vendor owns this model / group".
 type vendorIndex struct {
-	byName   map[string]store.Vendor
-	byGroup  map[string]store.Vendor
-	explicit map[string]string // model -> vendor name (from Vendor.Models)
-	patterns []vendorPattern
-}
-
-type vendorPattern struct {
-	vendor string
-	re     *regexp.Regexp
+	byName  map[string]store.Vendor
+	byGroup map[string]store.Vendor
+	matcher *vendors.Matcher
 }
 
 func loadVendors(ctx context.Context, st *store.Store) (*vendorIndex, error) {
@@ -29,37 +22,18 @@ func loadVendors(ctx context.Context, st *store.Store) (*vendorIndex, error) {
 	if err := st.DB.WithContext(ctx).Order("`order`, id").Find(&vs).Error; err != nil {
 		return nil, err
 	}
-	ix := &vendorIndex{byName: map[string]store.Vendor{}, byGroup: map[string]store.Vendor{}, explicit: map[string]string{}}
+	ix := &vendorIndex{byName: map[string]store.Vendor{}, byGroup: map[string]store.Vendor{}, matcher: vendors.NewMatcher(vs)}
 	for _, v := range vs {
 		ix.byName[v.Name] = v
 		ix.byGroup[v.GroupName] = v
-		var models []string
-		if v.Models != "" {
-			_ = json.Unmarshal([]byte(v.Models), &models)
-		}
-		for _, m := range models {
-			ix.explicit[m] = v.Name
-		}
-		if v.Pattern != "" {
-			if re, err := regexp.Compile(v.Pattern); err == nil {
-				ix.patterns = append(ix.patterns, vendorPattern{vendor: v.Name, re: re})
-			}
-		}
 	}
 	return ix, nil
 }
 
 // ownerOf returns the vendor a model is declared for ("" if undeclared).
 func (ix *vendorIndex) ownerOf(model string) string {
-	if v, ok := ix.explicit[model]; ok {
-		return v
-	}
-	for _, p := range ix.patterns {
-		if p.re.MatchString(model) {
-			return p.vendor
-		}
-	}
-	return ""
+	v, _, _ := ix.matcher.Owner(model)
+	return v
 }
 
 // channelTypeFor returns the NewAPI channel type for a vendor (default PassThrough).
@@ -80,7 +54,8 @@ type ValidationIssue struct {
 
 // validateRows checks the invariants on the overlaid channel set:
 //   - names non-empty and unique
-//   - managed channel: group must equal its vendor's group
+//   - channel with a vendor: its groups must contain the vendor's group and no other
+//     vendor's group (non-managed groups are ignored)
 //   - a model must not be declared for another vendor
 //   - a model must not appear in channels of two different vendor groups
 //     (auto would pick the first group in AutoGroups and bill the wrong price)
@@ -96,14 +71,13 @@ func validateRows(rows []Row, changed map[int]bool, ix *vendorIndex) []Validatio
 			continue
 		}
 		names[r.Name] = append(names[r.Name], r.ID)
-		if _, isVendorGroup := ix.byGroup[r.Group]; !isVendorGroup {
-			continue
-		}
-		for _, m := range r.Models {
-			if modelGroups[m] == nil {
-				modelGroups[m] = map[string]bool{}
+		for _, g := range managedSubset(splitGroups(r.Group), ix.isManaged) {
+			for _, m := range r.Models {
+				if modelGroups[m] == nil {
+					modelGroups[m] = map[string]bool{}
+				}
+				modelGroups[m][g] = true
 			}
-			modelGroups[m][r.Group] = true
 		}
 	}
 	for _, r := range rows {
@@ -126,8 +100,16 @@ func validateRows(rows []Row, changed map[int]bool, ix *vendorIndex) []Validatio
 			switch {
 			case !ok:
 				add("vendor", "未知厂商 "+r.Vendor)
-			case r.Group != v.GroupName:
-				add("group", fmt.Sprintf("渠道分组必须是厂商 %s 的分组 %s", v.Name, v.GroupName))
+			default:
+				gs := splitGroups(r.Group)
+				if !containsGroup(gs, v.GroupName) {
+					add("group", fmt.Sprintf("渠道分组必须包含厂商 %s 的分组 %s", v.Name, v.GroupName))
+				}
+				for _, g := range managedSubset(gs, ix.isManaged) {
+					if g != v.GroupName {
+						add("group", fmt.Sprintf("渠道分组不能包含其他厂商 %s 的分组 %s", ix.byGroup[g].Name, g))
+					}
+				}
 			}
 		}
 		if r.Discount <= 0 && r.Managed {

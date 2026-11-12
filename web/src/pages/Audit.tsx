@@ -103,7 +103,7 @@ export default function AuditPage() {
     <div className="flex flex-col gap-3 p-4">
       <PageHeader title="写入历史与审计" description="所有写入 NewAPI 与 nam 的记录，展开可看完整差异和原始请求/响应。" />
       <div className="flex flex-wrap items-center gap-2">
-        <FilterSelect value={kind} onChange={withReset(setKind)} placeholder="全部类型" options={[['channel', '渠道'], ['price', '价格'], ['setting', '设置'], ['upstream', '上游']]} />
+        <FilterSelect value={kind} onChange={withReset(setKind)} placeholder="全部类型" options={[['channel', '渠道'], ['price', '价格'], ['setting', '设置'], ['upstream', '上游'], ['cache_test', '缓存测试']]} />
         <FilterSelect value={trigger} onChange={withReset(setTrigger)} placeholder="全部触发方式" options={[['auto', '自动'], ['manual', '手动']]} />
         <FilterSelect value={result} onChange={withReset(setResult)} placeholder="全部结果" options={[['ok', '成功'], ['fail', '失败'], ['skipped', '已跳过']]} />
         <form

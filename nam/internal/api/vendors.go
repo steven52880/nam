@@ -1,6 +1,8 @@
 package api
 
 import (
+	"fmt"
+
 	"github.com/gin-gonic/gin"
 	"github.com/steven52880/nam/internal/resp"
 	"github.com/steven52880/nam/internal/store"
@@ -10,6 +12,7 @@ import (
 func (s *Server) registerVendorRoutes(p *gin.RouterGroup) {
 	p.GET("/vendors", s.listVendors)
 	p.POST("/vendors", s.createVendor)
+	p.POST("/vendors/match", s.matchVendors)
 	p.PUT("/vendors/order", s.reorderVendors) // registered before /:id so "order" is not parsed as an id
 	p.PUT("/vendors/:id", s.updateVendor)
 	p.DELETE("/vendors/:id", s.deleteVendor)
@@ -26,6 +29,22 @@ func (s *Server) listVendors(c *gin.Context) {
 		return
 	}
 	resp.OK(c, vs)
+}
+
+// POST /vendors/match {models:[...]}: which vendor owns each model, and how it matched.
+func (s *Server) matchVendors(c *gin.Context) {
+	var in struct {
+		Models []string `json:"models"`
+	}
+	if !resp.BindJSON(c, &in) {
+		return
+	}
+	items, err := s.Vendors.Match(c.Request.Context(), in.Models)
+	if err != nil {
+		resp.FailFrom(c, err)
+		return
+	}
+	resp.OK(c, gin.H{"items": items})
 }
 
 func (s *Server) createVendor(c *gin.Context) {
@@ -51,12 +70,12 @@ func (s *Server) updateVendor(c *gin.Context) {
 	if !resp.BindJSON(c, &in) {
 		return
 	}
-	v, err := s.Vendors.Update(c.Request.Context(), id, in)
+	v, err := s.Channels.UpdateVendor(c.Request.Context(), id, in)
 	if err != nil {
 		resp.FailFrom(c, err)
 		return
 	}
-	s.recordVendor(c, "vendor_update", "修改厂商 "+v.Name)
+	s.recordVendor(c, "vendor_update", fmt.Sprintf("修改厂商 %s（生成 %d 个分组改名草稿）", v.Name, v.GroupDrafts))
 	resp.OK(c, v)
 }
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/steven52880/nam/internal/resp"
 	"github.com/steven52880/nam/internal/store"
+	"gorm.io/gorm"
 )
 
 func newSvc(t *testing.T) *Service {
@@ -20,6 +21,17 @@ func newSvc(t *testing.T) *Service {
 	return &Service{St: st}
 }
 
+// update runs UpdateTx in its own transaction (the production caller is channels.Service.UpdateVendor).
+func update(s *Service, id uint, in Input) (store.Vendor, error) {
+	var cur store.Vendor
+	err := s.St.DB.Transaction(func(tx *gorm.DB) error {
+		var err error
+		_, cur, err = UpdateTx(tx, id, in)
+		return err
+	})
+	return cur, err
+}
+
 func TestCreateValidation(t *testing.T) {
 	s := newSvc(t)
 	ctx := context.Background()
@@ -30,7 +42,7 @@ func TestCreateValidation(t *testing.T) {
 		"long group":    {Name: "n", GroupName: strings.Repeat("g", 65)},
 		"group chars":   {Name: "n", GroupName: "a b"},
 		"channel type":  {Name: "n", GroupName: "g", ChannelType: 1},
-		"bad regex":     {Name: "n", GroupName: "g", Pattern: "("},
+		"empty prefix":  {Name: "n", GroupName: "g", Prefixes: []string{"gpt-", "  "}},
 		"non-ascii grp": {Name: "n", GroupName: "组"},
 	}
 	for name, in := range bad {
@@ -63,10 +75,10 @@ func TestUniquenessAndModelOverlap(t *testing.T) {
 		t.Errorf("overlap must name both vendors: %v", err)
 	}
 	o, _ := s.Create(ctx, Input{Name: "openai", GroupName: "openai", Models: []string{"m2"}})
-	if _, err := s.Update(ctx, o.ID, Input{Name: "openai", GroupName: "openai", Models: []string{"m1"}}); resp.Status(err) != 409 {
+	if _, err := update(s, o.ID, Input{Name: "openai", GroupName: "openai", Models: []string{"m1"}}); resp.Status(err) != 409 {
 		t.Errorf("update overlap: %v", err)
 	}
-	if _, err := s.Update(ctx, o.ID, Input{Name: "openai", GroupName: "openai", Models: []string{"m2", "m3"}}); err != nil {
+	if _, err := update(s, o.ID, Input{Name: "openai", GroupName: "openai", Models: []string{"m2", "m3"}}); err != nil {
 		t.Errorf("update keeps own models: %v", err)
 	}
 }
@@ -79,11 +91,16 @@ func TestInUseVendorIsProtected(t *testing.T) {
 	if err := s.Delete(ctx, v.ID); resp.Status(err) != 409 {
 		t.Errorf("delete in use: %v", err)
 	}
-	if _, err := s.Update(ctx, v.ID, Input{Name: "renamed", GroupName: "anthropic"}); resp.Status(err) != 409 {
-		t.Errorf("rename in use: %v", err)
+	if _, err := update(s, v.ID, Input{Name: "renamed", GroupName: "anthropic"}); err != nil {
+		t.Errorf("rename in use is allowed (channels migrate it): %v", err)
 	}
-	if _, err := s.Update(ctx, v.ID, Input{Name: "anthropic", GroupName: "anthropic", Models: []string{"m"}}); err != nil {
+	if _, err := update(s, v.ID, Input{Name: "renamed", GroupName: "anthropic", Models: []string{"m"}}); err != nil {
 		t.Errorf("editing models in use is fine: %v", err)
+	}
+	// channels.Service.UpdateVendor migrates channel_ext.vendor; emulate it here
+	s.St.DB.Model(&store.ChannelExt{}).Where("channel_id = ?", 7).Update("vendor", "renamed")
+	if err := s.Delete(ctx, v.ID); resp.Status(err) != 409 {
+		t.Errorf("delete in use after rename: %v", err)
 	}
 	s.St.DB.Where("channel_id = ?", 7).Delete(&store.ChannelExt{})
 	if err := s.Delete(ctx, v.ID); err != nil {

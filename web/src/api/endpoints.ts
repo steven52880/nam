@@ -9,6 +9,9 @@ import type {
   BatchRequest,
   BatchSpec,
   CacheOverrideInput,
+  CacheTest,
+  CacheTestList,
+  CacheTestStartInput,
   ChannelChange,
   ChannelList,
   ChannelModels,
@@ -42,6 +45,8 @@ import type {
   UpstreamToken,
   Vendor,
   VendorInput,
+  VendorUpdateResult,
+  VendorMatchResponse,
   JobStatus,
 } from './types';
 
@@ -76,8 +81,6 @@ export const api = {
     request<null>(`/upstreams/${id}/tokens/${tokenId}`, { method: 'DELETE' }),
   upstreamGroups: (id: number) => request<UpstreamGroup[]>(`/upstreams/${id}/groups`),
   upstreamModels: (id: number) => request<UpstreamModel[]>(`/upstreams/${id}/models`),
-  setTokenModels: (id: number, tokenId: number, models: string[]) =>
-    request<UpstreamToken>(`/upstreams/${id}/tokens/${tokenId}/models`, { method: 'PUT', body: { models } }),
   fetchUpstreamModels: (id: number, tokenId: number, channelType?: number) =>
     request<{ models: string[] }>(`/upstreams/${id}/models/fetch`, {
       method: 'POST',
@@ -106,6 +109,10 @@ export const api = {
   testChannel: (id: number, model: string) =>
     request<ChannelTestResult>(`/channels/${id}/test`, { method: 'POST', body: { model } }),
   newapiLink: (id: number) => request<{ url: string }>(`/channels/${id}/newapi-link`),
+  startCacheTest: (id: number, body: CacheTestStartInput) =>
+    request<{ test_id: number }>(`/channels/${id}/cache-test`, { method: 'POST', body }),
+  cacheTest: (testId: number) => request<CacheTest>(`/cache-tests/${testId}`, { silent: true }),
+  latestCacheTests: () => request<CacheTestList>('/cache-tests/latest'),
 
   channelModels: (id: number) => request<ChannelModels>(`/channels/${id}/models`),
   setModelDiscount: (id: number, body: ModelDiscountInput) =>
@@ -127,9 +134,11 @@ export const api = {
 
   vendors: () => request<Vendor[]>('/vendors'),
   createVendor: (body: VendorInput) => request<Vendor>('/vendors', { method: 'POST', body }),
-  updateVendor: (id: number, body: VendorInput) => request<Vendor>(`/vendors/${id}`, { method: 'PUT', body }),
+  updateVendor: (id: number, body: VendorInput) => request<VendorUpdateResult>(`/vendors/${id}`, { method: 'PUT', body }),
   deleteVendor: (id: number) => request<null>(`/vendors/${id}`, { method: 'DELETE' }),
   reorderVendors: (ids: number[]) => request<null>('/vendors/order', { method: 'PUT', body: { ids } }),
+  matchVendors: (models: string[]) =>
+    request<VendorMatchResponse>('/vendors/match', { method: 'POST', body: { models }, silent: true }),
 
   jobs: () => request<JobStatus[]>('/jobs'),
   runJob: (name: string) => request<null>(`/jobs/${encodeURIComponent(name)}`, { method: 'POST' }),

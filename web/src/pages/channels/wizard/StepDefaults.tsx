@@ -1,9 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import { api } from '@/api/endpoints';
+import { useVendorMatches } from '@/components/model-picker/useModelGroups';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/misc';
-import { vendorModels, vendorOf } from './StepModels';
 import { allSelectedModels, isInt, type WizardState } from './state';
 
 interface StepDefaultsProps {
@@ -23,16 +21,11 @@ function Field({ label, error, children }: { label: string; error?: string; chil
 }
 
 export function StepDefaults({ state, tokenNames, onChange }: StepDefaultsProps) {
-  const vendors = useQuery({ queryKey: ['vendors'], queryFn: api.vendors });
-  const list = vendors.data ?? [];
-
   const selectedModels = allSelectedModels(state);
-  const vendorNames = [...new Set(selectedModels.map((m) => vendorOf(m, list)?.name).filter((n): n is string => !!n))];
-  const defaultTestModel = (vendorName: string) => {
-    const vendor = list.find((v) => v.name === vendorName);
-    if (!vendor) return '';
-    return selectedModels.find((m) => vendorModels(vendor).includes(m)) ?? '';
-  };
+  const { matches } = useVendorMatches(selectedModels);
+  const vendorNames = [...new Set(selectedModels.map((m) => matches.get(m)?.vendor ?? '').filter((n) => n !== ''))];
+  const defaultTestModel = (vendorName: string) =>
+    selectedModels.find((m) => matches.get(m)?.vendor === vendorName) ?? '';
 
   const missingKey = vendorNames
     .filter((name) => state.testModels[name] === undefined && defaultTestModel(name) !== '')

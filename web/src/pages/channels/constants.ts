@@ -1,5 +1,8 @@
 import type { SyncState } from '@/api/types';
 
+/** 每个渠道最近一次手动缓存率测试的 react-query key。 */
+export const LATEST_CACHE_TESTS_KEY = ['cache-tests', 'latest'] as const;
+
 export const STATUS_LABELS: Record<number, string> = { 1: '启用', 2: '手动禁用', 3: '自动禁用' };
 
 export const SYNC_LABELS: Record<SyncState, string> = {
@@ -39,7 +42,8 @@ export const COLUMN_FIELDS: Record<string, string[]> = {
   name: ['name'],
   upstream: ['upstream_id'],
   token: ['token_id'],
-  vendor: ['vendor', 'group'],
+  vendor: ['vendor'],
+  group: ['group'],
   models: ['models'],
   discount: ['discount', 'discount_source'],
   priority: ['priority'],

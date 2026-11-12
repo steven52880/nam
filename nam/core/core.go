@@ -15,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/steven52880/nam/internal/api"
 	"github.com/steven52880/nam/internal/audit"
+	"github.com/steven52880/nam/internal/cachetest"
 	"github.com/steven52880/nam/internal/channels"
 	"github.com/steven52880/nam/internal/crypto"
 	"github.com/steven52880/nam/internal/safego"
@@ -106,6 +107,7 @@ func New(cfg Config, p ports.Ports) (*Core, error) {
 	c.server = &api.Server{Deps: api.Deps{
 		Store: st, Box: box, Audit: rec, Sched: sch, Ports: wrapped, Version: Version,
 		Channels: c.channels, Syncer: c.syncer, Vendors: &vendors.Service{St: st},
+		CacheTest: &cachetest.Runner{St: st, Box: box, Channels: wrapped.Channels, Backend: wrapped.Backend, Audit: rec},
 	}}
 	c.registerJobs()
 	return c, nil

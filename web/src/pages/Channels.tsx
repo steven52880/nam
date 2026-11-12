@@ -1,6 +1,8 @@
+import { useQuery } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { api } from '@/api/endpoints';
 import type { ChannelRow } from '@/api/types';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { DataGrid, type GridRange } from '@/components/data-grid';
@@ -12,7 +14,8 @@ import { BatchWizard } from './channels/wizard/BatchWizard';
 import { ChannelToolbar } from './channels/ChannelToolbar';
 import { buildChannelColumns, rowClass } from './channels/columns';
 import { costRangeOf } from './channels/costColor';
-import { COLUMN_FIELDS, type GroupMode } from './channels/constants';
+import { CacheTestDialog } from './channels/CacheTestDialog';
+import { COLUMN_FIELDS, LATEST_CACHE_TESTS_KEY, type GroupMode } from './channels/constants';
 import { DriftDialog } from './channels/DriftDialog';
 import { BulkUpstreamSelect } from './channels/EditableCells';
 import { distinct, EMPTY_FILTERS, filterChannels, groupKeyOf, rowKey, type ChannelFilters } from './channels/filter';
@@ -41,11 +44,17 @@ export default function ChannelsPage() {
   const [modelRow, setModelRow] = useState<ChannelRow | null>(null);
   const [driftRow, setDriftRow] = useState<ChannelRow | null>(null);
   const [testRow, setTestRow] = useState<ChannelRow | null>(null);
+  const [cacheRow, setCacheRow] = useState<ChannelRow | null>(null);
   const [deleteRow, setDeleteRow] = useState<ChannelRow | null>(null);
   const [menu, setMenu] = useState<{ row: ChannelRow; x: number; y: number } | null>(null);
   const [applyOpen, setApplyOpen] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardMode, setWizardMode] = useState<'single' | 'batch'>('batch');
+  const openWizard = (mode: 'single' | 'batch') => {
+    setWizardMode(mode);
+    setWizardOpen(true);
+  };
 
   const batchParam = Number(params.get('batch')) || null;
   const tokenParam = Number(params.get('token')) || null;
@@ -69,6 +78,20 @@ export default function ChannelsPage() {
 
   const channelCostRange = useMemo(() => costRangeOf(visible.map((r) => r.channel_cost)), [visible]);
   const unitCostRange = useMemo(() => costRangeOf(visible.map((r) => r.unit_cost)), [visible]);
+  const vendors = useQuery({ queryKey: ['vendors'], queryFn: api.vendors });
+  const vendorGroups = useMemo(
+    () => new Map((vendors.data ?? []).map((v) => [v.name, v.group_name])),
+    [vendors.data],
+  );
+  const cacheTestList = useQuery({
+    queryKey: LATEST_CACHE_TESTS_KEY,
+    queryFn: api.latestCacheTests,
+    refetchInterval: (q) => (q.state.data?.items.some((t) => t.status === 'running') ? 3000 : false),
+  });
+  const cacheTests = useMemo(
+    () => new Map((cacheTestList.data?.items ?? []).map((t) => [t.channel_id, t])),
+    [cacheTestList.data],
+  );
   const columns = useMemo(
     () =>
       buildChannelColumns({
@@ -77,10 +100,12 @@ export default function ChannelsPage() {
         onSetUpstream: (row, upstreamId) => setUpstream.mutate({ targets: [row], upstreamId }),
         onSetToken: setToken,
         onSetVendor: setVendor,
+        vendorGroups,
+        cacheTests,
         channelCostRange,
         unitCostRange,
       }),
-    [channelCostRange, unitCostRange, setUpstream, setToken, setVendor],
+    [channelCostRange, unitCostRange, vendorGroups, cacheTests, setUpstream, setToken, setVendor],
   );
   const rowById = useMemo(() => new Map(rows.map((r) => [rowKey(r), r])), [rows]);
 
@@ -102,6 +127,17 @@ export default function ChannelsPage() {
       ? { label: '禁用', onSelect: () => actions.setStatus([row], 2) }
       : { label: '启用', onSelect: () => actions.setStatus([row], 1) },
     { label: '测试渠道', onSelect: () => setTestRow(row), disabled: row.sync_state === 'draft_create' },
+    {
+      label: '测缓存',
+      onSelect: () => setCacheRow(row),
+      disabled: row.id < 0 || row.upstream_id === null || row.token_id === null,
+      title:
+        row.id < 0
+          ? '草稿新渠道尚未写入 NewAPI，无法测缓存'
+          : row.upstream_id === null || row.token_id === null
+            ? '该渠道不是由 nam 创建或接管的，无法直连上游测试'
+            : undefined,
+    },
     { label: '在 NewAPI 中打开', onSelect: () => actions.openInNewapi.mutate(row.id), disabled: row.id < 0 },
     { label: '复制为新渠道', onSelect: () => actions.copyAsNew.mutate(row) },
     { label: '查看漂移差异', onSelect: () => setDriftRow(row), disabled: row.sync_state !== 'drift' },
@@ -134,7 +170,8 @@ export default function ChannelsPage() {
             <Badge tone={draftCount > 0 ? 'warning' : 'neutral'}>草稿 {draftCount}</Badge>
             <Button variant="outline" disabled={draftCount === 0} onClick={() => setDiscardOpen(true)}>放弃草稿</Button>
             <Button variant="outline" disabled={draftCount === 0} onClick={() => setApplyOpen(true)}>应用变更</Button>
-            <Button onClick={() => setWizardOpen(true)}><Plus className="h-3.5 w-3.5" />批量创建</Button>
+            <Button variant="outline" onClick={() => openWizard('single')}><Plus className="h-3.5 w-3.5" />新建渠道</Button>
+            <Button onClick={() => openWizard('batch')}><Plus className="h-3.5 w-3.5" />批量创建</Button>
           </>
         }
       />
@@ -177,9 +214,16 @@ export default function ChannelsPage() {
       <RowContextMenu state={menu} items={menuItems} onClose={() => setMenu(null)} />
       <ModelEditorDialog row={modelRow} onClose={() => setModelRow(null)} onSave={actions.saveModels} />
       <DriftDialog row={driftRow} onClose={() => setDriftRow(null)} />
+      <CacheTestDialog row={cacheRow} onClose={() => setCacheRow(null)} />
       <TestChannelDialog row={testRow} onClose={() => setTestRow(null)} />
       <ApplyDialog open={applyOpen} onOpenChange={setApplyOpen} />
-      <BatchWizard open={wizardVisible} onOpenChange={closeWizard} presetUpstreamId={batchParam} presetTokenId={tokenParam} />
+      <BatchWizard
+        open={wizardVisible}
+        onOpenChange={closeWizard}
+        mode={batchParam !== null && !wizardOpen ? 'batch' : wizardMode}
+        presetUpstreamId={batchParam}
+        presetTokenId={tokenParam}
+      />
       <ConfirmDialog
         open={deleteRow !== null}
         onOpenChange={(open) => { if (!open) setDeleteRow(null); }}

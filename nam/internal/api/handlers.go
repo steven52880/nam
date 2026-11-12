@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/steven52880/nam/internal/cachetest"
 	"github.com/steven52880/nam/internal/resp"
 	"github.com/steven52880/nam/internal/scheduler"
 	"github.com/steven52880/nam/internal/store"
@@ -67,8 +68,14 @@ func (s *Server) triggerJob(c *gin.Context) {
 // settingKeys are the nam settings exposed through /settings. Values are strings.
 var settingKeys = []string{
 	store.KeySiteRate, store.KeyProtectThreshold, store.KeyAutoWrite,
-	store.KeyLogRetentionDays, store.KeyStatsRetentionDays,
+	store.KeyLogRetentionDays, store.KeyStatsRetentionDays, store.KeyNewAPIURL,
 }
+
+// Write-only token setting and its read-only hint (the token itself is never returned).
+const (
+	settingTestToken     = "newapi_test_token"
+	settingTestTokenHint = "newapi_test_token_hint"
+)
 
 func (s *Server) getSettings(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -77,6 +84,9 @@ func (s *Server) getSettings(c *gin.Context) {
 		if v, found, err := s.Store.GetKV(ctx, k); err == nil && found {
 			out[k] = v
 		}
+	}
+	if v, found, err := s.Store.GetKV(ctx, store.KeyCacheTestTokenHint); err == nil && found && v != "" {
+		out[settingTestTokenHint] = v
 	}
 	for _, j := range s.Sched.Statuses(ctx) {
 		out[store.KeyJobIntervalPrefix+j.Name] = (time.Duration(j.IntervalS) * time.Second).String()
@@ -100,6 +110,16 @@ func (s *Server) putSettings(c *gin.Context) {
 		}
 	}
 	for k, v := range in {
+		if k == settingTestToken {
+			if err := s.saveTestToken(c, v); err != nil {
+				resp.FailFrom(c, err)
+				return
+			}
+			continue
+		}
+		if k == store.KeyNewAPIURL {
+			v, _ = cachetest.NormalizeURL(v) // validated above
+		}
 		before, _, _ := s.Store.GetKV(ctx, k)
 		if err := s.Store.SetKV(ctx, k, v); err != nil {
 			resp.FailFrom(c, err)
@@ -110,8 +130,30 @@ func (s *Server) putSettings(c *gin.Context) {
 	s.getSettings(c)
 }
 
+// saveTestToken seals the NewAPI test token. The audit row carries only hints, never the token.
+func (s *Server) saveTestToken(c *gin.Context, raw string) error {
+	ctx := c.Request.Context()
+	before, _, _ := s.Store.GetKV(ctx, store.KeyCacheTestTokenHint)
+	if err := cachetest.SaveToken(ctx, s.Store, s.Box, raw); err != nil {
+		return err
+	}
+	after, _, _ := s.Store.GetKV(ctx, store.KeyCacheTestTokenHint)
+	s.Audit.Record(ctx, store.AuditLog{Kind: store.AuditSetting, Target: "nam:" + settingTestToken, Action: "set",
+		Summary: "修改 NewAPI 测试令牌", Before: before, After: after})
+	return nil
+}
+
 func validateSetting(k, v string) error {
 	switch {
+	case k == settingTestToken:
+		if strings.TrimSpace(v) == "" {
+			return nil // clears the token
+		}
+		_, err := cachetest.CleanToken(v)
+		return err
+	case k == store.KeyNewAPIURL:
+		_, err := cachetest.NormalizeURL(v)
+		return err
 	case k == store.KeySiteRate:
 		return resp.Invalid("站点汇率需通过定价流程修改（M5）")
 	case k == store.KeyProtectThreshold:

@@ -118,8 +118,8 @@ func tokenVendorSplit(st *state, models []string) (byVendor map[string][]string,
 }
 
 // BatchPreview expands a batch request into channel specs (no writes). Each token's
-// models (request override, else the token's stored list) are split by vendor, one item
-// per (token, vendor). Models without a vendor are reported and skipped.
+// requested models are split by vendor, one item per (token, vendor). Models without
+// a vendor are reported and skipped.
 func (s *Service) BatchPreview(ctx context.Context, req BatchRequest) (BatchPreviewResult, error) {
 	out := BatchPreviewResult{Items: []BatchPreviewItem{}, Warnings: []string{}, Unassigned: []string{},
 		UnassignedByToken: map[string][]string{}}
@@ -147,10 +147,7 @@ func (s *Service) BatchPreview(ctx context.Context, req BatchRequest) (BatchPrev
 		}
 		tokModels := dedupe(req.TokenModels[fmt.Sprint(tid)])
 		if len(tokModels) == 0 {
-			tokModels = dedupe(tok.Models)
-		}
-		if len(tokModels) == 0 {
-			return out, resp.Invalid(fmt.Sprintf("令牌 %s 没有模型：请先在令牌上设置模型列表，或在向导中为它选择模型", tok.Name))
+			return out, resp.Invalid(fmt.Sprintf("令牌 %s 没有选择模型", tok.Name))
 		}
 		byVendor, vendorOrder, miss := tokenVendorSplit(st, tokModels)
 		if len(miss) > 0 {

@@ -58,12 +58,13 @@ func parseSnap(raw string) (snapshot, bool) {
 }
 
 // diffSnap lists managed fields that differ between the applied snapshot and NewAPI.
-func diffSnap(applied, now snapshot) []string {
+// Only managed groups are compared, judged by the current vendor set.
+func diffSnap(applied, now snapshot, isManaged func(string) bool) []string {
 	var out []string
 	if !equalStrings(applied.Models, now.Models) {
 		out = append(out, "models")
 	}
-	if applied.Group != now.Group {
+	if !sameGroupSet(managedSubset(splitGroups(applied.Group), isManaged), managedSubset(splitGroups(now.Group), isManaged)) {
 		out = append(out, "group")
 	}
 	if applied.Priority != now.Priority {
@@ -190,7 +191,7 @@ func mergeExt(a, b ExtFields) ExtFields {
 
 // pruneFields drops fields whose value already equals NewAPI's (so a draft that was edited
 // back to the original disappears).
-func pruneFields(c ports.Channel, f Fields) Fields {
+func pruneFields(c ports.Channel, f Fields, isManaged func(string) bool) Fields {
 	if f.Name != nil && *f.Name == c.Name {
 		f.Name = nil
 	}
@@ -200,7 +201,7 @@ func pruneFields(c ports.Channel, f Fields) Fields {
 	if f.Models != nil && equalStrings(*f.Models, c.Models) {
 		f.Models = nil
 	}
-	if f.Group != nil && *f.Group == c.Group {
+	if f.Group != nil && joinGroups(mergeManaged(splitGroups(c.Group), splitGroups(*f.Group), isManaged)) == normGroups(c.Group) {
 		f.Group = nil
 	}
 	if f.Priority != nil && *f.Priority == c.Priority {

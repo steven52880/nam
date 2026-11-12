@@ -24,7 +24,7 @@ type Input struct {
 	Name        string   `json:"name"`
 	GroupName   string   `json:"group_name"`
 	Models      []string `json:"models"`
-	Pattern     string   `json:"pattern"`
+	Prefixes    []string `json:"prefixes"`
 	ChannelType int      `json:"channel_type"` // 0 → 58
 }
 
@@ -65,11 +65,19 @@ func normalize(in Input) (Input, error) {
 	if in.ChannelType != store.ChannelTypePassThrough && in.ChannelType != store.ChannelTypeGemini {
 		return in, resp.Invalid(fmt.Sprintf("渠道类型只能是 %d 或 %d", store.ChannelTypePassThrough, store.ChannelTypeGemini))
 	}
-	if in.Pattern != "" {
-		if _, err := regexp.Compile(in.Pattern); err != nil {
-			return in, resp.Invalid("模型匹配正则不合法：" + err.Error())
+	prefixSeen := map[string]bool{}
+	prefixes := make([]string, 0, len(in.Prefixes))
+	for _, p := range in.Prefixes {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			return in, resp.Invalid("模型名前缀不能为空")
+		}
+		if key := strings.ToLower(p); !prefixSeen[key] {
+			prefixSeen[key] = true
+			prefixes = append(prefixes, p)
 		}
 	}
+	in.Prefixes = prefixes
 	seen := map[string]bool{}
 	models := make([]string, 0, len(in.Models))
 	for _, m := range in.Models {
@@ -101,6 +109,9 @@ func (s *Service) List(ctx context.Context) ([]View, error) {
 	}
 	out := make([]View, 0, len(vs))
 	for _, v := range vs {
+		if v.Prefixes == nil {
+			v.Prefixes = []string{}
+		}
 		out = append(out, View{Vendor: v, ModelList: parseModels(v.Models), ChannelCount: byName[v.Name]})
 	}
 	return out, nil
@@ -119,6 +130,7 @@ func checkConflicts(tx *gorm.DB, self uint, in Input) error {
 		return err
 	}
 	owner := map[string]string{}
+	prefixOwner := map[string]string{} // lower-cased prefix -> vendor name
 	for _, o := range others {
 		if o.Name == in.Name {
 			return resp.Conflict("厂商名称已存在：" + in.Name)
@@ -128,6 +140,14 @@ func checkConflicts(tx *gorm.DB, self uint, in Input) error {
 		}
 		for _, m := range parseModels(o.Models) {
 			owner[m] = o.Name
+		}
+		for _, p := range o.Prefixes {
+			prefixOwner[strings.ToLower(strings.TrimSpace(p))] = o.Name
+		}
+	}
+	for _, p := range in.Prefixes {
+		if o, taken := prefixOwner[strings.ToLower(p)]; taken {
+			return resp.Conflict(fmt.Sprintf("前缀 %s 已被厂商 %s 使用，一个前缀只能属于一个厂商", p, o))
 		}
 	}
 	for _, m := range in.Models {
@@ -140,7 +160,7 @@ func checkConflicts(tx *gorm.DB, self uint, in Input) error {
 
 func apply(v *store.Vendor, in Input) {
 	raw, _ := json.Marshal(in.Models)
-	v.Name, v.GroupName, v.Models, v.Pattern, v.ChannelType = in.Name, in.GroupName, string(raw), in.Pattern, in.ChannelType
+	v.Name, v.GroupName, v.Models, v.Prefixes, v.ChannelType = in.Name, in.GroupName, string(raw), in.Prefixes, in.ChannelType
 }
 
 // Create adds a vendor at the end of the order.
@@ -167,33 +187,26 @@ func (s *Service) Create(ctx context.Context, in Input) (store.Vendor, error) {
 	return v, err
 }
 
-// Update edits a vendor. Name and group cannot change while channels use the vendor.
-func (s *Service) Update(ctx context.Context, id uint, in Input) (store.Vendor, error) {
-	in, err := normalize(in)
+// UpdateTx edits a vendor inside the caller's transaction and returns the vendor before
+// and after. Renaming a vendor or its group while channels use it is allowed: the caller
+// (channels.Service.UpdateVendor) migrates channel_ext and creates the group rename drafts.
+func UpdateTx(tx *gorm.DB, id uint, in Input) (old, cur store.Vendor, err error) {
+	in, err = normalize(in)
 	if err != nil {
-		return store.Vendor{}, err
+		return old, cur, err
 	}
-	var v store.Vendor
-	err = s.St.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.First(&v, id).Error; err != nil {
-			return mapNotFound(err)
-		}
-		if err := checkConflicts(tx, id, in); err != nil {
-			return err
-		}
-		if in.Name != v.Name || in.GroupName != v.GroupName {
-			n, err := s.channelsUsing(tx, v.Name)
-			if err != nil {
-				return err
-			}
-			if n > 0 {
-				return resp.Conflict(fmt.Sprintf("厂商 %s 仍有 %d 个渠道在用，不能修改名称或分组", v.Name, n))
-			}
-		}
-		apply(&v, in)
-		return tx.Save(&v).Error
-	})
-	return v, err
+	if err = tx.First(&old, id).Error; err != nil {
+		return old, cur, mapNotFound(err)
+	}
+	if err = checkConflicts(tx, id, in); err != nil {
+		return old, cur, err
+	}
+	cur = old
+	apply(&cur, in)
+	if err = tx.Save(&cur).Error; err != nil {
+		return old, cur, err
+	}
+	return old, cur, nil
 }
 
 // Delete removes a vendor unless a channel uses it.

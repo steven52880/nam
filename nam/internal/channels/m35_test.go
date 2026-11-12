@@ -21,11 +21,11 @@ func (r *patchRecorder) Update(ctx context.Context, id int, p ports.ChannelPatch
 	return r.ChannelStore.Update(ctx, id, p)
 }
 
-func (e *env) addToken(t *testing.T, name, key string, models ...string) store.UpstreamToken {
+func (e *env) addToken(t *testing.T, name, key string) store.UpstreamToken {
 	t.Helper()
 	sealed, err := e.svc.Box.Seal([]byte(key))
 	must(t, err)
-	tok := store.UpstreamToken{UpstreamID: e.up.ID, Name: name, Group: name, Key: sealed, Models: models}
+	tok := store.UpstreamToken{UpstreamID: e.up.ID, Name: name, Group: name, Key: sealed}
 	must(t, e.svc.St.DB.Create(&tok).Error)
 	return tok
 }
@@ -60,19 +60,19 @@ func TestBatchTokenSpanningTwoVendorsWarns(t *testing.T) {
 	}
 }
 
-func TestBatchFallsBackToStoredModels(t *testing.T) {
+func TestBatchRequiresTokenModels(t *testing.T) {
 	e := newEnv(t)
-	must(t, e.svc.St.DB.Model(&store.UpstreamToken{}).Where("id = ?", e.tok.ID).Update("models", `["test-model"]`).Error)
-	prev, err := e.svc.BatchPreview(e.ctx, BatchRequest{UpstreamID: e.up.ID, TokenIDs: []uint{e.tok.ID}})
+	prev, err := e.svc.BatchPreview(e.ctx, BatchRequest{UpstreamID: e.up.ID, TokenIDs: []uint{e.tok.ID},
+		TokenModels: map[string][]string{fmt.Sprint(e.tok.ID): {" ", "test-model", "test-model"}}})
 	must(t, err)
 	if len(prev.Items) != 1 || prev.Items[0].Vendor != "anthropic" || len(*prev.Items[0].Fields.Models) != 1 {
 		t.Fatalf("items: %+v", prev.Items)
 	}
-	// both empty → 400 naming the token
+	// no models in the request → 400 naming the token (no fallback to a stored list)
 	b := e.addToken(t, "empty-tok", "sk-e")
 	_, err = e.svc.BatchPreview(e.ctx, BatchRequest{UpstreamID: e.up.ID, TokenIDs: []uint{b.ID}})
-	if err == nil || !strings.Contains(err.Error(), "empty-tok") {
-		t.Fatalf("expected error naming token, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "empty-tok") || !strings.Contains(err.Error(), "没有选择模型") {
+		t.Fatalf("expected 400 naming token, got %v", err)
 	}
 }
 
@@ -85,7 +85,7 @@ func TestVendorChangeSetsGroup(t *testing.T) {
 	if len(issues) > 0 {
 		t.Fatalf("issues: %+v", issues)
 	}
-	if r := mustRow(t, e, id); r.Group != "anthropic" || r.Vendor != "anthropic" || r.SyncState != StateDraft {
+	if r := mustRow(t, e, id); r.Group != "default,anthropic" || r.Vendor != "anthropic" || r.SyncState != StateDraft {
 		t.Fatalf("row: %+v", r)
 	}
 	if c, _ := e.fake.Get(e.ctx, id); c.Type != 58 {
@@ -124,7 +124,7 @@ func TestAdoptIdenticalKeyDoesNotWriteKey(t *testing.T) {
 	if len(rec.patches) != 1 || rec.patches[0].Key != nil {
 		t.Fatalf("patches: %+v", rec.patches)
 	}
-	if c, _ := e.fake.Get(e.ctx, id); c.Group != "anthropic" || c.Key != " sk-a\n" {
+	if c, _ := e.fake.Get(e.ctx, id); c.Group != "default,anthropic" || c.Key != " sk-a\n" {
 		t.Fatalf("channel: %+v", c)
 	}
 }
@@ -208,7 +208,7 @@ func TestMatchTokensCreatesManualToken(t *testing.T) {
 	pt, err := e.svc.Box.Open(tok.Key)
 	must(t, err)
 	if string(pt) != "sk-new-key-123" || !tok.Manual || tok.Status != 1 || tok.Name != "a-"+fmt.Sprint(id) ||
-		len(tok.Models) != 2 || tok.KeyHint != "sk-ne…-123" || tok.UpstreamID != e.up.ID {
+		tok.KeyHint != "sk-ne…-123" || tok.UpstreamID != e.up.ID {
 		t.Fatalf("token: %+v key=%q", tok, pt)
 	}
 	// running again matches the token just created

@@ -3,6 +3,8 @@ import type { MouseEvent, ReactNode } from 'react';
 export interface GridColumn<T> {
   id: string;
   header: string;
+  /** 表头的 title 提示。 */
+  headerTitle?: string;
   width?: number;
   align?: 'left' | 'right';
   /** 用于排序和默认显示的值。 */

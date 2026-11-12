@@ -71,10 +71,7 @@ type UpstreamToken struct {
 	Unlimited  bool     `json:"unlimited"`
 	Status     int      `json:"status"`
 	Manual     bool     `json:"manual"`
-	// Models is the local-site model list for channels built on this token (U10).
-	// Chosen by the operator; token sync never overwrites it.
-	Models    []string `gorm:"serializer:json" json:"models"`
-	UpdatedAt int64    `json:"updated_at"`
+	UpdatedAt  int64    `json:"updated_at"`
 }
 
 // UpstreamModelPrice is per-model upstream pricing returned by adapter Pricing.
@@ -138,9 +135,11 @@ type Vendor struct {
 	ID        uint   `gorm:"primaryKey" json:"id"`
 	Name      string `gorm:"uniqueIndex;size:64;not null" json:"name"`
 	GroupName string `gorm:"uniqueIndex;size:64;not null" json:"group_name"`
-	Models    string `json:"models"`  // JSON array of exact model names
-	Pattern   string `json:"pattern"` // optional regex
-	Order     int    `json:"order"`   // position in AutoGroups
+	Models    string `json:"models"` // JSON array of exact model names
+	// Prefixes are case-insensitive model-name prefixes; the longest match wins and
+	// explicit Models take priority over prefixes.
+	Prefixes []string `gorm:"serializer:json" json:"prefixes"`
+	Order    int      `json:"order"` // position in AutoGroups
 	// ChannelType is the NewAPI channel type nam uses for this vendor's channels.
 	// 58 = PassThrough (OpenAI/Claude formats). Gemini vendors use 24 (native Gemini):
 	// M0 ① showed PassThrough does not bill Gemini-native usage correctly.
@@ -350,5 +349,6 @@ func AllModels() []any {
 		&OfficialPrice{}, &PriceOverride{}, &ModelAlias{},
 		&StatsHourly{}, &LogCursor{}, &AuditLog{}, &PriceHistory{},
 		&NotifyChannel{}, &NotifyRule{}, &NotifyEvent{}, &Snapshot{}, &Setting{}, &JobRun{},
+		&CacheTest{},
 	}
 }

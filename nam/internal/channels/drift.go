@@ -42,7 +42,7 @@ func (s *Service) CheckDrift(ctx context.Context) (DriftReport, error) {
 		if !ok {
 			continue // adopted channels without snapshot: nothing to compare
 		}
-		fields := strings.Join(diffSnap(applied, snapOf(live)), ",")
+		fields := strings.Join(diffSnap(applied, snapOf(live), st.vendors.isManaged), ",")
 		if fields != "" {
 			rep.Drifted = append(rep.Drifted, id)
 		}
@@ -77,11 +77,13 @@ func (s *Service) Drift(ctx context.Context, id int) (DriftDetail, error) {
 	now := snapOf(live)
 	out := DriftDetail{ChannelID: id, Name: live.Name, Fields: []FieldChange{}}
 	vals := func(s snapshot) map[string]any {
-		return map[string]any{"models": s.Models, "group": s.Group, "priority": s.Priority, "weight": s.Weight,
+		// show only the managed groups: those are what can drift
+		group := joinGroups(managedSubset(splitGroups(s.Group), st.vendors.isManaged))
+		return map[string]any{"models": s.Models, "group": group, "priority": s.Priority, "weight": s.Weight,
 			"tag": s.Tag, "status": s.Status, "test_model": s.TestModel, "base_url": s.BaseURL}
 	}
 	a, n := vals(applied), vals(now)
-	for _, f := range diffSnap(applied, now) {
+	for _, f := range diffSnap(applied, now, st.vendors.isManaged) {
 		out.Fields = append(out.Fields, FieldChange{Field: f, Old: a[f], New: n[f], NewAPI: true})
 	}
 	return out, nil

@@ -21,9 +21,12 @@ interface BatchWizardProps {
   presetUpstreamId?: number | null;
   /** 从上游抽屉的令牌行进入时预选的令牌。 */
   presetTokenId?: number | null;
+  /** single = 新建单个渠道（令牌步骤只能选一个）；batch = 批量创建。默认 batch。 */
+  mode?: 'single' | 'batch';
 }
 
-export function BatchWizard({ open, onOpenChange, presetUpstreamId, presetTokenId }: BatchWizardProps) {
+export function BatchWizard({ open, onOpenChange, presetUpstreamId, presetTokenId, mode = 'batch' }: BatchWizardProps) {
+  const single = mode === 'single';
   const qc = useQueryClient();
   const [step, setStep] = useState(0);
   const [state, setState] = useState<WizardState>(INITIAL_WIZARD);
@@ -46,18 +49,6 @@ export function BatchWizard({ open, onOpenChange, presetUpstreamId, presetTokenI
     enabled: state.upstreamId !== null,
   });
   const tokenNames = useMemo(() => new Map((tokens.data ?? []).map((t) => [t.id, t.name])), [tokens.data]);
-
-  // 新选中的令牌，把它已保存的模型列表作为初始值。
-  useEffect(() => {
-    const data = tokens.data;
-    if (!data) return;
-    const fill: Record<number, string[]> = {};
-    for (const id of state.tokenIds) {
-      const token = data.find((t) => t.id === id);
-      if (token && state.tokenModels[id] === undefined) fill[id] = token.models ?? [];
-    }
-    if (Object.keys(fill).length > 0) setState((cur) => ({ ...cur, tokenModels: { ...fill, ...cur.tokenModels } }));
-  }, [tokens.data, state.tokenIds, state.tokenModels]);
 
   const preview = useMutation({ mutationFn: api.batchPreview, onError: (e: Error) => toast.error(errorText(e)) });
   const create = useMutation({
@@ -91,7 +82,7 @@ export function BatchWizard({ open, onOpenChange, presetUpstreamId, presetTokenI
   const body = () => {
     if (step === 0) return <StepUpstream value={state.upstreamId} onChange={(id) => patch({ upstreamId: id, tokenIds: [], tokenModels: {} })} />;
     if (state.upstreamId === null) return null;
-    if (step === 1) return <StepTokens upstreamId={state.upstreamId} value={state.tokenIds} onChange={(ids) => patch({ tokenIds: ids })} />;
+    if (step === 1) return <StepTokens upstreamId={state.upstreamId} value={state.tokenIds} single={single} onChange={(ids) => patch({ tokenIds: ids })} />;
     if (step === 2) {
       return (
         <StepTokenModels
@@ -111,7 +102,7 @@ export function BatchWizard({ open, onOpenChange, presetUpstreamId, presetTokenI
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>批量创建渠道</DialogTitle>
+          <DialogTitle>{single ? '新建渠道' : '批量创建渠道'}</DialogTitle>
           <DialogDescription>按令牌和厂商拆分生成渠道，只进入草稿，不会立即写入 NewAPI。</DialogDescription>
         </DialogHeader>
         <ol className="flex gap-1 text-sm">

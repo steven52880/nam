@@ -5,6 +5,8 @@
 // (upstream, token, vendor, discount) plus a snapshot of the managed fields at last apply.
 package channels
 
+import "github.com/steven52880/nam/internal/store"
+
 // Fields are NewAPI channel fields a draft may change. Nil = unchanged.
 // Key is never stored in drafts; it is resolved from the token at apply time.
 type Fields struct {
@@ -50,6 +52,17 @@ type Change struct {
 type draftBody struct {
 	Fields Fields    `json:"fields"`
 	Ext    ExtFields `json:"ext"`
+	// GroupDrop lists groups to remove from NewAPI at apply time even though they are no
+	// longer managed (set only by a vendor group rename).
+	GroupDrop []string `json:"group_drop,omitempty"`
+}
+
+// VendorUpdate is the result of editing a vendor: the vendor plus how many drafts the
+// edit created or changed.
+type VendorUpdate struct {
+	store.Vendor
+	GroupDrafts   int `json:"group_drafts"`
+	RenamedDrafts int `json:"renamed_drafts"`
 }
 
 // Sync states shown in the channel table.

@@ -6,6 +6,7 @@ export const KIND_LABELS: Record<string, string> = {
   price: '价格',
   setting: '设置',
   upstream: '上游',
+  cache_test: '缓存测试',
 };
 
 export function AuditResultBadge({ result }: { result: AuditResult }) {

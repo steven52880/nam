@@ -1,8 +1,8 @@
-import type { ChannelRow } from '@/api/types';
+import type { CacheTest, ChannelRow } from '@/api/types';
 import type { GridColumn } from '@/components/data-grid';
 import { Badge } from '@/components/ui/misc';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/misc';
-import { formatNumber, formatSignificant } from '@/lib/format';
+import { formatNumber, formatSignificant, formatTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { costStyle, type CostRange } from './costColor';
 import { STATUS_LABELS, SYNC_LABELS } from './constants';
@@ -24,6 +24,10 @@ interface ColumnOptions {
   onSetUpstream: (row: ChannelRow, upstreamId: number) => void;
   onSetToken: (row: ChannelRow, tokenId: number) => void;
   onSetVendor: (row: ChannelRow, vendor: string) => void;
+  /** 厂商名 → 该厂商的托管分组名。 */
+  vendorGroups: Map<string, string>;
+  /** 渠道 id → 该渠道最近一次手动缓存率测试。 */
+  cacheTests: Map<number, CacheTest>;
   /** 当前可见行的上游渠道成本价范围，用于颜色梯度。 */
   channelCostRange: CostRange | null;
   /** 当前可见行的单次成本范围。 */
@@ -71,6 +75,37 @@ function SyncBadge({ row, onOpenDrift }: { row: ChannelRow; onOpenDrift: (row: C
   return <Badge tone={row.sync_state === 'draft_delete' ? 'danger' : 'accent'}>{label}</Badge>;
 }
 
+function GroupBadges({ row, vendorGroups }: { row: ChannelRow; vendorGroups: Map<string, string> }) {
+  const groups = row.group.split(',').map((g) => g.trim()).filter(Boolean);
+  if (groups.length === 0) return <span className="text-muted-foreground">{DASH}</span>;
+  const managed = vendorGroups.get(row.vendor);
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      {groups.map((g) => <Badge key={g} tone={g === managed ? 'accent' : 'neutral'}>{g}</Badge>)}
+    </span>
+  );
+}
+
+function ManualCacheCell({ test }: { test: CacheTest | undefined }) {
+  if (!test) return <span className="text-muted-foreground">{DASH}</span>;
+  if (test.status === 'running') return <span className="text-muted-foreground">测试中…</span>;
+  if (test.status === 'fail') {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild><span className="text-destructive">失败</span></TooltipTrigger>
+        <TooltipContent>{test.error || '测试失败'}</TooltipContent>
+      </Tooltip>
+    );
+  }
+  if (test.rate === null) return <span className="text-muted-foreground">{DASH}</span>;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild><span className="tabular-nums">{(test.rate * 100).toFixed(1)}%</span></TooltipTrigger>
+      <TooltipContent>{test.model} · {formatTime(test.started_at)}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function balanceCell(row: ChannelRow) {
   if (row.balance_usd === null && row.balance_cny === null) return <span className="text-muted-foreground">{DASH}</span>;
   return (
@@ -89,6 +124,8 @@ export function buildChannelColumns({
   onSetUpstream,
   onSetToken,
   onSetVendor,
+  vendorGroups,
+  cacheTests,
   channelCostRange,
   unitCostRange,
 }: ColumnOptions): GridColumn<ChannelRow>[] {
@@ -142,6 +179,11 @@ export function buildChannelColumns({
       accessor: (r) => r.vendor,
       cell: (r) => <VendorCell row={r} onChange={onSetVendor} />,
     },
+    readOnly('group', '分组', (r) => r.group, '托管分组随厂商变化，其他分组请在 NewAPI 中维护', {
+      width: 150,
+      headerTitle: '托管分组随厂商变化，其他分组请在 NewAPI 中维护',
+      cell: (r) => <GroupBadges row={r} vendorGroups={vendorGroups} />,
+    }),
     {
       id: 'models',
       header: '模型',
@@ -235,6 +277,11 @@ export function buildChannelColumns({
     statColumn('first_token', '首字延迟'),
     statColumn('speed', '吐字速度'),
     statColumn('cache_hit', '缓存命中率', true),
+    readOnly('manual_cache', '手动缓存率', (r) => cacheTests.get(r.id)?.rate ?? null, '手动缓存率来自「测缓存」，不能编辑', {
+      width: 100,
+      align: 'right',
+      cell: (r) => <ManualCacheCell test={cacheTests.get(r.id)} />,
+    }),
     statColumn('cost_price', '成本价', true),
     statColumn('rating', '评级', true),
     statColumn('cost', '成本（元）', true),

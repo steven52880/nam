@@ -3,7 +3,7 @@ import type { BatchRequest } from '@/api/types';
 export interface WizardState {
   upstreamId: number | null;
   tokenIds: number[];
-  /** 每个已选令牌要开放的模型，初始值取令牌保存的模型列表。 */
+  /** 每个已选令牌要开放的模型：进入「厂商与模型」步骤时由上游拉取结果预选，只对本次创建生效。 */
   tokenModels: Record<number, string[]>;
   priority: string;
   weight: string;
@@ -23,7 +23,7 @@ export const INITIAL_WIZARD: WizardState = {
   discounts: {},
 };
 
-export const STEP_TITLES = ['选上游', '选令牌', '选模型', '命名与默认值', '预览'] as const;
+export const STEP_TITLES = ['选上游', '选令牌', '厂商与模型', '命名与默认值', '预览'] as const;
 
 export function isInt(text: string, min?: number): boolean {
   return /^-?\d+$/.test(text.trim()) && (min === undefined || Number(text) >= min);

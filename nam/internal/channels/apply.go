@@ -74,10 +74,19 @@ func (st *state) planItem(d store.ChannelDraft) PlanItem {
 		create.Key = "（来自令牌 " + r.TokenName + "）"
 		it.Request = &Request{Method: "POST", Path: "/api/channel/", Body: create}
 	default:
-		c := overlay(live, body.Fields)
+		c := st.effective(live, true, body)
 		it.Changes = fieldChanges(live, c, body.Fields)
 		if !body.Fields.empty() {
-			it.Request = &Request{Method: "PUT", Path: "/api/channel/", Body: toPatch(body.Fields)}
+			patch := toPatch(body.Fields)
+			if body.Fields.Group != nil {
+				// the request carries the merged group (live non-managed groups kept)
+				patch.Group = nil
+				if c.Group != normGroups(live.Group) {
+					g := c.Group
+					patch.Group = &g
+				}
+			}
+			it.Request = &Request{Method: "PUT", Path: "/api/channel/", Body: patch}
 		}
 	}
 	it.Changes = append(it.Changes, extChanges(st.ext[d.ChannelID], body.Ext)...)
@@ -222,6 +231,18 @@ func (s *Service) applyCreate(ctx context.Context, st *state, d store.ChannelDra
 func (s *Service) applyUpdate(ctx context.Context, st *state, d store.ChannelDraft, body draftBody) error {
 	if !body.Fields.empty() {
 		p := toPatch(body.Fields)
+		if body.Fields.Group != nil {
+			// merge against the freshly read live group so manual NewAPI edits survive
+			fresh, err := s.Channels.Get(ctx, d.ChannelID)
+			if err != nil {
+				return err
+			}
+			merged := joinGroups(mergeManaged(splitGroups(fresh.Group), splitGroups(*body.Fields.Group), st.groupPred(body.GroupDrop)))
+			p.Group = nil
+			if merged != normGroups(fresh.Group) {
+				p.Group = &merged
+			}
+		}
 		if body.Ext.TokenID != nil {
 			key, err := s.keyToWrite(ctx, st, d.ChannelID, *body.Ext.TokenID)
 			if err != nil {
@@ -229,8 +250,10 @@ func (s *Service) applyUpdate(ctx context.Context, st *state, d store.ChannelDra
 			}
 			p.Key = key
 		}
-		if err := s.Channels.Update(ctx, d.ChannelID, p); err != nil {
-			return err
+		if !patchEmpty(p) {
+			if err := s.Channels.Update(ctx, d.ChannelID, p); err != nil {
+				return err
+			}
 		}
 	}
 	ext, ok := st.ext[d.ChannelID]
@@ -238,6 +261,11 @@ func (s *Service) applyUpdate(ctx context.Context, st *state, d store.ChannelDra
 		ext = store.ChannelExt{ChannelID: d.ChannelID, Discount: 1, DiscountSource: store.DiscountAuto}
 	}
 	return s.finish(ctx, d.ChannelID, d.ChannelID, applyExt(ext, body.Ext))
+}
+
+func patchEmpty(p ports.ChannelPatch) bool {
+	return p.Name == nil && p.Key == nil && p.BaseURL == nil && p.Models == nil && p.Group == nil &&
+		p.Priority == nil && p.Weight == nil && p.Tag == nil && p.Status == nil && p.TestModel == nil
 }
 
 // finish re-reads the channel, records the applied snapshot and removes the draft.

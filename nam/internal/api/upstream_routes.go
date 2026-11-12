@@ -20,7 +20,6 @@ func (s *Server) registerUpstreamRoutes(p *gin.RouterGroup) {
 	p.POST("/upstreams/:id/tokens", s.addManualToken)
 	p.POST("/upstreams/:id/tokens/remote", s.createRemoteToken)
 	p.DELETE("/upstreams/:id/tokens/:tid", s.deleteToken)
-	p.PUT("/upstreams/:id/tokens/:tid/models", s.setTokenModels)
 	p.GET("/upstreams/:id/groups", s.listGroups)
 	p.GET("/upstreams/:id/models", s.listUpstreamModels)
 	p.POST("/upstreams/:id/models/fetch", s.fetchUpstreamModels)

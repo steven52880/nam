@@ -4,6 +4,7 @@ package api
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/steven52880/nam/internal/audit"
+	"github.com/steven52880/nam/internal/cachetest"
 	"github.com/steven52880/nam/internal/channels"
 	"github.com/steven52880/nam/internal/crypto"
 	"github.com/steven52880/nam/internal/resp"
@@ -24,7 +25,9 @@ type Deps struct {
 	Channels *channels.Service
 	Syncer   *upstream.Syncer
 	Vendors  *vendors.Service
-	Version  string
+	// CacheTest runs manual cache-rate tests; nil disables the endpoints.
+	CacheTest *cachetest.Runner
+	Version   string
 }
 
 // Server holds handler dependencies.
@@ -59,6 +62,7 @@ func (s *Server) Register(g *gin.RouterGroup) {
 	s.registerChannelRoutes(p)
 	s.registerChannelPricingRoutes(p)
 	s.registerPriceRoutes(p)
+	s.registerCacheTestRoutes(p)
 
 	// raw NewAPI channels (read only passthrough, for M1 acceptance and debugging)
 	p.GET("/newapi/channels", s.listNewAPIChannels)

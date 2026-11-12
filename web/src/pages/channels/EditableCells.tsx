@@ -79,8 +79,9 @@ interface VendorCellProps {
 
 export function VendorCell({ row, onChange }: VendorCellProps) {
   const vendors = useQuery({ queryKey: ['vendors'], queryFn: api.vendors });
+  const vendor = (vendors.data ?? []).find((v) => v.name === row.vendor);
   return (
-    <div onKeyDown={stopKeys} title={row.vendor ? `NewAPI 分组：${row.group}` : undefined}>
+    <div onKeyDown={stopKeys} title={vendor ? `托管分组：${vendor.group_name}；改厂商会移除其他厂商的分组` : undefined}>
       <Select value={row.vendor} disabled={locked(row)} onValueChange={(v) => onChange(row, v)}>
         <SelectTrigger className="h-6 border-transparent bg-transparent px-1">
           <SelectValue placeholder={DASH}>{row.vendor || DASH}</SelectValue>

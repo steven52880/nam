@@ -220,17 +220,38 @@ export interface Vendor {
   name: string;
   group_name: string;
   models: string;
-  pattern: string;
+  /** 模型名前缀：不区分大小写，最长前缀优先。 */
+  prefixes: string[];
   order: number;
   channel_type: 58 | 24;
+}
+
+/** 编辑厂商的返回：厂商本身 + 本次生成的草稿数。 */
+export interface VendorUpdateResult extends Vendor {
+  group_drafts: number;
+  renamed_drafts: number;
 }
 
 export interface VendorInput {
   name: string;
   group_name: string;
   models: string[];
-  pattern?: string;
+  prefixes: string[];
   channel_type: 58 | 24;
+}
+
+/** 厂商匹配方式：explicit = 显式模型，prefix = 最长前缀，'' = 未归属。 */
+export type VendorMatchBy = 'explicit' | 'prefix' | '';
+
+export interface VendorMatchItem {
+  model: string;
+  vendor: string;
+  by: VendorMatchBy;
+  prefix: string;
+}
+
+export interface VendorMatchResponse {
+  items: VendorMatchItem[];
 }
 
 export interface UpstreamToken {
@@ -246,8 +267,6 @@ export interface UpstreamToken {
   manual: boolean;
   updated_at: number;
   channel_count?: number;
-  /** 本站要开放的模型列表。 */
-  models: string[];
 }
 
 export interface TokenInput {
@@ -288,6 +307,53 @@ export interface ChannelTestResult {
   success: boolean;
   message: string;
   duration: number;
+}
+
+/* ---------- M3.7：手动缓存率测试 ---------- */
+
+export type CacheTestProtocol = 'anthropic' | 'openai';
+export type CacheTestStatus = 'running' | 'ok' | 'fail';
+/** direct：nam 直连上游（默认）；newapi：经 NewAPI 中转（预留，仅 API 可达）。 */
+export type CacheTestMode = 'direct' | 'newapi';
+
+export interface CacheTestStartInput {
+  model: string;
+  rounds?: number;
+  protocol?: CacheTestProtocol;
+  mode?: CacheTestMode;
+}
+
+export interface CacheTest {
+  id: number;
+  channel_id: number;
+  model: string;
+  protocol: CacheTestProtocol;
+  mode: CacheTestMode;
+  status: CacheTestStatus;
+  rounds: number;
+  input_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  rate: number | null;
+  /** JSON 字符串：CacheTestRound[]。 */
+  per_round: string;
+  error: string;
+  /** Unix 秒。 */
+  started_at: number;
+  duration_ms: number;
+}
+
+export interface CacheTestRound {
+  round: number;
+  input: number;
+  cache_read: number;
+  cache_write: number;
+  output: number;
+  duration_ms: number;
+}
+
+export interface CacheTestList {
+  items: CacheTest[];
 }
 
 export interface SyncResult {

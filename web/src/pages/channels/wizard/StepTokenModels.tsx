@@ -1,5 +1,14 @@
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
+import { api } from '@/api/endpoints';
+import { errorText } from '@/api/errors';
 import type { UpstreamToken } from '@/api/types';
-import { StepModels } from './StepModels';
+import { ModelPickerDialog } from '@/components/model-picker';
+import { useVendorMatches } from '@/components/model-picker/useModelGroups';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/misc';
+import { formatNumber } from '@/lib/format';
+import { parseStringArray, uniq } from '@/lib/list';
 
 interface StepTokenModelsProps {
   upstreamId: number;
@@ -9,23 +18,132 @@ interface StepTokenModelsProps {
   onChange: (tokenId: number, models: string[]) => void;
 }
 
-/** 第 3 步：每个已选令牌一个区块，分别选择要开放的模型。 */
+const FETCH_KEY = 'token-models-fetch';
+const FIVE_MINUTES = 5 * 60 * 1000;
+
+/** 第 3 步：进入时自动从上游拉取每个令牌的模型，按厂商前缀预选；跨厂商的令牌会拆成多个渠道。 */
 export function StepTokenModels({ upstreamId, tokens, tokenIds, value, onChange }: StepTokenModelsProps) {
+  const qc = useQueryClient();
+  const [pickerId, setPickerId] = useState<number | null>(null);
+  const vendors = useQuery({ queryKey: ['vendors'], queryFn: api.vendors });
+  const groups = useQuery({ queryKey: ['upstream-groups', upstreamId], queryFn: () => api.upstreamGroups(upstreamId) });
+  const fetches = useQueries({
+    queries: tokenIds.map((id) => ({
+      queryKey: [FETCH_KEY, id],
+      queryFn: async () => (await api.fetchUpstreamModels(upstreamId, id)).models,
+      staleTime: FIVE_MINUTES,
+      retry: false,
+    })),
+  });
+
+  const fetchedKey = fetches.map((f) => (f.data ? f.data.length : -1)).join(',');
+  const allModels = useMemo(
+    () => uniq([...fetches.flatMap((f) => f.data ?? []), ...tokenIds.flatMap((id) => value[id] ?? [])]),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [fetchedKey, tokenIds, value],
+  );
+  const { matches, isError: matchFailed } = useVendorMatches(allModels);
+
+  // 预选：厂商显式模型 ∩ 可用；厂商没有显式模型时取全部前缀匹配的模型。已有值（用户调整过）不覆盖。
+  useEffect(() => {
+    if (!vendors.data) return;
+    const explicitVendors = new Set(vendors.data.filter((v) => parseStringArray(v.models).length > 0).map((v) => v.name));
+    tokenIds.forEach((id, index) => {
+      const fetched = fetches[index]?.data;
+      if (value[id] !== undefined || !fetched) return;
+      if (!fetched.every((m) => matches.has(m))) return;
+      const picked = fetched.filter((m) => {
+        const hit = matches.get(m);
+        if (!hit || hit.vendor === '') return false;
+        return hit.by === 'explicit' || (hit.by === 'prefix' && !explicitVendors.has(hit.vendor));
+      });
+      onChange(id, picked);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vendors.data, matches, fetchedKey, tokenIds, value]);
+
+  const ratioOf = (group: string) => groups.data?.find((g) => g.name === group)?.ratio ?? null;
+
   return (
     <div className="grid gap-3">
-      <p className="text-sm text-muted-foreground">每个令牌单独选模型，默认填入令牌已保存的模型列表。一个令牌通常只对应一个厂商。</p>
-      {tokenIds.map((id) => {
+      <p className="text-sm text-muted-foreground">
+        自动从上游拉取每个令牌可用的模型，并按「设置 → 厂商分组」的模型名前缀归属厂商；一个令牌跨多个厂商时会拆成多个渠道。调整只对本次创建生效，不会写回令牌。
+      </p>
+      {matchFailed && <div className="rounded bg-destructive/10 px-2 py-1 text-sm text-destructive">厂商匹配失败，无法自动预选，请手动调整模型。</div>}
+      {tokenIds.map((id, index) => {
         const token = tokens.find((t) => t.id === id);
-        const models = value[id] ?? [];
+        const fetch = fetches[index];
+        const fetched = fetch?.data ?? [];
+        const selected = value[id] ?? [];
+        const vendorOf = (m: string) => matches.get(m)?.vendor ?? '';
+        const vendorNames = uniq([...fetched, ...selected].map(vendorOf).filter((v) => v !== ''));
+        const unowned = selected.filter((m) => vendorOf(m) === '');
+        const splitCount = new Set(selected.map(vendorOf).filter((v) => v !== '')).size;
+        const ratio = token ? ratioOf(token.group) : null;
         return (
           <section key={id} className="grid gap-2 rounded border p-2">
-            <h3 className="text-base font-medium">
-              {token?.name ?? `令牌 ${id}`}
-              <span className="ml-2 text-sm font-normal text-muted-foreground">
-                {token?.group ? `分组 ${token.group} · ` : ''}{models.length} 个模型
-              </span>
-            </h3>
-            <StepModels upstreamId={upstreamId} tokenId={id} value={models} onChange={(next) => onChange(id, next)} />
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-medium">
+                {token?.name ?? `令牌 ${id}`}
+                <span className="ml-2 text-sm font-normal text-muted-foreground">
+                  {token?.group ? `分组 ${token.group}` : '无分组'}
+                  {ratio !== null && `（倍率 ${formatNumber(ratio, 3)}）`}
+                  {` · 已选 ${selected.length} 个模型`}
+                </span>
+              </h3>
+              <Button
+                size="sm"
+                variant="outline"
+                className="ml-auto"
+                disabled={fetch?.isFetching}
+                onClick={() => setPickerId(id)}
+              >
+                调整模型
+              </Button>
+            </div>
+            {fetch?.isFetching && <div className="text-sm text-muted-foreground">正在从上游拉取模型…</div>}
+            {fetch?.isError && !fetch.isFetching && (
+              <div className="flex items-center gap-2 rounded bg-destructive/10 px-2 py-1 text-sm text-destructive">
+                <span className="flex-1">拉取失败：{errorText(fetch.error)}（仍可点「调整模型」手动输入）</span>
+                <Button size="sm" variant="outline" onClick={() => void fetch.refetch()}>重试</Button>
+              </div>
+            )}
+            {vendorNames.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {vendorNames.map((name) => (
+                  <Badge key={name} tone="accent">
+                    {name} 已选 {selected.filter((m) => vendorOf(m) === name).length} / 可用 {fetched.filter((m) => vendorOf(m) === name).length}
+                  </Badge>
+                ))}
+              </div>
+            )}
+            {splitCount > 1 && <div className="text-sm text-muted-foreground">将拆成 {splitCount} 个渠道（每个厂商一个）。</div>}
+            {unowned.length > 0 && (
+              <div className="rounded bg-warning/15 px-2 py-1 text-sm text-warning">
+                {unowned.length} 个已选模型不属于任何厂商，生成渠道时会被忽略：{unowned.slice(0, 6).join('，')}{unowned.length > 6 && '…'}
+              </div>
+            )}
+            {selected.length === 0 && !fetch?.isFetching && !fetch?.isError && (
+              <div className="text-sm text-warning">还没有选中任何模型，请点「调整模型」选择。</div>
+            )}
+            {pickerId === id && (
+              <ModelPickerDialog
+                open
+                title={`选择模型：${token?.name ?? `令牌 ${id}`}`}
+                available={fetched}
+                selected={selected}
+                onFetch={async () => {
+                  const res = await api.fetchUpstreamModels(upstreamId, id);
+                  qc.setQueryData([FETCH_KEY, id], res.models);
+                  return res.models;
+                }}
+                onConfirm={(models) => {
+                  onChange(id, models);
+                  setPickerId(null);
+                }}
+                onClose={() => setPickerId(null)}
+              />
+            )}
           </section>
         );
       })}

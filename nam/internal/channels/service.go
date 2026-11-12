@@ -85,6 +85,16 @@ func parseDraft(d store.ChannelDraft) draftBody {
 	return b
 }
 
+// effective overlays a draft on a NewAPI channel. For a live channel only the managed part
+// of the draft group is applied; the live non-managed groups are kept.
+func (st *state) effective(live ports.Channel, isLive bool, body draftBody) ports.Channel {
+	c := overlay(live, body.Fields)
+	if isLive && body.Fields.Group != nil {
+		c.Group = joinGroups(mergeManaged(splitGroups(live.Group), splitGroups(*body.Fields.Group), st.groupPred(body.GroupDrop)))
+	}
+	return c
+}
+
 // row builds the UI row for one channel id (live, draft-create, or both).
 func (st *state) row(id int) Row {
 	live, isLive := st.liveMap[id]
@@ -93,7 +103,7 @@ func (st *state) row(id int) Row {
 	if hasDraft {
 		body = parseDraft(d)
 	}
-	c := overlay(live, body.Fields)
+	c := st.effective(live, isLive, body)
 	if !isLive {
 		c.ID = id
 	}
@@ -246,13 +256,16 @@ func (s *Service) saveChanges(ctx context.Context, changes []Change) ([]Validati
 		if has {
 			body = parseDraft(d)
 		}
+		before := st.row(id)
+		pred := st.groupPred(body.GroupDrop)
 		fields := ch.Fields
-		if ch.Ext.Vendor != nil && *ch.Ext.Vendor != "" && fields.Group == nil {
-			// 改厂商带动分组；未知厂商留给 validateRows 报错
-			if v, known := st.vendors.byName[*ch.Ext.Vendor]; known {
-				g := v.GroupName
-				fields.Group = &g
-			}
+		if fields.Group != nil {
+			// only the managed part of a submitted group counts
+			g := joinGroups(mergeManaged(splitGroups(before.Group), splitGroups(*fields.Group), pred))
+			fields.Group = &g
+		}
+		if ch.Ext.Vendor != nil && *ch.Ext.Vendor != before.Vendor {
+			fields.Group = swapGroupForVendor(st, before, fields.Group, *ch.Ext.Vendor, pred)
 		}
 		body.Fields = mergeFields(body.Fields, fields)
 		body.Ext = mergeExt(body.Ext, ch.Ext)
@@ -261,7 +274,10 @@ func (s *Service) saveChanges(ctx context.Context, changes []Change) ([]Validati
 			body.Ext.DiscountSource = &m
 		}
 		if isLive {
-			body.Fields = pruneFields(live, body.Fields)
+			body.Fields = pruneFields(live, body.Fields, st.groupPred(body.GroupDrop))
+			if body.Fields.Group == nil {
+				body.GroupDrop = nil
+			}
 			body.Ext = pruneExt(st.ext[id], st.ext[id].ChannelID != 0, body.Ext)
 		}
 		if !has {
@@ -291,6 +307,33 @@ func (s *Service) saveChanges(ctx context.Context, changes []Change) ([]Validati
 		}
 		return nil
 	})
+}
+
+// swapGroupForVendor returns the group field implied by moving a channel to vendor `to`.
+// group is the explicit group already computed for this change (nil = start from the
+// channel's current group). Unknown vendors leave the group alone (validateRows rejects them).
+func swapGroupForVendor(st *state, before Row, group *string, to string, pred func(string) bool) *string {
+	newG := ""
+	if to != "" {
+		v, known := st.vendors.byName[to]
+		if !known {
+			return group
+		}
+		newG = v.GroupName
+	}
+	oldG := ""
+	if v, known := st.vendors.byName[before.Vendor]; known {
+		oldG = v.GroupName
+	}
+	if oldG == "" && newG == "" {
+		return group
+	}
+	base := before.Group
+	if group != nil {
+		base = *group
+	}
+	g := joinGroups(swapVendorGroup(splitGroups(base), oldG, newG, pred))
+	return &g
 }
 
 func pruneExt(e store.ChannelExt, exists bool, x ExtFields) ExtFields {
