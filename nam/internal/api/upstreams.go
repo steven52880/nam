@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/steven52880/nam/internal/resp"
@@ -15,14 +16,18 @@ import (
 
 // Credential is the plaintext credential payload (sealed into Upstream.Cred).
 type Credential struct {
-	AccessToken string `json:"access_token,omitempty"`
-	Username    string `json:"username,omitempty"`
-	Password    string `json:"password,omitempty"`
-	Key         string `json:"key,omitempty"`
+	AccessToken  string `json:"access_token,omitempty"`
+	Username     string `json:"username,omitempty"`
+	Password     string `json:"password,omitempty"`
+	Key          string `json:"key,omitempty"`
+	Cookie       string `json:"cookie,omitempty"`        // value of the session cookie only, without "session="
+	RefreshToken string `json:"refresh_token,omitempty"` // sub2api_session
+	ExpiresAt    int64  `json:"expires_at,omitempty"`    // sub2api_session: access token expiry, Unix seconds
 }
 
 func (c Credential) empty() bool {
-	return c.AccessToken == "" && c.Username == "" && c.Password == "" && c.Key == ""
+	return c.AccessToken == "" && c.Username == "" && c.Password == "" && c.Key == "" &&
+		c.Cookie == "" && c.RefreshToken == "" && c.ExpiresAt == 0
 }
 
 // UpstreamInput is the create/update body.
@@ -46,6 +51,8 @@ type UpstreamView struct {
 	BalanceCNY    *float64 `json:"balance_cny"`
 	TokenCount    int      `json:"token_count"`
 	ChannelCount  int      `json:"channel_count"`
+	// CredExpiresAt is the estimated expiry of a cookie credential (Unix seconds), 0 if unknown.
+	CredExpiresAt int64 `json:"cred_expires_at"`
 }
 
 var upstreamTypes = map[string]bool{
@@ -53,15 +60,36 @@ var upstreamTypes = map[string]bool{
 	store.UpstreamOneHub: true, store.UpstreamOfficial: true, store.UpstreamGeneric: true,
 }
 
-var credTypes = map[string]bool{"": true, store.CredAccessToken: true, store.CredPassword: true, store.CredSKKey: true}
+var credTypes = map[string]bool{
+	"": true, store.CredAccessToken: true, store.CredPassword: true, store.CredSKKey: true,
+	store.CredCookie: true, store.CredSub2APISession: true,
+}
 
-func view(u store.Upstream, tokens, channels map[uint]int) UpstreamView {
+func (s *Server) view(u store.Upstream, tokens, channels map[uint]int) UpstreamView {
 	v := UpstreamView{Upstream: u, HasCredential: len(u.Cred) > 0, TokenCount: tokens[u.ID], ChannelCount: channels[u.ID]}
 	if u.BalanceUSD != nil {
 		cny := *u.BalanceUSD * u.CurrencyRate
 		v.BalanceCNY = &cny
 	}
+	v.CredExpiresAt = s.cookieExpiry(u)
 	return v
+}
+
+// cookieExpiry estimates when a cookie credential expires. Any decryption problem
+// yields 0 so that listing upstreams never fails because of it.
+func (s *Server) cookieExpiry(u store.Upstream) int64 {
+	if u.CredType != store.CredCookie || len(u.Cred) == 0 || s.Box == nil {
+		return 0
+	}
+	pt, err := s.Box.Open(u.Cred)
+	if err != nil {
+		return 0
+	}
+	var c upstream.Credential
+	if json.Unmarshal(pt, &c) != nil {
+		return 0
+	}
+	return upstream.CookieExpiresAt(c, u.CredUpdatedAt)
 }
 
 func (s *Server) listUpstreams(c *gin.Context) {
@@ -78,7 +106,7 @@ func (s *Server) listUpstreams(c *gin.Context) {
 	}
 	out := make([]UpstreamView, 0, len(us))
 	for _, u := range us {
-		out = append(out, view(u, tk, ch))
+		out = append(out, s.view(u, tk, ch))
 	}
 	resp.OK(c, out)
 }
@@ -105,7 +133,7 @@ func (s *Server) getUpstream(c *gin.Context) {
 		return
 	}
 	tk, ch, _ := s.Store.UpstreamCounts(c.Request.Context())
-	resp.OK(c, view(u, tk, ch))
+	resp.OK(c, s.view(u, tk, ch))
 }
 
 // normalizeBaseURL trims and validates a site root URL.
@@ -145,20 +173,30 @@ func (s *Server) applyUpstreamInput(u *store.Upstream, in UpstreamInput) error {
 		}
 		u.CredType = *in.CredType
 	}
+	if in.PlatformUserID != nil {
+		u.PlatformUserID = *in.PlatformUserID
+	}
+	var writeCred *Credential
+	if in.Credential != nil && !in.Credential.empty() {
+		writeCred = in.Credential
+	}
+	if in.Type != nil || in.CredType != nil || in.PlatformUserID != nil || in.Credential != nil {
+		if err := checkSessionCred(u.Type, u.CredType, u.PlatformUserID, writeCred); err != nil {
+			return err
+		}
+	}
 	if in.Credential != nil {
-		if in.Credential.empty() {
+		if writeCred == nil {
 			u.Cred = nil
 		} else {
-			b, _ := json.Marshal(in.Credential)
+			b, _ := json.Marshal(writeCred)
 			sealed, err := s.Box.Seal(b)
 			if err != nil {
 				return err
 			}
 			u.Cred = sealed
 		}
-	}
-	if in.PlatformUserID != nil {
-		u.PlatformUserID = *in.PlatformUserID
+		u.CredUpdatedAt = time.Now().Unix()
 	}
 	if in.CurrencyRate != nil {
 		r := *in.CurrencyRate
@@ -214,7 +252,7 @@ func (s *Server) createUpstream(c *gin.Context) {
 		return
 	}
 	s.Audit.Record(ctx, store.AuditLog{Kind: store.AuditUpstream, Target: "upstream:" + strconv.Itoa(int(u.ID)), Action: "create", Summary: "新增上游 " + u.Name})
-	resp.OK(c, view(u, nil, nil))
+	resp.OK(c, s.view(u, nil, nil))
 }
 
 func (s *Server) updateUpstream(c *gin.Context) {
@@ -242,7 +280,7 @@ func (s *Server) updateUpstream(c *gin.Context) {
 	}
 	s.Audit.Record(ctx, store.AuditLog{Kind: store.AuditUpstream, Target: "upstream:" + strconv.Itoa(int(u.ID)), Action: "update", Summary: "修改上游 " + u.Name})
 	tk, ch, _ := s.Store.UpstreamCounts(ctx)
-	resp.OK(c, view(u, tk, ch))
+	resp.OK(c, s.view(u, tk, ch))
 }
 
 // deleteUpstream drafts the deletion of every channel of the upstream, then removes the

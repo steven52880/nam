@@ -29,13 +29,15 @@ export interface BackendInfo {
 }
 
 export type UpstreamType = 'newapi' | 'sk-key' | 'sub2api' | 'onehub' | 'official' | 'generic';
-export type CredType = '' | 'access_token' | 'password' | 'sk_key';
+export type CredType = '' | 'access_token' | 'password' | 'sk_key' | 'cookie' | 'sub2api_session';
 
 export interface Credential {
   access_token?: string;
   username?: string;
   password?: string;
   key?: string;
+  cookie?: string;
+  refresh_token?: string;
 }
 
 export interface UpstreamInput {
@@ -59,6 +61,8 @@ export interface Upstream {
   cred_type: CredType;
   has_credential: boolean;
   platform_user_id: number;
+  cred_updated_at: number;
+  cred_expires_at: number;
   currency_rate: number;
   tags: string;
   remark: string;

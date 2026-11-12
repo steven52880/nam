@@ -58,11 +58,14 @@ func (oneHubAdapter) Probe(ctx context.Context, s Site) (ProbeResult, error) {
 		}
 		var version string
 		_ = json.Unmarshal(d["version"], &version)
-		return ProbeResult{
+		var captcha bool
+		_ = json.Unmarshal(d["turnstile_check"], &captcha)
+		r := ProbeResult{
 			Type:     store.UpstreamOneHub,
 			Evidence: fmt.Sprintf("/api/status 返回 quota_per_unit=%g 且含 OneHub 特有字段 %s", qpu, k),
 			Version:  version,
-		}, nil
+		}
+		return withCaptchaNote(r, captcha), nil
 	}
 	return ProbeResult{}, errors.New("probe: /api/status lacks OneHub-specific fields")
 }
@@ -84,10 +87,16 @@ func ohSession(ctx context.Context, s Site) (*naSession, error) {
 		if err := c.post(ctx, "/api/user/login", body, nil); err != nil {
 			var ae *apiError
 			if errors.As(err, &ae) {
-				return nil, fmt.Errorf("login failed: %s: %w", ae.msg, ErrAuth)
+				return nil, captchaHint(fmt.Errorf("login failed: %s: %w", ae.msg, ErrAuth))
 			}
 			return nil, fmt.Errorf("login: %w", err)
 		}
+	case store.CredCookie:
+		// UNVERIFIED: that OneHub names its session cookie "session" too. No user id header needed.
+		if s.Cred.Cookie == "" {
+			return nil, fmt.Errorf("session cookie missing: %w", ErrAuth)
+		}
+		c.hdr["Cookie"] = "session=" + s.Cred.Cookie
 	case store.CredAccessToken:
 		if s.Cred.AccessToken == "" {
 			return nil, fmt.Errorf("access token missing: %w", ErrAuth)

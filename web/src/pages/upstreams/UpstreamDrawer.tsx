@@ -17,6 +17,7 @@ import { Input, Textarea } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger, Badge } from '@/components/ui/misc';
 import { formatNumber, formatTime } from '@/lib/format';
 import { CRED_LABELS } from './constants';
+import { CredNote, isCredInvalid } from './credStatus';
 import { errorText } from '@/api/errors';
 import { AdapterTab } from './tabs/AdapterTab';
 import { CredentialDialog, TestUpstreamDialog } from './tabs/CredentialDialogs';
@@ -77,7 +78,10 @@ function Overview({ u, onClose }: { u: Upstream; onClose: () => void }) {
         <Stat label="最近同步" value={formatTime(u.last_sync_at)} small />
       </div>
       {u.last_sync_error && (
-        <div className="rounded bg-destructive/10 px-2 py-1 text-sm text-destructive">最近同步失败：{u.last_sync_error}</div>
+        <div className="flex items-center justify-between gap-2 rounded bg-destructive/10 px-2 py-1 text-sm text-destructive">
+          <span>最近同步失败：{u.last_sync_error}</span>
+          {isCredInvalid(u) && <Button size="sm" variant="destructive" onClick={() => setCredOpen(true)}>更换凭证</Button>}
+        </div>
       )}
       <Field label="名称"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
       <Field label="站点地址"><Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} /></Field>
@@ -92,6 +96,7 @@ function Overview({ u, onClose }: { u: Upstream; onClose: () => void }) {
       <div className="flex items-center gap-2">
         <span className="text-muted-foreground">凭证状态：</span>
         {u.has_credential ? <Badge tone="success">已配置（{CRED_LABELS[u.cred_type] ?? u.cred_type}）</Badge> : <Badge tone="warning">未配置</Badge>}
+        <CredNote u={u} />
         <Button size="sm" variant="outline" onClick={() => setCredOpen(true)}>更换凭证</Button>
         <Button size="sm" variant="outline" onClick={() => setTestOpen(true)}>测试连通性</Button>
       </div>

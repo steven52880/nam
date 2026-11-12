@@ -41,19 +41,20 @@ func (s *Syncer) load(ctx context.Context, id uint) (store.Upstream, Site, Adapt
 		return u, site, nil, err
 	}
 	site.HTTP = s.HTTP
+	site.Creds = NewCredStore(s.St, s.Box, u.ID)
 	ad, err := Get(u.Type)
 	return u, site, ad, err
 }
 
 // record stores the outcome of one sync on the upstream row.
 // ErrUnsupported counts as success: the operation simply does not exist for this kind.
-func (s *Syncer) record(ctx context.Context, id uint, err error) {
+func (s *Syncer) record(ctx context.Context, id uint, credType string, err error) {
 	if errors.Is(err, ErrUnsupported) {
 		err = nil
 	}
 	upd := map[string]any{"last_sync_at": time.Now().Unix()}
 	if err != nil {
-		msg := err.Error()
+		msg := AuthErrorText(credType, err)
 		if r := []rune(msg); len(r) > 500 {
 			msg = string(r[:500])
 		}

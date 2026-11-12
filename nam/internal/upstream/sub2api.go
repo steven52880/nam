@@ -72,7 +72,8 @@ func (c *s2Session) get(ctx context.Context, path string, out any) error {
 }
 
 // s2Open authenticates once per adapter call: a password credential logs in (no token
-// caching), an access_token credential is the JWT itself.
+// caching), an access_token credential is the JWT itself, a sub2api_session credential
+// is renewed on demand (see s2EnsureAccess).
 func s2Open(ctx context.Context, s Site) (*s2Session, error) {
 	c := &s2Session{hc: s.client(), base: s.BaseURL, hdr: map[string]string{}}
 	switch s.CredType {
@@ -107,6 +108,12 @@ func s2Open(ctx context.Context, s Site) (*s2Session, error) {
 			return nil, fmt.Errorf("access token missing: %w", ErrAuth)
 		}
 		c.hdr["Authorization"] = "Bearer " + strings.TrimPrefix(s.Cred.AccessToken, "Bearer ")
+	case store.CredSub2APISession:
+		tok, err := s2EnsureAccess(ctx, s)
+		if err != nil {
+			return nil, err
+		}
+		c.hdr["Authorization"] = "Bearer " + tok
 	default:
 		return nil, fmt.Errorf("cred type %q unusable for sub2api: %w", s.CredType, ErrUnsupported)
 	}

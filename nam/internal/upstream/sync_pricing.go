@@ -17,18 +17,18 @@ func (s *Syncer) SyncGroups(ctx context.Context, id uint) (int, error) {
 		if errors.Is(err, store.ErrNotFound) {
 			return 0, err
 		}
-		s.record(ctx, id, err)
+		s.record(ctx, id, "", err)
 		return 0, err
 	}
 	p, err := ad.Pricing(ctx, site)
 	if errors.Is(err, ErrUnsupported) {
-		s.record(ctx, u.ID, nil)
+		s.record(ctx, u.ID, u.CredType, nil)
 		return 0, nil
 	}
 	if err == nil {
 		err = s.storePricing(ctx, u.ID, p)
 	}
-	s.record(ctx, u.ID, err)
+	s.record(ctx, u.ID, u.CredType, err)
 	if err != nil {
 		return 0, err
 	}
@@ -86,12 +86,12 @@ func (s *Syncer) SyncBalance(ctx context.Context, id uint) error {
 		if errors.Is(err, store.ErrNotFound) {
 			return err
 		}
-		s.record(ctx, id, err)
+		s.record(ctx, id, "", err)
 		return err
 	}
 	b, err := ad.Balance(ctx, site)
 	if errors.Is(err, ErrUnsupported) {
-		s.record(ctx, u.ID, nil)
+		s.record(ctx, u.ID, u.CredType, nil)
 		return nil
 	}
 	if err == nil {
@@ -102,6 +102,6 @@ func (s *Syncer) SyncBalance(ctx context.Context, id uint) error {
 		err = s.St.DB.WithContext(ctx).Model(&store.Upstream{}).Where("id = ?", u.ID).
 			Updates(map[string]any{"balance_usd": usd, "balance_at": time.Now().Unix()}).Error
 	}
-	s.record(ctx, u.ID, err)
+	s.record(ctx, u.ID, u.CredType, err)
 	return err
 }

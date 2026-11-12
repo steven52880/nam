@@ -104,6 +104,13 @@
     - **M3.5 QA**：接口级测试见 `channels/m35_test.go`、`core/m35_test.go`；真实 NewAPI 端到端 23 项（`temp/e2e/m35.ps1`）全部通过，M2 的 12 项、M3 的 8 项回归也通过。
     - **前端**：上游抽屉编辑令牌模型并"从上游拉取"；批量创建向导第 3 步按令牌选模型；渠道表的上游、令牌、厂商可以直接改，多选后可批量设置上游。`npm run build` 通过，<u>还没在浏览器里点过</u>。
 
+- **M3.6 会话凭证**（计划 `m3.6-session-cookie.md`）
+    - **后端**：新增凭证类型 `cookie`（NewAPI / OneHub）和 `sub2api_session`；`CredStore` 写回接口，续期按上游加锁（sub2api 过期前自动续期，并把轮换后的令牌写回 `nam.db`）；`cred_expires_at` 由 `session` Cookie 的签发时间解出（约 30 天）；探测新增 `login_captcha`（`/api/status` 的 `turnstile_check`），登录失败时提示改用会话 Cookie。
+    - **前端**：向导和凭证弹窗支持两种新凭证，带可折叠的"怎么获取"和复制按钮；探测到人机验证时显示提示条并默认会话 Cookie，仍选账号密码时给黄色警告；列表和概览显示"Cookie 约 N 天后过期"（≤3 天黄、过期红）、"凭证更新于 x 前"；同步错误含"已失效"时显示"更换凭证"。
+    - **测试**：单测覆盖 Cookie 清洗、签发时间解码、续期去重（两个 goroutine 只请求一次续期）、失效文案；api 层覆盖参数校验和 `cred_expires_at` 输出。
+    - **M3.6 QA**：真实 NewAPI 端到端 6 项（`temp/e2e/m36.ps1`）全部通过，M2 的 12 项、M3 的 8 项、M3.5 的 23 项回归也通过。
+    - **已知缺口**：OneHub 的 Cookie 名是否也叫 `session` 未验证；sub2api refresh_token 有效期和真实站点行为只跑过 mock；前端还没在浏览器里点过；`PUT /upstreams/:id` 与正在进行的 sub2api 续期同时发生时，可能覆盖刚轮换的令牌（<u>窗口很小，接受</u>）。
+
 ### 下一步要处理的事
 
 - **M4 统计**：增量拉日志、`stats_hourly` 聚合、"最新"档直查、看板、清理原始日志、补丁 P1。
@@ -113,4 +120,4 @@
     - NewAPI 选项表里没有的补全倍率、缓存倍率，在"模型与价格"页显示为"未知"，不参与偏差比较（NewAPI 代码里有内置默认值）。
     - "在 NewAPI 中打开"的路径 `/console/channel?id=` 没在浏览器验证。
     - 密码方式登录上游时，如果对方开了 2FA 或 Turnstile 会失败。
-    - 端到端脚本：`temp/e2e/run.ps1 m2.ps1`、`m3.ps1` 或 `m35.ps1`，每次运行前删掉 `temp/e2e` 下的 `one-api.db`、`nam.db`（需要先编译 `new-api-nam.exe` 和 `mock.exe`，见脚本）。
+    - 端到端脚本：`temp/e2e/run.ps1 m2.ps1`、`m3.ps1`、`m35.ps1` 或 `m36.ps1`，每次运行前删掉 `temp/e2e` 下的 `one-api.db`、`nam.db`（需要先编译 `new-api-nam.exe` 和 `mock.exe`，见脚本）。

@@ -5,9 +5,9 @@ import { errorText } from '@/api/errors';
 import type { CredType, UpstreamType } from '@/api/types';
 import { Input, Textarea } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CRED_OPTIONS } from '../constants';
+import { credOptionsFor } from '../constants';
 import { CredentialFields, Field, TypeSelect } from '../UpstreamForm';
-import type { UpstreamDraft } from './state';
+import { credPatchForType, type UpstreamDraft } from './state';
 
 interface StepProps {
   draft: UpstreamDraft;
@@ -31,7 +31,10 @@ export function StepBasics({ draft, onChange }: StepProps) {
 export function StepDetect({ draft, onChange }: StepProps) {
   const probe = useMutation({
     mutationFn: () => api.probeUpstream(draft.baseUrl.trim()),
-    onSuccess: (res) => onChange({ type: res.type }),
+    onSuccess: (res) => {
+      const loginCaptcha = res.login_captcha === true;
+      onChange({ type: res.type, loginCaptcha, ...credPatchForType(res.type, draft.credType, draft.credential, loginCaptcha) });
+    },
   });
 
   useEffect(() => {
@@ -52,15 +55,29 @@ export function StepDetect({ draft, onChange }: StepProps) {
         {probe.isError && <span className="text-sm text-destructive">自动识别失败：{errorText(probe.error)}。请手动选择类型。</span>}
       </div>
       <Field label="上游类型（可手动修改）">
-        <TypeSelect value={draft.type} onChange={(type: UpstreamType) => onChange({ type })} />
+        <TypeSelect
+          value={draft.type}
+          onChange={(type: UpstreamType) => onChange({ type, ...credPatchForType(type, draft.credType, draft.credential, draft.loginCaptcha) })}
+        />
       </Field>
     </div>
   );
 }
 
 export function StepCredential({ draft, onChange }: StepProps) {
+  const captchaSite = draft.loginCaptcha && (draft.type === 'newapi' || draft.type === 'onehub');
   return (
     <div className="grid gap-3">
+      {captchaSite && (
+        <div className="rounded border bg-muted/40 px-3 py-2 text-sm">
+          该站登录需要人机验证，账号密码无法使用，请用会话 Cookie。
+        </div>
+      )}
+      {captchaSite && draft.credType === 'password' && (
+        <div className="rounded bg-warning/15 px-3 py-2 text-sm text-warning">
+          该站开启了人机验证，账号密码大概率无法登录，建议改用会话 Cookie。
+        </div>
+      )}
       <Field label="凭证方式">
         <Select
           value={draft.credType === '' ? 'none' : draft.credType}
@@ -68,7 +85,7 @@ export function StepCredential({ draft, onChange }: StepProps) {
         >
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
-            {CRED_OPTIONS.map(([v, l]) => <SelectItem key={v || 'none'} value={v === '' ? 'none' : v}>{l}</SelectItem>)}
+            {credOptionsFor(draft.type).map(([v, l]) => <SelectItem key={v || 'none'} value={v === '' ? 'none' : v}>{l}</SelectItem>)}
           </SelectContent>
         </Select>
       </Field>
@@ -78,6 +95,7 @@ export function StepCredential({ draft, onChange }: StepProps) {
         onChange={(credential) => onChange({ credential })}
         userId={draft.userId}
         onUserId={(userId) => onChange({ userId })}
+        upstreamType={draft.type}
       />
     </div>
   );

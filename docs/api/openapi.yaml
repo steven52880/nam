@@ -47,7 +47,8 @@ components:
       enum: [newapi, sk-key, sub2api, onehub, official, generic]
     CredType:
       type: string
-      enum: ['', access_token, password, sk_key]
+      description: cookie 只能用于 newapi / onehub；sub2api_session 只能用于 sub2api。
+      enum: ['', access_token, password, sk_key, cookie, sub2api_session]
     Credential:
       type: object
       properties:
@@ -55,6 +56,9 @@ components:
         username: { type: string }
         password: { type: string }
         key: { type: string }
+        cookie: { type: string, description: cookie 类型。session 的值；也接受 session=值 或整串 Cookie 头，服务端清洗后只存值 }
+        refresh_token: { type: string, description: sub2api_session 类型 }
+        expires_at: { type: integer, description: sub2api_session 的 access_token 过期时间（Unix 秒）。由服务端从 JWT 算出，请求里的值被忽略 }
     UpstreamInput:
       type: object
       description: 创建时 name/type/base_url 必填；修改时只传要改的字段。credential 传空对象表示清除凭证。
@@ -88,6 +92,8 @@ components:
         balance_at: { type: integer }
         last_sync_at: { type: integer }
         last_sync_error: { type: string }
+        cred_updated_at: { type: integer, description: 凭证最后修改时间（Unix 秒）；API 写入或自动续期写回时更新 }
+        cred_expires_at: { type: integer, description: cookie 凭证的预计过期时间（Unix 秒，签发时间 + 30 天）；其他类型或未知为 0 }
         token_count: { type: integer }
         channel_count: { type: integer }
         created_at: { type: string, format: date-time }
@@ -198,6 +204,7 @@ components:
         type: { type: string }
         evidence: { type: string }
         version: { type: string }
+        login_captcha: { type: boolean, description: 站点登录需要人机验证（Turnstile），账号密码无法登录 }
     CheckResult:
       type: object
       description: 添加上游向导的连通性检查。

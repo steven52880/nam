@@ -14,9 +14,11 @@ const (
 
 // Credential types.
 const (
-	CredAccessToken = "access_token"
-	CredPassword    = "password"
-	CredSKKey       = "sk_key"
+	CredAccessToken    = "access_token"
+	CredPassword       = "password"
+	CredSKKey          = "sk_key"
+	CredCookie         = "cookie"          // NewAPI / OneHub browser session cookie
+	CredSub2APISession = "sub2api_session" // sub2api access+refresh token pair, auto-refreshed
 )
 
 // Upstream is one upstream site.
@@ -27,7 +29,9 @@ type Upstream struct {
 	BaseURL  string `gorm:"size:255;not null" json:"base_url"`
 	CredType string `gorm:"size:16" json:"cred_type"`
 	// Cred is AES-GCM sealed JSON (see internal/crypto); never serialized.
-	Cred           []byte  `json:"-"`
+	Cred []byte `json:"-"`
+	// CredUpdatedAt is when the credential last changed (Unix seconds): API write or token rotation.
+	CredUpdatedAt  int64   `json:"cred_updated_at"`
 	PlatformUserID int     `json:"platform_user_id"`
 	CurrencyRate   float64 `gorm:"not null;default:1" json:"currency_rate"` // 上游货币汇率：元 / 上游 1 美元额度
 	Tags           string  `gorm:"size:255" json:"tags"`                    // comma separated

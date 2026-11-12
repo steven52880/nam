@@ -7,6 +7,16 @@ export function formatTime(unix: number): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
+/** Unix 秒 → 「x 分钟前 / x 小时前 / x 天前」；空值显示「—」。 */
+export function formatAgo(unix: number, nowMs: number = Date.now()): string {
+  if (!unix) return '—';
+  const sec = Math.max(0, Math.floor(nowMs / 1000) - unix);
+  if (sec < 60) return '刚刚';
+  if (sec < 3600) return `${Math.floor(sec / 60)} 分钟前`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)} 小时前`;
+  return `${Math.floor(sec / 86400)} 天前`;
+}
+
 export function formatDuration(ms: number): string {
   if (!ms) return '—';
   if (ms < 1000) return `${ms} 毫秒`;

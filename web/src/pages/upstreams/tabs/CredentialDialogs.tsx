@@ -7,20 +7,29 @@ import type { Credential, CredType, Upstream, UpstreamInput } from '@/api/types'
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CRED_OPTIONS } from '../constants';
+import { CRED_OPTIONS, credOptionsFor, defaultCredType } from '../constants';
 import { CredentialFields, Field } from '../UpstreamForm';
 import { CheckList } from '../wizard/StepTest';
+import { credentialValid, usesUserId } from '../wizard/state';
 
 export function CredentialDialog({ upstream, open, onOpenChange }: { upstream: Upstream; open: boolean; onOpenChange: (open: boolean) => void }) {
   const qc = useQueryClient();
-  const [credType, setCredType] = useState<CredType>(upstream.cred_type || 'access_token');
+  const [credType, setCredType] = useState<CredType>(upstream.cred_type || defaultCredType(upstream.type));
   const [cred, setCred] = useState<Credential>({});
   const [userId, setUserId] = useState(upstream.platform_user_id ? String(upstream.platform_user_id) : '');
+
+  const options = credOptionsFor(upstream.type);
+  if (!options.some(([v]) => v === credType)) {
+    const current = CRED_OPTIONS.find(([v]) => v === credType);
+    if (current) options.push(current);
+  }
+  const sessionType = credType === 'cookie' || credType === 'sub2api_session';
+  const invalid = sessionType && !credentialValid(upstream.type, credType, cred, userId);
 
   const save = useMutation({
     mutationFn: () => {
       const body: UpstreamInput = { cred_type: credType, credential: credType ? cred : {} };
-      if (credType === 'access_token' && userId) body.platform_user_id = Number(userId);
+      if (usesUserId(credType) && userId) body.platform_user_id = Number(userId);
       return api.updateUpstream(upstream.id, body);
     },
     onSuccess: () => {
@@ -43,15 +52,15 @@ export function CredentialDialog({ upstream, open, onOpenChange }: { upstream: U
             <Select value={credType === '' ? 'none' : credType} onValueChange={(v) => { setCredType(v === 'none' ? '' : (v as CredType)); setCred({}); }}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                {CRED_OPTIONS.map(([v, l]) => <SelectItem key={v || 'none'} value={v === '' ? 'none' : v}>{l}</SelectItem>)}
+                {options.map(([v, l]) => <SelectItem key={v || 'none'} value={v === '' ? 'none' : v}>{l}</SelectItem>)}
               </SelectContent>
             </Select>
           </Field>
-          <CredentialFields credType={credType} value={cred} onChange={setCred} userId={userId} onUserId={setUserId} />
+          <CredentialFields credType={credType} value={cred} onChange={setCred} userId={userId} onUserId={setUserId} upstreamType={upstream.type} />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
-          <Button disabled={save.isPending} onClick={() => save.mutate()}>保存</Button>
+          <Button disabled={save.isPending || invalid} onClick={() => save.mutate()}>保存</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

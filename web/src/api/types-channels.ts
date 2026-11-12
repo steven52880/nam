@@ -203,6 +203,7 @@ export interface ProbeResult {
   type: UpstreamType;
   evidence: string;
   version?: string;
+  login_captcha?: boolean;
 }
 
 export interface UpstreamTestInput {

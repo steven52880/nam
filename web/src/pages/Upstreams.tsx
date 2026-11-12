@@ -13,6 +13,8 @@ import { Badge } from '@/components/ui/misc';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatNumber, formatTime } from '@/lib/format';
 import { allTags, CRED_LABELS, splitTags, TYPE_OPTIONS } from './upstreams/constants';
+import { CredNote, isCredInvalid } from './upstreams/credStatus';
+import { CredentialDialog } from './upstreams/tabs/CredentialDialogs';
 import { UpstreamDrawer } from './upstreams/UpstreamDrawer';
 import { AddUpstreamWizard } from './upstreams/wizard/AddUpstreamWizard';
 
@@ -28,9 +30,10 @@ interface RowProps {
   onCheck: () => void;
   onOpen: () => void;
   onSync: () => void;
+  onReplaceCred: () => void;
 }
 
-function Row({ u, checked, syncing, onCheck, onOpen, onSync }: RowProps) {
+function Row({ u, checked, syncing, onCheck, onOpen, onSync, onReplaceCred }: RowProps) {
   return (
     <tr className="cursor-pointer border-t hover:bg-accent/40" onClick={onOpen}>
       <td className="px-3" onClick={(e) => e.stopPropagation()}>
@@ -44,14 +47,22 @@ function Row({ u, checked, syncing, onCheck, onOpen, onSync }: RowProps) {
       <td className="px-3"><div className="flex gap-1">{splitTags(u.tags).map((t) => <Badge key={t} tone="accent">{t}</Badge>)}</div></td>
       <td className="px-3 text-right tabular-nums">{formatNumber(u.currency_rate)}</td>
       <td className="px-3">
-        {u.has_credential ? <Badge tone="success">{CRED_LABELS[u.cred_type] ?? '已配置'}</Badge> : <Badge tone="warning">未配置</Badge>}
+        <div className="flex flex-col items-start gap-0.5">
+          {u.has_credential ? <Badge tone="success">{CRED_LABELS[u.cred_type] ?? '已配置'}</Badge> : <Badge tone="warning">未配置</Badge>}
+          <CredNote u={u} />
+        </div>
       </td>
       <td className="px-3 text-right tabular-nums">{formatNumber(u.balance_usd)}</td>
       <td className="px-3 text-right tabular-nums">{formatNumber(u.balance_cny)}</td>
       <td className="px-3 text-right tabular-nums">{u.token_count}</td>
       <td className="px-3 text-right tabular-nums">{u.channel_count}</td>
       <td className="whitespace-nowrap px-3 tabular-nums">{formatTime(u.last_sync_at)}</td>
-      <td className="max-w-48 truncate px-3 text-destructive" title={u.last_sync_error}>{u.last_sync_error}</td>
+      <td className="px-3 text-destructive" title={u.last_sync_error} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-1.5">
+          <span className="max-w-48 truncate">{u.last_sync_error}</span>
+          {isCredInvalid(u) && <Button size="sm" variant="outline" onClick={onReplaceCred}>更换凭证</Button>}
+        </div>
+      </td>
       <td className="px-3" onClick={(e) => e.stopPropagation()}>
         <Button size="sm" variant="outline" disabled={syncing} onClick={onSync}>{syncing ? '同步中…' : '立即同步'}</Button>
       </td>
@@ -65,6 +76,7 @@ export default function UpstreamsPage() {
   const [tag, setTag] = useState(ALL);
   const [search, setSearch] = useState('');
   const [creating, setCreating] = useState(false);
+  const [credTarget, setCredTarget] = useState<Upstream | null>(null);
   const [checked, setChecked] = useState<Set<number>>(new Set());
   const qc = useQueryClient();
   const query = useQuery({ queryKey: ['upstreams'], queryFn: api.upstreams });
@@ -164,6 +176,7 @@ export default function UpstreamsPage() {
                 onCheck={() => toggleChecked(u.id)}
                 onOpen={() => setOpen(u.id)}
                 onSync={() => sync.mutate([u.id])}
+                onReplaceCred={() => setCredTarget(u)}
               />
             ))}
             {query.isLoading && <tr><td colSpan={HEADERS.length} className="h-16 text-center text-muted-foreground">加载中…</td></tr>}
@@ -183,6 +196,14 @@ export default function UpstreamsPage() {
       </div>
       <AddUpstreamWizard open={creating} onOpenChange={setCreating} />
       <UpstreamDrawer upstream={opened} onClose={() => setOpen(null)} />
+      {credTarget && (
+        <CredentialDialog
+          key={credTarget.id}
+          upstream={credTarget}
+          open
+          onOpenChange={(o) => { if (!o) setCredTarget(null); }}
+        />
+      )}
     </div>
   );
 }

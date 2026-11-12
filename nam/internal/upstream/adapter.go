@@ -20,10 +20,19 @@ var ErrAuth = errors.New("upstream: credentials rejected")
 
 // Credential is the decrypted credential of an upstream (same JSON as api.Credential).
 type Credential struct {
-	AccessToken string `json:"access_token,omitempty"`
-	Username    string `json:"username,omitempty"`
-	Password    string `json:"password,omitempty"`
-	Key         string `json:"key,omitempty"`
+	AccessToken  string `json:"access_token,omitempty"`
+	Username     string `json:"username,omitempty"`
+	Password     string `json:"password,omitempty"`
+	Key          string `json:"key,omitempty"`
+	Cookie       string `json:"cookie,omitempty"`        // value of the session cookie only, without "session="
+	RefreshToken string `json:"refresh_token,omitempty"` // sub2api_session
+	ExpiresAt    int64  `json:"expires_at,omitempty"`    // sub2api_session: access token expiry, Unix seconds
+}
+
+// CredStore persists a rotated credential. Nil means read-only (draft tests).
+type CredStore interface {
+	Load(ctx context.Context) (Credential, error)
+	Save(ctx context.Context, c Credential) error
 }
 
 // Site is everything an adapter needs to talk to one upstream.
@@ -38,13 +47,16 @@ type Site struct {
 	Config   string // adapter_config JSON (generic)
 	// HTTP is the client to use (shared, with timeouts). Nil → adapter default.
 	HTTP *http.Client
+	// Creds writes rotated credentials back (sub2api_session). Nil for unsaved drafts.
+	Creds CredStore
 }
 
 // ProbeResult is what auto-detection found.
 type ProbeResult struct {
-	Type     string `json:"type"`
-	Evidence string `json:"evidence"` // human-readable reason, e.g. "/api/status 返回 quota_per_unit"
-	Version  string `json:"version,omitempty"`
+	Type         string `json:"type"`
+	Evidence     string `json:"evidence"` // human-readable reason, e.g. "/api/status 返回 quota_per_unit"
+	Version      string `json:"version,omitempty"`
+	LoginCaptcha bool   `json:"login_captcha"` // the site's login requires a captcha (Turnstile)
 }
 
 // Balance is the remaining credit in upstream USD (quota / quota_per_unit).

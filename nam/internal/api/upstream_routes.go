@@ -79,11 +79,21 @@ func siteFromInput(in UpstreamInput) (upstream.Site, error) {
 		}
 		site.CredType = *in.CredType
 	}
-	if in.Credential != nil {
-		site.Cred = upstream.Credential(*in.Credential)
-	}
 	if in.PlatformUserID != nil {
 		site.UserID = *in.PlatformUserID
+	}
+	var cred *Credential
+	if in.Credential != nil {
+		cp := *in.Credential
+		cred = &cp
+	}
+	if in.CredType != nil || in.Credential != nil {
+		if err := checkSessionCred(site.Type, site.CredType, site.UserID, cred); err != nil {
+			return site, err
+		}
+	}
+	if cred != nil {
+		site.Cred = upstream.Credential(*cred)
 	}
 	if in.AdapterConfig != nil {
 		site.Config = *in.AdapterConfig
@@ -128,6 +138,7 @@ func (s *Server) testUpstream(c *gin.Context) {
 		resp.FailFrom(c, err)
 		return
 	}
+	site.Creds = upstream.NewCredStore(s.Store, s.Box, u.ID)
 	ctx, cancel := withTimeout(c, 2*time.Minute)
 	defer cancel()
 	resp.OK(c, s.Syncer.Test(ctx, site))
@@ -245,6 +256,7 @@ func (s *Server) fetchUpstreamModels(c *gin.Context) {
 		return
 	}
 	site.HTTP = s.Syncer.HTTP
+	site.Creds = upstream.NewCredStore(s.Store, s.Box, u.ID)
 	var fetchErr error
 	if s.Ports.Models != nil {
 		models, err := s.Ports.Models.FetchModels(ctx, site.BaseURL, in.ChannelType, string(key))

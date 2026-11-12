@@ -57,13 +57,19 @@ func newSession(ctx context.Context, s Site) (*naSession, error) {
 		body := map[string]string{"username": s.Cred.Username, "password": s.Cred.Password}
 		if err := c.post(ctx, "/api/user/login", body, &me); err != nil {
 			if apiErr, ok := err.(*apiError); ok { //nolint:errorlint // sentinel type from our own helper
-				return nil, fmt.Errorf("login failed: %s: %w", apiErr.msg, ErrAuth)
+				return nil, captchaHint(fmt.Errorf("login failed: %s: %w", apiErr.msg, ErrAuth))
 			}
 			return nil, fmt.Errorf("login: %w", err)
 		}
 		if userID == 0 {
 			userID = me.ID
 		}
+	case store.CredCookie:
+		// NewAPI keeps the whole session in the cookie; New-Api-User must still match it.
+		if s.Cred.Cookie == "" || userID <= 0 {
+			return nil, fmt.Errorf("session cookie or user id missing: %w", ErrAuth)
+		}
+		c.hdr["Cookie"] = "session=" + s.Cred.Cookie
 	case store.CredAccessToken:
 		if s.Cred.AccessToken == "" {
 			return nil, fmt.Errorf("access token missing: %w", ErrAuth)
@@ -79,8 +85,18 @@ func newSession(ctx context.Context, s Site) (*naSession, error) {
 }
 
 type statusData struct {
-	QuotaPerUnit float64 `json:"quota_per_unit"`
-	Version      string  `json:"version"`
+	QuotaPerUnit   float64 `json:"quota_per_unit"`
+	Version        string  `json:"version"`
+	TurnstileCheck bool    `json:"turnstile_check"`
+}
+
+// withCaptchaNote appends the login-captcha note to a probe result.
+func withCaptchaNote(r ProbeResult, captcha bool) ProbeResult {
+	r.LoginCaptcha = captcha
+	if captcha {
+		r.Evidence += "；登录需要人机验证"
+	}
+	return r
 }
 
 func fetchStatus(ctx context.Context, s Site) (statusData, error) {
@@ -109,11 +125,12 @@ func probeNewAPILike(ctx context.Context, s Site, typ, label string) (ProbeResul
 	if d.QuotaPerUnit <= 0 {
 		return ProbeResult{}, fmt.Errorf("probe: /api/status has no quota_per_unit, not a NewAPI-family site")
 	}
-	return ProbeResult{
+	r := ProbeResult{
 		Type:     typ,
 		Evidence: fmt.Sprintf("/api/status 返回 quota_per_unit=%s（%s）", strconv.FormatFloat(d.QuotaPerUnit, 'f', -1, 64), label),
 		Version:  d.Version,
-	}, nil
+	}
+	return withCaptchaNote(r, d.TurnstileCheck), nil
 }
 
 func (newAPIAdapter) Probe(ctx context.Context, s Site) (ProbeResult, error) {
