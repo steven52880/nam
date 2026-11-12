@@ -38,6 +38,14 @@ export function credOptionsFor(type: UpstreamType): Array<[CredType, string]> {
   return common;
 }
 
+/** 在 credOptionsFor 基础上保留当前（可能是历史遗留的）凭证方式，避免选中值在下拉里消失。 */
+export function credOptionsWithCurrent(type: UpstreamType, current: CredType): Array<[CredType, string]> {
+  const options = credOptionsFor(type);
+  if (options.some(([v]) => v === current)) return options;
+  const legacy = CRED_OPTIONS.find(([v]) => v === current);
+  return legacy ? [...options, legacy] : options;
+}
+
 export function allowsCredType(type: UpstreamType, credType: CredType): boolean {
   return credOptionsFor(type).some(([v]) => v === credType);
 }

@@ -2,11 +2,9 @@ import { useMutation } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { api } from '@/api/endpoints';
 import { errorText } from '@/api/errors';
-import type { CredType, UpstreamType } from '@/api/types';
+import type { UpstreamType } from '@/api/types';
 import { Input, Textarea } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { credOptionsFor } from '../constants';
-import { CredentialFields, Field, TypeSelect } from '../UpstreamForm';
+import { CredentialPicker, Field, TypeSelect } from '../UpstreamForm';
 import { credPatchForType, type UpstreamDraft } from './state';
 
 interface StepProps {
@@ -78,24 +76,14 @@ export function StepCredential({ draft, onChange }: StepProps) {
           该站开启了人机验证，账号密码大概率无法登录，建议改用会话 Cookie。
         </div>
       )}
-      <Field label="凭证方式">
-        <Select
-          value={draft.credType === '' ? 'none' : draft.credType}
-          onValueChange={(v) => onChange({ credType: v === 'none' ? '' : (v as CredType), credential: {} })}
-        >
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {credOptionsFor(draft.type).map(([v, l]) => <SelectItem key={v || 'none'} value={v === '' ? 'none' : v}>{l}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </Field>
-      <CredentialFields
+      <CredentialPicker
+        upstreamType={draft.type}
         credType={draft.credType}
+        onCredType={(credType) => onChange({ credType, credential: {} })}
         value={draft.credential}
         onChange={(credential) => onChange({ credential })}
         userId={draft.userId}
         onUserId={(userId) => onChange({ userId })}
-        upstreamType={draft.type}
       />
     </div>
   );

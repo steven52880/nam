@@ -109,7 +109,7 @@ function Overview({ u, onClose }: { u: Upstream; onClose: () => void }) {
           <Button disabled={!valid || save.isPending} onClick={() => save.mutate()}>保存</Button>
         </div>
       </div>
-      <CredentialDialog upstream={u} open={credOpen} onOpenChange={setCredOpen} />
+      <CredentialDialog upstream={u} type={type} open={credOpen} onOpenChange={setCredOpen} />
       <TestUpstreamDialog upstream={u} open={testOpen} onOpenChange={setTestOpen} />
       <Dialog open={confirmDel} onOpenChange={setConfirmDel}>
         <DialogContent className="max-w-sm">
@@ -155,7 +155,7 @@ export function UpstreamDrawer({ upstream, onClose }: { upstream: Upstream | nul
               {PLACEHOLDER_TABS.map((t) => <TabsTrigger key={t} value={t}>{t}</TabsTrigger>)}
             </TabsList>
             <div className="min-h-0 flex-1 overflow-y-auto">
-              <TabsContent value="overview"><Overview key={upstream.id + upstream.updated_at} u={upstream} onClose={onClose} /></TabsContent>
+              <TabsContent value="overview"><Overview key={upstream.id} u={upstream} onClose={onClose} /></TabsContent>
               <TabsContent value="groups"><GroupsTab upstreamId={upstream.id} /></TabsContent>
               <TabsContent value="models"><ModelsTab upstreamId={upstream.id} /></TabsContent>
               <TabsContent value="tokens"><TokensTab upstream={upstream} /></TabsContent>

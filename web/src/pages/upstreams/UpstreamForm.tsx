@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input, Textarea } from '@/components/ui/input';
 import { Label } from '@/components/ui/misc';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { TYPE_OPTIONS } from './constants';
+import { credOptionsWithCurrent, TYPE_OPTIONS } from './constants';
 
 const USER_ID_SNIPPET = "JSON.parse(localStorage.getItem('user')).id";
 const TOKEN_SNIPPET = "Object.keys(localStorage).filter(k=>/token/i.test(k)).forEach(k=>console.log(k, localStorage.getItem(k)))";
@@ -133,6 +133,41 @@ export function CredentialFields({
     );
   }
   return null;
+}
+
+/** 凭证方式下拉 + 对应输入框。向导和「更换凭证」共用，选项来自 credOptionsWithCurrent。切换方式时调用方负责清空 credential。 */
+export function CredentialPicker({
+  upstreamType,
+  credType,
+  onCredType,
+  value,
+  onChange,
+  userId,
+  onUserId,
+}: {
+  upstreamType: UpstreamType;
+  credType: CredType;
+  onCredType: (t: CredType) => void;
+  value: Credential;
+  onChange: (c: Credential) => void;
+  userId: string;
+  onUserId: (v: string) => void;
+}) {
+  return (
+    <>
+      <Field label="凭证方式">
+        <Select value={credType === '' ? 'none' : credType} onValueChange={(v) => onCredType(v === 'none' ? '' : (v as CredType))}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {credOptionsWithCurrent(upstreamType, credType).map(([v, l]) => (
+              <SelectItem key={v || 'none'} value={v === '' ? 'none' : v}>{l}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
+      <CredentialFields credType={credType} value={value} onChange={onChange} userId={userId} onUserId={onUserId} upstreamType={upstreamType} />
+    </>
+  );
 }
 
 export function TypeSelect({ value, onChange }: { value: UpstreamType; onChange: (v: UpstreamType) => void }) {
