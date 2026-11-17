@@ -1,15 +1,16 @@
 import { useState } from 'react';
 import { api } from '@/api/endpoints';
 import { Button } from '@/components/ui/button';
+import { Field } from '@/components/form/Field';
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/misc';
 import { useActionMutation } from '@/hooks/useActionMutation';
 
 export function PasswordDialog({
@@ -41,32 +42,31 @@ export function PasswordDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm">
+      <DialogContent size="sm">
         <DialogHeader>
           <DialogTitle>修改密码</DialogTitle>
         </DialogHeader>
         <form
-          className="grid gap-3"
+          className="flex min-h-0 flex-1 flex-col gap-3"
           onSubmit={(e) => {
             e.preventDefault();
             if (valid) mutation.mutate();
           }}
         >
-          <div className="grid gap-1">
-            <Label>当前密码</Label>
-            <Input type="password" autoFocus value={oldPw} onChange={(e) => setOldPw(e.target.value)} />
-          </div>
-          <div className="grid gap-1">
-            <Label>新密码（至少 8 位）</Label>
-            <Input type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} />
-            {tooShort && <span className="text-sm text-destructive">新密码至少 8 位</span>}
-          </div>
-          <div className="grid gap-1">
-            <Label>确认新密码</Label>
-            <Input type="password" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} />
-            {mismatch && <span className="text-sm text-destructive">两次输入不一致</span>}
-          </div>
-          <p className="text-sm text-muted-foreground">修改后，其它会话全部失效。</p>
+          <DialogBody className="grid content-start gap-3">
+            <Field label="当前密码">
+              <Input type="password" autoFocus value={oldPw} onChange={(e) => setOldPw(e.target.value)} />
+            </Field>
+            <Field label="新密码（至少 8 位）">
+              <Input type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} />
+              {tooShort && <span className="text-sm text-destructive">新密码至少 8 位</span>}
+            </Field>
+            <Field label="确认新密码">
+              <Input type="password" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} />
+              {mismatch && <span className="text-sm text-destructive">两次输入不一致</span>}
+            </Field>
+            <p className="text-sm text-muted-foreground">修改后，其它会话全部失效。</p>
+          </DialogBody>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               取消

@@ -8,6 +8,7 @@ import type { UpstreamToken } from '@/api/types';
 import { ModelCountCell } from '@/components/cells/ModelCountCell';
 import { ModelPickerDialog } from '@/components/model-picker';
 import { useVendorMatches } from '@/components/model-picker/useModelGroups';
+import { Banner } from '@/components/ui/banner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/misc';
 import { formatNumber } from '@/lib/format';
@@ -63,7 +64,7 @@ export function StepTokenModels({ upstreamId, tokens, tokenIds, value, onChange 
       <p className="text-sm text-muted-foreground">
         自动从上游拉取每个令牌可用的模型，并按「设置 → 厂商分组」的模型名前缀归属厂商；一个令牌跨多个厂商时会拆成多个渠道。调整只对本次创建生效，不会写回令牌。
       </p>
-      {matchFailed && <div className="rounded bg-destructive/10 px-2 py-1 text-sm text-destructive">厂商匹配失败，无法自动预选，请手动调整模型。</div>}
+      {matchFailed && <Banner tone="error">厂商匹配失败，无法自动预选，请手动调整模型。</Banner>}
       {tokenIds.map((id, index) => {
         const token = tokens.find((t) => t.id === id);
         const fetch = fetches[index];
@@ -97,10 +98,12 @@ export function StepTokenModels({ upstreamId, tokens, tokenIds, value, onChange 
             </div>
             {fetch?.isFetching && <div className="text-sm text-muted-foreground">正在从上游拉取模型…</div>}
             {fetch?.isError && !fetch.isFetching && (
-              <div className="flex items-center gap-2 rounded bg-destructive/10 px-2 py-1 text-sm text-destructive">
-                <span className="flex-1">拉取失败：{errorText(fetch.error)}（仍可点「调整模型」手动输入）</span>
-                <Button size="sm" variant="outline" onClick={() => void fetch.refetch()}>重试</Button>
-              </div>
+              <Banner
+                tone="error"
+                action={<Button size="sm" variant="outline" onClick={() => void fetch.refetch()}>重试</Button>}
+              >
+                拉取失败：{errorText(fetch.error)}（仍可点「调整模型」手动输入）
+              </Banner>
             )}
             {vendorNames.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
@@ -113,9 +116,9 @@ export function StepTokenModels({ upstreamId, tokens, tokenIds, value, onChange 
             )}
             {splitCount > 1 && <div className="text-sm text-muted-foreground">将拆成 {splitCount} 个渠道（每个厂商一个）。</div>}
             {unowned.length > 0 && (
-              <div className="rounded bg-warning/15 px-2 py-1 text-sm text-warning">
+              <Banner tone="warning">
                 {unowned.length} 个已选模型不属于任何厂商，生成渠道时会被忽略：{unowned.slice(0, 6).join('，')}{unowned.length > 6 && '…'}
-              </div>
+              </Banner>
             )}
             {selected.length === 0 && !fetch?.isFetching && !fetch?.isError && (
               <div className="text-sm text-warning">还没有选中任何模型，请点「调整模型」选择。</div>

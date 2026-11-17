@@ -2,8 +2,9 @@ import { useNavigate } from 'react-router-dom';
 import { errorText } from '@/api/errors';
 import { useChannelSeries } from '@/api/queries';
 import type { StatsMetrics, StatsRow } from '@/api/types-stats';
+import { Banner } from '@/components/ui/banner';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogDescription, DialogTitle, SheetContent } from '@/components/ui/dialog';
+import { DrawerShell } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { FrtChart, RequestsChart, SpeedChart } from './TimeCharts';
 import { SpeedCell } from '@/components/cells/SpeedCell';
@@ -43,9 +44,9 @@ function DrawerBody({ row, range }: { row: StatsRow; range: TimeRange }) {
   const data = toSeriesData(points, 'hour');
 
   return (
-    <div className="grid min-h-0 flex-1 content-start gap-3 overflow-y-auto p-4">
+    <div className="grid content-start gap-3 p-4">
       <KeyMetrics m={row} />
-      {q.isError && <div className="rounded bg-destructive/10 px-2 py-1 text-sm text-destructive">逐小时数据加载失败：{errorText(q.error)}</div>}
+      {q.isError && <Banner tone="error">逐小时数据加载失败：{errorText(q.error)}</Banner>}
       {q.isLoading && <div className="text-muted-foreground">加载中…</div>}
       {q.data && (
         <>
@@ -95,16 +96,14 @@ function DrawerBody({ row, range }: { row: StatsRow; range: TimeRange }) {
 
 export function ChannelDrawer({ row, range, onClose }: { row: StatsRow | null; range: TimeRange; onClose: () => void }) {
   return (
-    <Dialog open={row !== null} onOpenChange={(v) => { if (!v) onClose(); }}>
-      {row && (
-        <SheetContent className="max-w-2xl">
-          <div className="border-b px-4 py-3">
-            <DialogTitle>{row.name}</DialogTitle>
-            <DialogDescription>渠道 #{row.key} · 逐小时明细</DialogDescription>
-          </div>
-          <DrawerBody key={row.key} row={row} range={range} />
-        </SheetContent>
-      )}
-    </Dialog>
+    <DrawerShell
+      open={row !== null}
+      onOpenChange={(v) => { if (!v) onClose(); }}
+      size="2xl"
+      title={row?.name}
+      description={row ? `渠道 #${row.key} · 逐小时明细` : undefined}
+    >
+      {row && <DrawerBody key={row.key} row={row} range={range} />}
+    </DrawerShell>
   );
 }

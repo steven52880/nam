@@ -4,6 +4,7 @@ import { errorText } from '@/api/errors';
 import { useStatsOverview, useStatsSeries } from '@/api/queries';
 import type { StatsDim, StatsRow } from '@/api/types-stats';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { Banner } from '@/components/ui/banner';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
@@ -25,9 +26,9 @@ const DATE_CLS = 'h-7 rounded border border-input bg-background px-2 text-base f
 
 function ErrorLine({ what, error }: { what: string; error: unknown }) {
   return (
-    <div className="rounded bg-destructive/10 px-2 py-1 text-sm text-destructive">
+    <Banner tone="error">
       {what}加载失败：{errorText(error)}
-    </div>
+    </Banner>
   );
 }
 
@@ -103,11 +104,11 @@ export default function StatsPage() {
         </div>
       </div>
 
-      {!result.ok && <div className="rounded bg-warning/15 px-2 py-1 text-sm text-warning">{result.error}</div>}
+      {!result.ok && <Banner tone="warning">{result.error}</Banner>}
       {ov?.error_log_hint && (
-        <div className="rounded bg-warning/15 px-2 py-1 text-sm text-warning">
+        <Banner tone="warning">
           可能没开错误日志：最近 7 天没有任何错误日志，NewAPI 可能没开 ERROR_LOG_ENABLED，成功率会偏高。
-        </div>
+        </Banner>
       )}
       {speedNotice && <div className="text-sm text-muted-foreground">{speedNotice}</div>}
       {overview.isError && <ErrorLine what="概览" error={overview.error} />}

@@ -7,6 +7,7 @@ import { usePriceList } from '@/api/queries';
 import type { PriceRow, PriceStatusFilter } from '@/api/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { ModelCountCell } from '@/components/cells/ModelCountCell';
+import { Banner } from '@/components/ui/banner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -109,7 +110,7 @@ export default function PricingPage() {
         <Input className="w-56" placeholder="搜索模型名或别名" value={search} onChange={(e) => setSearch(e.target.value)} />
         <span className="text-sm text-muted-foreground"><ModelCountCell count={items.length} variant="text" /></span>
       </div>
-      {list.isError && <div className="rounded bg-destructive/10 px-2 py-1 text-sm text-destructive">{list.error.message}</div>}
+      {list.isError && <Banner tone="error">{list.error.message}</Banner>}
       <div className="min-h-0 flex-1 overflow-auto rounded border bg-card">
         <table className="w-full border-separate border-spacing-0 text-base">
           <thead className="sticky top-0 z-10 bg-muted">

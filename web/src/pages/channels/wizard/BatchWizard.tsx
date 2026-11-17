@@ -3,9 +3,8 @@ import { api } from '@/api/endpoints';
 import { invalidate } from '@/api/invalidate';
 import { useUpstreamTokens } from '@/api/queries';
 import { useActionMutation } from '@/hooks/useActionMutation';
-import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { cn } from '@/lib/utils';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Wizard, type WizardStep } from '@/components/wizard/Wizard';
 import { StepDefaults } from './StepDefaults';
 import { StepPreview } from './StepPreview';
 import { StepTokenModels } from './StepTokenModels';
@@ -61,64 +60,59 @@ export function BatchWizard({ open, onOpenChange, presetUpstreamId, presetTokenI
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
-  const canNext = [
-    state.upstreamId !== null,
-    state.tokenIds.length > 0,
-    state.tokenIds.length > 0 && state.tokenIds.every((id) => (state.tokenModels[id] ?? []).length > 0),
-    isInt(state.priority) && isInt(state.weight, 0),
-  ][step] ?? false;
   const previewItems = preview.data?.items ?? [];
   const canCreate = previewItems.length > 0 && previewItems.every((i) => !i.duplicate) && !create.isPending;
 
-  const body = () => {
-    if (step === 0) return <StepUpstream value={state.upstreamId} onChange={(id) => patch({ upstreamId: id, tokenIds: [], tokenModels: {} })} />;
-    if (state.upstreamId === null) return null;
-    if (step === 1) return <StepTokens upstreamId={state.upstreamId} value={state.tokenIds} single={single} onChange={(ids) => patch({ tokenIds: ids })} />;
-    if (step === 2) {
-      return (
-        <StepTokenModels
-          upstreamId={state.upstreamId}
-          tokens={tokens.data ?? []}
-          tokenIds={state.tokenIds}
-          value={state.tokenModels}
-          onChange={(id, models) => setState((cur) => ({ ...cur, tokenModels: { ...cur.tokenModels, [id]: models } }))}
-        />
-      );
-    }
-    if (step === 3) return <StepDefaults state={state} tokenNames={tokenNames} onChange={patch} />;
-    return <StepPreview preview={preview} tokenNames={tokenNames} />;
-  };
+  const upstreamId = state.upstreamId;
+  const contents = [
+    <StepUpstream key="upstream" value={upstreamId} onChange={(id) => patch({ upstreamId: id, tokenIds: [], tokenModels: {} })} />,
+    upstreamId === null ? null : (
+      <StepTokens key="tokens" upstreamId={upstreamId} value={state.tokenIds} single={single} onChange={(ids) => patch({ tokenIds: ids })} />
+    ),
+    upstreamId === null ? null : (
+      <StepTokenModels
+        key="models"
+        upstreamId={upstreamId}
+        tokens={tokens.data ?? []}
+        tokenIds={state.tokenIds}
+        value={state.tokenModels}
+        onChange={(id, models) => setState((cur) => ({ ...cur, tokenModels: { ...cur.tokenModels, [id]: models } }))}
+      />
+    ),
+    upstreamId === null ? null : <StepDefaults key="defaults" state={state} tokenNames={tokenNames} onChange={patch} />,
+    upstreamId === null ? null : <StepPreview key="preview" preview={preview} tokenNames={tokenNames} />,
+  ];
+  const canNexts = [
+    upstreamId !== null,
+    state.tokenIds.length > 0,
+    state.tokenIds.length > 0 && state.tokenIds.every((id) => (state.tokenModels[id] ?? []).length > 0),
+    isInt(state.priority) && isInt(state.weight, 0),
+    true,
+  ];
+  const steps: WizardStep[] = STEP_TITLES.map((title, index) => ({
+    id: title,
+    title,
+    canNext: canNexts[index],
+    content: contents[index],
+  }));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] max-w-4xl overflow-y-auto">
+      <DialogContent size="4xl">
         <DialogHeader>
           <DialogTitle>{single ? '新建渠道' : '批量创建渠道'}</DialogTitle>
           <DialogDescription>按令牌和厂商拆分生成渠道，只进入草稿，不会立即写入 NewAPI。</DialogDescription>
         </DialogHeader>
-        <ol className="flex gap-1 text-sm">
-          {STEP_TITLES.map((title, index) => (
-            <li
-              key={title}
-              className={cn(
-                'rounded px-2 py-0.5',
-                index === step ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
-              )}
-            >
-              {title}
-            </li>
-          ))}
-        </ol>
-        <div className="min-h-64">{body()}</div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
-          <Button variant="outline" disabled={step === 0 || (step === 1 && !!presetUpstreamId)} onClick={() => setStep(step - 1)}>上一步</Button>
-          {step < 4 ? (
-            <Button disabled={!canNext} onClick={() => setStep(step + 1)}>下一步</Button>
-          ) : (
-            <Button disabled={!canCreate} onClick={() => create.mutate()}>加入草稿</Button>
-          )}
-        </DialogFooter>
+        <Wizard
+          steps={steps}
+          current={step}
+          onCurrentChange={setStep}
+          onCancel={() => onOpenChange(false)}
+          onFinish={() => create.mutate()}
+          finishLabel="加入草稿"
+          finishDisabled={!canCreate}
+          minStep={presetUpstreamId ? 1 : 0}
+        />
       </DialogContent>
     </Dialog>
   );

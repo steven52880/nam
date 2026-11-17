@@ -4,14 +4,15 @@ import { useAudit } from '@/api/queries';
 import type { AuditLog } from '@/api/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { FilterBar } from '@/components/filters/FilterBar';
+import { ALL_FILTER, FilterSelect } from '@/components/filters/FilterSelect';
+import { SearchInput } from '@/components/filters/SearchInput';
 import { formatTime } from '@/lib/format';
 import { AUDIT_KIND, labelOf } from '@/lib/labels';
 import { AuditResultBadge, TriggerBadge } from '@/components/entities/AuditBadges';
 
 const PAGE_SIZE = 50;
-const ALL = 'all';
+const ALL = ALL_FILTER;
 
 function pretty(raw: string): string {
   if (!raw) return '（空）';
@@ -20,32 +21,6 @@ function pretty(raw: string): string {
   } catch {
     return raw;
   }
-}
-
-function FilterSelect({
-  value,
-  onChange,
-  placeholder,
-  options,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder: string;
-  options: Array<[string, string]>;
-}) {
-  return (
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className="w-32">
-        <SelectValue placeholder={placeholder} />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value={ALL}>{placeholder}</SelectItem>
-        {options.map(([v, l]) => (
-          <SelectItem key={v} value={v}>{l}</SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
 }
 
 function Detail({ log }: { log: AuditLog }) {
@@ -72,7 +47,6 @@ export default function AuditPage() {
   const [kind, setKind] = useState(ALL);
   const [trigger, setTrigger] = useState(ALL);
   const [result, setResult] = useState(ALL);
-  const [search, setSearch] = useState('');
   const [q, setQ] = useState('');
   const [page, setPage] = useState(0);
   const [openId, setOpenId] = useState<number | null>(null);
@@ -97,22 +71,20 @@ export default function AuditPage() {
   return (
     <div className="flex flex-col gap-3 p-4">
       <PageHeader title="写入历史与审计" description="所有写入 NewAPI 与 nam 的记录，展开可看完整差异和原始请求/响应。" />
-      <div className="flex flex-wrap items-center gap-2">
-        <FilterSelect value={kind} onChange={withReset(setKind)} placeholder="全部类型" options={[['channel', '渠道'], ['price', '价格'], ['setting', '设置'], ['upstream', '上游'], ['cache_test', '缓存测试']]} />
-        <FilterSelect value={trigger} onChange={withReset(setTrigger)} placeholder="全部触发方式" options={[['auto', '自动'], ['manual', '手动']]} />
-        <FilterSelect value={result} onChange={withReset(setResult)} placeholder="全部结果" options={[['ok', '成功'], ['fail', '失败'], ['skipped', '已跳过']]} />
-        <form
-          className="flex gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setQ(search);
+      <FilterBar clearable={false}>
+        <FilterSelect className="w-32" value={kind} onChange={withReset(setKind)} label="类型" options={[['channel', '渠道'], ['price', '价格'], ['setting', '设置'], ['upstream', '上游'], ['cache_test', '缓存测试']]} />
+        <FilterSelect className="w-32" value={trigger} onChange={withReset(setTrigger)} label="触发方式" options={[['auto', '自动'], ['manual', '手动']]} />
+        <FilterSelect className="w-32" value={result} onChange={withReset(setResult)} label="结果" options={[['ok', '成功'], ['fail', '失败'], ['skipped', '已跳过']]} />
+        <SearchInput
+          submitOnEnter
+          placeholder="搜索对象或摘要"
+          value={q}
+          onChange={(v) => {
+            setQ(v);
             setPage(0);
           }}
-        >
-          <Input className="w-56" placeholder="搜索对象或摘要" value={search} onChange={(e) => setSearch(e.target.value)} />
-          <Button type="submit" variant="outline">搜索</Button>
-        </form>
-      </div>
+        />
+      </FilterBar>
       <div className="overflow-hidden rounded border bg-card">
         <table className="w-full text-base">
           <thead className="bg-muted text-left text-sm text-muted-foreground">

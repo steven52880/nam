@@ -173,7 +173,7 @@ const RULES = [
   {
     name: '重复组件',
     batch: 2,
-    enabled: false,
+    enabled: true,
     desc: 'function Field / Line / Section 只能出现在 form/Field.tsx、ui/section.tsx',
     run: lineRule(/\bfunction\s+(Field|Line|Section)\b/, 'Field/Line/Section 只能定义在 components/form/Field.tsx、components/ui/section.tsx', [
       'components/form/Field',
@@ -183,14 +183,14 @@ const RULES = [
   {
     name: '提示条样式',
     batch: 2,
-    enabled: false,
+    enabled: true,
     desc: 'bg-destructive/10、bg-warning/15 只能出现在 ui/banner.tsx',
-    run: lineRule(/bg-destructive\/10|bg-warning\/15/, '提示条样式只能写在 components/ui/banner.tsx', ['components/ui/banner']),
+    run: lineRule(/bg-destructive\/10|bg-warning\/15/, '提示条样式只能写在 components/ui/banner.tsx', ['components/ui/banner', 'components/ui/misc']),
   },
   {
     name: '弹窗宽度',
     batch: 2,
-    enabled: false,
+    enabled: true,
     desc: 'pages/、components/entities/ 下的 DialogContent 不能带 max-w-（用 size）',
     run: (file) => {
       if (!(file.relNoExt.startsWith('pages/') || file.relNoExt.startsWith('components/entities/'))) return [];
@@ -210,7 +210,7 @@ const RULES = [
   {
     name: '网址参数',
     batch: 2,
-    enabled: false,
+    enabled: true,
     desc: 'useSearchParams( 只能出现在 lib/url-state.ts',
     run: lineRule(/\buseSearchParams\s*\(/, 'useSearchParams 只能写在 lib/url-state.ts', ['lib/url-state']),
   },

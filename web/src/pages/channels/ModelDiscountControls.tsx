@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
 import { invalidate } from '@/api/invalidate';
 import { useActionMutation } from '@/hooks/useActionMutation';
+import { Field } from '@/components/form/Field';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -109,14 +110,12 @@ export function CacheOverridePopover({ channelId }: { channelId: number }) {
         <div className="text-sm text-muted-foreground">
           相对输入价的比例，只对本渠道生效。留空的项保持不变。
         </div>
-        <label className="grid gap-1 text-sm">
-          缓存读比例
+        <Field label="缓存读比例">
           <Input inputMode="decimal" value={readText} placeholder="例如 0.1" onChange={(e) => setReadText(e.target.value)} />
-        </label>
-        <label className="grid gap-1 text-sm">
-          缓存写比例
+        </Field>
+        <Field label="缓存写比例">
           <Input inputMode="decimal" value={writeText} placeholder="例如 1.25" onChange={(e) => setWriteText(e.target.value)} />
-        </label>
+        </Field>
         <div className="flex justify-between pt-1">
           <Button size="sm" variant="ghost" disabled={save.isPending} onClick={() => save.mutate({ read: null, write: null })}>
             清除覆盖

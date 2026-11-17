@@ -1,27 +1,28 @@
 import { Plus } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
 import { errorText } from '@/api/errors';
 import { invalidate } from '@/api/invalidate';
 import { useUpstreams } from '@/api/queries';
 import type { Upstream } from '@/api/types';
+import { FilterBar } from '@/components/filters/FilterBar';
+import { ALL_FILTER, FilterSelect } from '@/components/filters/FilterSelect';
+import { SearchInput } from '@/components/filters/SearchInput';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/misc';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useActionMutation } from '@/hooks/useActionMutation';
 import { formatNumber, formatTime } from '@/lib/format';
 import { optionsOf, UPSTREAM_TYPE } from '@/lib/labels';
+import { useUrlState } from '@/lib/url-state';
 import { allTags, CRED_LABELS, splitTags } from './upstreams/constants';
 import { CredNote, isCredInvalid } from './upstreams/credStatus';
 import { CredentialDialog } from './upstreams/tabs/CredentialDialogs';
 import { UpstreamDrawer } from './upstreams/UpstreamDrawer';
 import { AddUpstreamWizard } from './upstreams/wizard/AddUpstreamWizard';
 
-const ALL = 'all';
+const ALL = ALL_FILTER;
 const HEADERS = ['', '名称和地址', '类型', '标签', '上游货币汇率', '凭证状态', '余额（美元）', '折合人民币', '令牌数', '渠道数', '最近同步', '错误', ''];
 const RIGHT_ALIGNED = new Set([4, 6, 7, 8, 9]);
 const SYNC_ALL = ['tokens', 'groups', 'balance'];
@@ -74,7 +75,7 @@ function Row({ u, checked, syncing, onCheck, onOpen, onSync, onReplaceCred }: Ro
 }
 
 export default function UpstreamsPage() {
-  const [params, setParams] = useSearchParams();
+  const urlState = useUrlState();
   const [type, setType] = useState(ALL);
   const [tag, setTag] = useState(ALL);
   const [search, setSearch] = useState('');
@@ -111,7 +112,7 @@ export default function UpstreamsPage() {
     });
 
   const list = useMemo(() => query.data ?? [], [query.data]);
-  const openId = Number(params.get('open')) || null;
+  const openId = Number(urlState.get('open')) || null;
   const opened = list.find((u) => u.id === openId) ?? null;
   const tags = useMemo(() => allTags(list), [list]);
 
@@ -125,38 +126,22 @@ export default function UpstreamsPage() {
     );
   }, [list, type, tag, search]);
 
-  const setOpen = (id: number | null) => {
-    const next = new URLSearchParams(params);
-    if (id === null) next.delete('open');
-    else next.set('open', String(id));
-    setParams(next, { replace: true });
-  };
+  // 原来就是 replace，不进浏览器历史，保持不变
+  const setOpen = (id: number | null) => urlState.patch({ open: id === null ? null : String(id) });
   const filtering = type !== ALL || tag !== ALL || search !== '';
 
   return (
     <div className="flex flex-col gap-3 p-4">
       <PageHeader title="上游" description="管理上游站点、凭证和上游货币汇率。" />
-      <div className="flex flex-wrap items-center gap-2">
+      <FilterBar clearable={false}>
         <Button onClick={() => setCreating(true)}><Plus className="h-3.5 w-3.5" />新增上游</Button>
         <Button variant="outline" disabled={checked.size === 0 || sync.isPending} onClick={() => sync.mutate([...checked])}>
           批量同步{checked.size > 0 && `（${checked.size}）`}
         </Button>
-        <Select value={type} onValueChange={setType}>
-          <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>全部类型</SelectItem>
-            {optionsOf(UPSTREAM_TYPE).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Select value={tag} onValueChange={setTag}>
-          <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>全部标签</SelectItem>
-            {tags.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Input className="w-56" placeholder="搜索名称或地址" value={search} onChange={(e) => setSearch(e.target.value)} />
-      </div>
+        <FilterSelect label="类型" value={type} options={optionsOf(UPSTREAM_TYPE)} onChange={setType} />
+        <FilterSelect label="标签" value={tag} options={tags.map((t): [string, string] => [t, t])} onChange={setTag} />
+        <SearchInput value={search} onChange={setSearch} placeholder="搜索名称或地址" />
+      </FilterBar>
       <div className="overflow-x-auto rounded border bg-card">
         <table className="w-full text-base">
           <thead className="bg-muted text-left text-sm text-muted-foreground">

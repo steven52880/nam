@@ -5,7 +5,8 @@ import { invalidate } from '@/api/invalidate';
 import { usePriceDetail } from '@/api/queries';
 import type { PriceOverride, PriceRow } from '@/api/types';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Field } from '@/components/form/Field';
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useActionMutation } from '@/hooks/useActionMutation';
 
@@ -91,26 +92,28 @@ function OverrideForm({ row, override, onDone }: { row: PriceRow; override: Pric
 
   return (
     <>
-      <div className="flex gap-2">
-        <Button size="sm" variant={perRequest ? 'outline' : 'default'} onClick={() => setPerRequest(false)}>按 token</Button>
-        <Button size="sm" variant={perRequest ? 'default' : 'outline'} onClick={() => setPerRequest(true)}>按次</Button>
-      </div>
-      {perRequest ? (
-        <label className="grid gap-1 text-sm">每次价格（美元 / 次）
-          <Input inputMode="decimal" value={texts.per_request} onChange={(e) => setText('per_request', e.target.value)} />
-        </label>
-      ) : (
-        <div className="grid grid-cols-2 gap-2">
-          {TOKEN_FIELDS.map(([field, label]) => (
-            <label key={field} className="grid gap-1 text-sm">{label}（美元 / 百万）
-              <Input inputMode="decimal" value={texts[field]} onChange={(e) => setText(field, e.target.value)} />
-            </label>
-          ))}
+      <DialogBody className="grid content-start gap-3">
+        <div className="flex gap-2">
+          <Button size="sm" variant={perRequest ? 'outline' : 'default'} onClick={() => setPerRequest(false)}>按 token</Button>
+          <Button size="sm" variant={perRequest ? 'default' : 'outline'} onClick={() => setPerRequest(true)}>按次</Button>
         </div>
-      )}
-      <label className="grid gap-1 text-sm">备注
-        <Input value={remark} onChange={(e) => setRemark(e.target.value)} />
-      </label>
+        {perRequest ? (
+          <Field label="每次价格（美元 / 次）">
+            <Input inputMode="decimal" value={texts.per_request} onChange={(e) => setText('per_request', e.target.value)} />
+          </Field>
+        ) : (
+          <div className="grid grid-cols-2 gap-2">
+            {TOKEN_FIELDS.map(([field, label]) => (
+              <Field key={field} label={`${label}（美元 / 百万）`}>
+                <Input inputMode="decimal" value={texts[field]} onChange={(e) => setText(field, e.target.value)} />
+              </Field>
+            ))}
+          </div>
+        )}
+        <Field label="备注">
+          <Input value={remark} onChange={(e) => setRemark(e.target.value)} />
+        </Field>
+      </DialogBody>
       <DialogFooter className="justify-between">
         <Button variant="ghost" disabled={busy || override === null} onClick={() => clear.mutate()}>清除覆盖</Button>
         <Button disabled={busy} onClick={submit}>保存</Button>

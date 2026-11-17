@@ -6,6 +6,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/misc';
+import { DescRow } from '@/components/ui/section';
 import { useActionMutation } from '@/hooks/useActionMutation';
 import { formatTime } from '@/lib/format';
 
@@ -16,15 +17,6 @@ export function isBackfillDaysValid(text: string): boolean {
   if (!/^\d+$/.test(text)) return false;
   const days = Number(text);
   return days >= MIN_BACKFILL_DAYS && days <= MAX_BACKFILL_DAYS;
-}
-
-function Line({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-3">
-      <span className="w-40 shrink-0 text-muted-foreground">{label}</span>
-      <div className="min-w-0 flex-1">{children}</div>
-    </div>
-  );
 }
 
 export interface RetentionValues {
@@ -55,7 +47,7 @@ export function RetentionFields({
   const [confirmOpen, setConfirmOpen] = useState(false);
   return (
     <>
-      <Line label="清理 NewAPI 原始日志">
+      <DescRow label="清理 NewAPI 原始日志">
         <Switch
           checked={logCleanup}
           onCheckedChange={(checked) => {
@@ -64,21 +56,21 @@ export function RetentionFields({
           }}
         />
         <span className="ml-2 text-sm text-muted-foreground">默认关闭；开启后由 nam 定期清理 NewAPI 里已统计过的旧日志</span>
-      </Line>
-      <Line label="NewAPI 原始日志保留天数">
+      </DescRow>
+      <DescRow label="NewAPI 原始日志保留天数">
         <Input className="w-24 text-right" inputMode="numeric" value={logDays} onChange={(e) => onLogDays(e.target.value)} />
-      </Line>
-      <Line label="聚合保留天数">
+      </DescRow>
+      <DescRow label="聚合保留天数">
         <Input className="w-24 text-right" inputMode="numeric" value={statsDays} onChange={(e) => onStatsDays(e.target.value)} />
-      </Line>
-      <Line label="首次回填天数">
+      </DescRow>
+      <DescRow label="首次回填天数">
         <span className="flex items-center gap-2">
           <Input className="w-24 text-right" inputMode="numeric" value={backfillDays} onChange={(e) => onBackfillDays(e.target.value)} />
           {!isBackfillDaysValid(backfillDays) && (
             <span className="text-sm text-destructive">需为 {MIN_BACKFILL_DAYS}–{MAX_BACKFILL_DAYS} 的整数</span>
           )}
         </span>
-      </Line>
+      </DescRow>
       <p className="text-sm text-muted-foreground">聚合保留天数为 0 表示不删除。修改后点右上角「保存」生效。</p>
       <ConfirmDialog
         open={confirmOpen}
@@ -124,14 +116,14 @@ function RebuildDialog({
       disabled={!isBackfillDaysValid(days)}
       onConfirm={() => rebuild.mutate(Number(days))}
     >
-      <Line label="重新统计天数">
+      <DescRow label="重新统计天数">
         <span className="flex items-center gap-2">
           <Input className="w-24 text-right" inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value)} />
           {!isBackfillDaysValid(days) && (
             <span className="text-sm text-destructive">需为 {MIN_BACKFILL_DAYS}–{MAX_BACKFILL_DAYS} 的整数</span>
           )}
         </span>
-      </Line>
+      </DescRow>
     </ConfirmDialog>
   );
 }
@@ -144,12 +136,12 @@ export function StatsStatusBlock({ backfillDays }: { backfillDays: string }) {
   return (
     <>
       <div className="mt-1 border-t pt-3 font-medium">统计状态</div>
-      <Line label="游标">{s ? `#${s.cursor_id}` : '—'}</Line>
-      <Line label="已统计到">{s ? formatTime(s.cursor_at) : '—'}</Line>
-      <Line label="聚合行数">{s ? s.rows : '—'}</Line>
-      <Line label="最早数据">{s ? formatTime(s.oldest_hour ?? 0) : '—'}</Line>
-      <Line label="补丁 P1">{s ? (s.patch_p1 ? '是' : '否') : '—'}</Line>
-      <Line label="最近拉取">{s ? s.last_pull_message || '—' : '—'}</Line>
+      <DescRow label="游标">{s ? `#${s.cursor_id}` : '—'}</DescRow>
+      <DescRow label="已统计到">{s ? formatTime(s.cursor_at) : '—'}</DescRow>
+      <DescRow label="聚合行数">{s ? s.rows : '—'}</DescRow>
+      <DescRow label="最早数据">{s ? formatTime(s.oldest_hour ?? 0) : '—'}</DescRow>
+      <DescRow label="补丁 P1">{s ? (s.patch_p1 ? '是' : '否') : '—'}</DescRow>
+      <DescRow label="最近拉取">{s ? s.last_pull_message || '—' : '—'}</DescRow>
       <div>
         <Button variant="outline" onClick={() => setRebuildOpen(true)}>清空并重新统计</Button>
       </div>

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { api } from '@/api/endpoints';
 import { errorText } from '@/api/errors';
 import type { CheckResult } from '@/api/types';
+import { Banner } from '@/components/ui/banner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/misc';
 import { useActionMutation } from '@/hooks/useActionMutation';
@@ -19,7 +20,7 @@ export function CheckList({ results, pending, error }: { results: CheckResult[];
         </li>
       ))}
       {pending && <li className="py-4 text-center text-muted-foreground">测试中，最长约 2 分钟…</li>}
-      {error && <li className="rounded bg-destructive/10 px-2 py-1 text-sm text-destructive">{error}</li>}
+      {error && <li><Banner tone="error">{error}</Banner></li>}
     </ul>
   );
 }

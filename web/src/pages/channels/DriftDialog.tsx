@@ -5,7 +5,7 @@ import type { ChannelRow, DriftField } from '@/api/types';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useActionMutation } from '@/hooks/useActionMutation';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useState } from 'react';
 import { showValue } from '@/lib/format';
 
@@ -65,12 +65,12 @@ export function DriftDialog({ row, onClose }: DriftDialogProps) {
   return (
     <>
       <Dialog open={row !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent size="2xl">
           <DialogHeader>
             <DialogTitle>漂移对比</DialogTitle>
             <DialogDescription>{row?.name}。左列是 nam 上次应用的值，右列是 NewAPI 当前值，不同的字段已标色。</DialogDescription>
           </DialogHeader>
-          <div className="max-h-80 overflow-auto rounded border">
+          <DialogBody className="rounded border">
             <table className="w-full text-base">
               <thead className="bg-muted text-left text-sm text-muted-foreground">
                 <tr><th className="px-2 py-1 font-medium">字段</th><th className="px-2 py-1 font-medium">nam</th><th className="px-2 py-1 font-medium">NewAPI 当前</th></tr>
@@ -81,7 +81,7 @@ export function DriftDialog({ row, onClose }: DriftDialogProps) {
                 {detail.isError && <tr><td colSpan={3} className="h-12 text-center text-destructive">{detail.error.message}</td></tr>}
               </tbody>
             </table>
-          </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={onClose}>稍后处理</Button>
             <Button variant="outline" disabled={accept.isPending} onClick={() => accept.mutate()}>采纳 NewAPI 值</Button>

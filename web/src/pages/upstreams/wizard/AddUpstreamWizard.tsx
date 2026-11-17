@@ -3,10 +3,9 @@ import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
 import { errorText } from '@/api/errors';
 import { invalidate } from '@/api/invalidate';
-import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Wizard, type WizardStep } from '@/components/wizard/Wizard';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useActionMutation } from '@/hooks/useActionMutation';
-import { cn } from '@/lib/utils';
 import { StepBasics, StepCredential, StepDetect, StepFinish } from './Steps';
 import { StepTest } from './StepTest';
 import { credentialOk, INITIAL_DRAFT, toCreateInput, URL_PATTERN, WIZARD_STEPS, type UpstreamDraft } from './state';
@@ -53,40 +52,37 @@ export function AddUpstreamWizard({ open, onOpenChange }: { open: boolean; onOpe
     credentialOk(draft),
     true,
     Number(draft.rate) > 0,
-  ][step] ?? false;
+  ];
+  const contentOf = (index: number) => {
+    if (index === 0) return <StepBasics draft={draft} onChange={patch} />;
+    if (index === 1) return <StepDetect draft={draft} onChange={patch} />;
+    if (index === 2) return <StepCredential draft={draft} onChange={patch} />;
+    if (index === 3) return <StepTest draft={draft} />;
+    return <StepFinish draft={draft} onChange={patch} />;
+  };
+  const steps: WizardStep[] = WIZARD_STEPS.map((title, index) => ({
+    id: title,
+    title,
+    canNext: canNext[index] ?? false,
+    content: index === step ? contentOf(index) : null,
+  }));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
+      <DialogContent size="xl">
         <DialogHeader>
           <DialogTitle>新增上游</DialogTitle>
           <DialogDescription>只写入 nam，不会改动 NewAPI。</DialogDescription>
         </DialogHeader>
-        <ol className="flex flex-wrap gap-1 text-sm">
-          {WIZARD_STEPS.map((title, index) => (
-            <li key={title} className={cn('rounded px-2 py-0.5', index === step ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground')}>
-              {index + 1}. {title}
-            </li>
-          ))}
-        </ol>
-        <div className="min-h-48">
-          {step === 0 && <StepBasics draft={draft} onChange={patch} />}
-          {step === 1 && <StepDetect draft={draft} onChange={patch} />}
-          {step === 2 && <StepCredential draft={draft} onChange={patch} />}
-          {step === 3 && <StepTest draft={draft} />}
-          {step === 4 && <StepFinish draft={draft} onChange={patch} />}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
-          <Button variant="outline" disabled={step === 0} onClick={() => setStep(step - 1)}>上一步</Button>
-          {step < 4 ? (
-            <Button disabled={!canNext} onClick={() => setStep(step + 1)}>下一步</Button>
-          ) : (
-            <Button disabled={!canNext || save.isPending} onClick={() => save.mutate()}>
-              {draft.syncNow ? '保存并同步' : '保存'}
-            </Button>
-          )}
-        </DialogFooter>
+        <Wizard
+          steps={steps}
+          current={step}
+          onCurrentChange={setStep}
+          onCancel={() => onOpenChange(false)}
+          onFinish={() => save.mutate()}
+          finishLabel={draft.syncNow ? '保存并同步' : '保存'}
+          finishing={save.isPending}
+        />
       </DialogContent>
     </Dialog>
   );

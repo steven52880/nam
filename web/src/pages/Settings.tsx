@@ -7,6 +7,7 @@ import { useBackend, useSettings } from '@/api/queries';
 import type { JobName, Settings } from '@/api/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
+import { DescRow, Section } from '@/components/ui/section';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/misc';
 import { useActionMutation } from '@/hooks/useActionMutation';
@@ -27,24 +28,6 @@ const SECTIONS = [
 ] as const;
 
 const DEFAULT_INTERVAL: ParsedInterval = { value: 30, unit: 'm' };
-
-function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
-  return (
-    <section id={id} className="scroll-mt-4 rounded border bg-card">
-      <div className="flex h-9 items-center border-b px-3 font-medium">{title}</div>
-      <div className="grid gap-3 p-3">{children}</div>
-    </section>
-  );
-}
-
-function Line({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-3">
-      <span className="w-40 shrink-0 text-muted-foreground">{label}</span>
-      <div className="min-w-0 flex-1">{children}</div>
-    </div>
-  );
-}
 
 export default function SettingsPage() {
   const qc = useQueryClient();
@@ -121,12 +104,12 @@ export default function SettingsPage() {
       <div className="flex min-w-0 max-w-4xl flex-1 flex-col gap-3 overflow-y-auto pr-1">
         <PageHeader title="设置" actions={<Button disabled={!valid || save.isPending || !settings.data} onClick={() => save.mutate()}>保存</Button>} />
         <Section id="connection" title="NewAPI 连接">
-          <Line label="运行模式">{session.mode === 'embedded' ? '嵌入模式' : '独立模式'}</Line>
-          <Line label="NewAPI 版本">{b?.version || '—'}</Line>
-          <Line label="检测到补丁">{b ? (b.patch_p1 ? '是' : '否') : '—'}</Line>
-          <Line label="地址">{b?.address || '—'}</Line>
-          <Line label="最近请求">{formatTime(b?.last_request_at ?? 0)}</Line>
-          <Line label="最近错误">{b?.last_error || '无'}</Line>
+          <DescRow label="运行模式">{session.mode === 'embedded' ? '嵌入模式' : '独立模式'}</DescRow>
+          <DescRow label="NewAPI 版本">{b?.version || '—'}</DescRow>
+          <DescRow label="检测到补丁">{b ? (b.patch_p1 ? '是' : '否') : '—'}</DescRow>
+          <DescRow label="地址">{b?.address || '—'}</DescRow>
+          <DescRow label="最近请求">{formatTime(b?.last_request_at ?? 0)}</DescRow>
+          <DescRow label="最近错误">{b?.last_error || '无'}</DescRow>
         </Section>
         <Section id="vendors" title="厂商分组">
           <VendorSection />
@@ -135,13 +118,13 @@ export default function SettingsPage() {
           <CacheTestSection />
         </Section>
         <Section id="pricing" title="定价参数">
-          <Line label="变化保护阈值">
+          <DescRow label="变化保护阈值">
             <span className="flex items-center gap-1"><Input className="w-20 text-right" inputMode="decimal" value={threshold} onChange={(e) => setThreshold(e.target.value)} />%</span>
-          </Line>
-          <Line label="自动写入"><Switch checked={autoWrite} onCheckedChange={setAutoWrite} /> <span className="ml-2 text-sm text-muted-foreground">关闭后只计算，不自动写入</span></Line>
+          </DescRow>
+          <DescRow label="自动写入"><Switch checked={autoWrite} onCheckedChange={setAutoWrite} /> <span className="ml-2 text-sm text-muted-foreground">关闭后只计算，不自动写入</span></DescRow>
         </Section>
         <Section id="rate" title="站点汇率">
-          <Line label="当前站点汇率">{formatNumber(Number(settings.data?.site_rate ?? NaN))} 元 / 1 美元站内额度</Line>
+          <DescRow label="当前站点汇率">{formatNumber(Number(settings.data?.site_rate ?? NaN))} 元 / 1 美元站内额度</DescRow>
           <p className="text-sm text-muted-foreground">只读。修改站点汇率会影响全部厂商分组倍率，修改在 M5 实现。</p>
         </Section>
         <Section id="schedule" title="调度间隔">

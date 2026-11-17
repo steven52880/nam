@@ -5,16 +5,8 @@ import { keys } from '@/api/keys';
 import { useSettings } from '@/api/queries';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DescRow } from '@/components/ui/section';
 import { useActionMutation } from '@/hooks/useActionMutation';
-
-function Line({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-3">
-      <span className="w-40 shrink-0 text-muted-foreground">{label}</span>
-      <div className="min-w-0 flex-1">{children}</div>
-    </div>
-  );
-}
 
 /** 手动缓存率测试所需的 NewAPI 令牌与地址。令牌只写不读，界面只显示 hint。 */
 export function CacheTestSection() {
@@ -51,7 +43,7 @@ export function CacheTestSection() {
   return (
     <>
       <div className="text-sm text-muted-foreground">当前缓存测试默认直连上游，以下设置仅用于“经 NewAPI”模式（预留）</div>
-      <Line label="NewAPI 测试令牌">
+      <DescRow label="NewAPI 测试令牌">
         <div className="flex items-center gap-2">
           <Input
             type="password"
@@ -69,8 +61,8 @@ export function CacheTestSection() {
             清除
           </Button>
         </div>
-      </Line>
-      <Line label="NewAPI 地址">
+      </DescRow>
+      <DescRow label="NewAPI 地址">
         <Input
           className="max-w-sm"
           placeholder="留空使用默认：独立模式为 NAM_NEWAPI_URL，嵌入模式为 http://127.0.0.1:3000"
@@ -78,7 +70,7 @@ export function CacheTestSection() {
           onChange={(e) => setUrl(e.target.value)}
         />
         {!urlOk && <div className="mt-1 text-sm text-destructive">地址必须以 http:// 或 https:// 开头</div>}
-      </Line>
+      </DescRow>
       <div className="flex items-center gap-3">
         <Button disabled={!dirty || !urlOk || save.isPending || !settings.data} onClick={onSave}>保存</Button>
         <span className="text-sm text-muted-foreground">

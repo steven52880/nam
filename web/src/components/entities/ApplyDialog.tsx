@@ -7,7 +7,8 @@ import { useChannelPlan } from '@/api/queries';
 import type { ApplyResponse, PlanItem } from '@/api/types';
 import { useActionMutation } from '@/hooks/useActionMutation';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Banner } from '@/components/ui/banner';
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/misc';
 import { showValue } from '@/lib/format';
 
@@ -82,7 +83,7 @@ export function ApplyDialog({ open, onOpenChange }: { open: boolean; onOpenChang
 
   return (
     <Dialog open={open} onOpenChange={close}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent size="3xl">
         <DialogHeader>
           <DialogTitle>应用变更</DialogTitle>
           <DialogDescription>
@@ -97,16 +98,18 @@ export function ApplyDialog({ open, onOpenChange }: { open: boolean; onOpenChang
           </div>
         )}
         {issueLines.length > 0 && (
-          <ul className="rounded bg-destructive/10 px-2 py-1 text-sm text-destructive">
-            {issueLines.map((line) => <li key={line}>{line}</li>)}
-          </ul>
+          <Banner tone="error">
+            <ul>
+              {issueLines.map((line) => <li key={line}>{line}</li>)}
+            </ul>
+          </Banner>
         )}
-        <div className="grid max-h-[55vh] gap-2 overflow-y-auto">
+        <DialogBody className="grid content-start gap-2">
           {items.map((item) => <PlanCard key={item.draft_id} item={item} result={resultOf(item)} />)}
           {plan.isLoading && <div className="py-6 text-center text-muted-foreground">加载中…</div>}
           {plan.isError && <div className="py-6 text-center text-destructive">{plan.error.message}</div>}
           {plan.isSuccess && items.length === 0 && <div className="py-6 text-center text-muted-foreground">没有待应用的草稿</div>}
-        </div>
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => close(false)}>{outcome ? '关闭' : '取消'}</Button>
           {!outcome && (

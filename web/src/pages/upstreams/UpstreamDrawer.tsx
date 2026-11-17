@@ -3,18 +3,12 @@ import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
 import type { Upstream, UpstreamInput, UpstreamType } from '@/api/types';
 import { Field } from '@/components/form/Field';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { Banner } from '@/components/ui/banner';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  SheetContent,
-} from '@/components/ui/dialog';
+import { DrawerShell } from '@/components/ui/dialog';
 import { Input, Textarea } from '@/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger, Badge } from '@/components/ui/misc';
+import { Badge } from '@/components/ui/misc';
 import { formatNumber, formatTime } from '@/lib/format';
 import { CRED_LABELS } from './constants';
 import { CredNote, isCredInvalid } from './credStatus';
@@ -75,10 +69,12 @@ function Overview({ u, onClose }: { u: Upstream; onClose: () => void }) {
         <Stat label="最近同步" value={formatTime(u.last_sync_at)} small />
       </div>
       {u.last_sync_error && (
-        <div className="flex items-center justify-between gap-2 rounded bg-destructive/10 px-2 py-1 text-sm text-destructive">
-          <span>最近同步失败：{u.last_sync_error}</span>
-          {isCredInvalid(u) && <Button size="sm" variant="destructive" onClick={() => setCredOpen(true)}>更换凭证</Button>}
-        </div>
+        <Banner
+          tone="error"
+          action={isCredInvalid(u) ? <Button size="sm" variant="destructive" onClick={() => setCredOpen(true)}>更换凭证</Button> : undefined}
+        >
+          最近同步失败：{u.last_sync_error}
+        </Banner>
       )}
       <Field label="名称"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
       <Field label="站点地址"><Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} /></Field>
@@ -108,18 +104,16 @@ function Overview({ u, onClose }: { u: Upstream; onClose: () => void }) {
       </div>
       <CredentialDialog upstream={u} type={type} open={credOpen} onOpenChange={setCredOpen} />
       <TestUpstreamDialog upstream={u} open={testOpen} onOpenChange={setTestOpen} />
-      <Dialog open={confirmDel} onOpenChange={setConfirmDel}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>删除上游</DialogTitle>
-            <DialogDescription>确定删除「{u.name}」？此操作不可撤销。</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmDel(false)}>取消</Button>
-            <Button variant="destructive" disabled={del.isPending} onClick={() => del.mutate()}>确认删除</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={confirmDel}
+        onOpenChange={setConfirmDel}
+        title="删除上游"
+        description={`确定删除「${u.name}」？此操作不可撤销。`}
+        confirmLabel="确认删除"
+        destructive
+        pending={del.isPending}
+        onConfirm={() => del.mutate()}
+      />
     </div>
   );
 }
@@ -134,38 +128,28 @@ function Stat({ label, value, small }: { label: string; value: string; small?: b
 }
 
 export function UpstreamDrawer({ upstream, onClose }: { upstream: Upstream | null; onClose: () => void }) {
+  if (!upstream) return null;
   return (
-    <Dialog open={upstream !== null} onOpenChange={(v) => { if (!v) onClose(); }}>
-      {upstream && (
-        <SheetContent>
-          <div className="border-b px-4 py-3">
-            <DialogTitle>{upstream.name}</DialogTitle>
-            <DialogDescription className="truncate">{upstream.base_url}</DialogDescription>
-          </div>
-          <Tabs defaultValue="overview" className="flex min-h-0 flex-1 flex-col">
-            <TabsList className="px-3">
-              <TabsTrigger value="overview">概览</TabsTrigger>
-              <TabsTrigger value="groups">分组倍率</TabsTrigger>
-              <TabsTrigger value="models">上游模型价格</TabsTrigger>
-              <TabsTrigger value="tokens">令牌</TabsTrigger>
-              <TabsTrigger value="adapter">适配器配置</TabsTrigger>
-              {PLACEHOLDER_TABS.map((t) => <TabsTrigger key={t} value={t}>{t}</TabsTrigger>)}
-            </TabsList>
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <TabsContent value="overview"><Overview key={upstream.id} u={upstream} onClose={onClose} /></TabsContent>
-              <TabsContent value="groups"><GroupsTab upstreamId={upstream.id} /></TabsContent>
-              <TabsContent value="models"><ModelsTab upstreamId={upstream.id} /></TabsContent>
-              <TabsContent value="tokens"><TokensTab upstream={upstream} /></TabsContent>
-              <TabsContent value="adapter"><AdapterTab key={upstream.id + upstream.updated_at} upstream={upstream} /></TabsContent>
-              {PLACEHOLDER_TABS.map((t) => (
-                <TabsContent key={t} value={t}>
-                  <div className="m-4 flex h-32 items-center justify-center rounded border border-dashed text-muted-foreground">「{t}」将在后续里程碑实现</div>
-                </TabsContent>
-              ))}
-            </div>
-          </Tabs>
-        </SheetContent>
-      )}
-    </Dialog>
+    <DrawerShell
+      open
+      onOpenChange={(v) => { if (!v) onClose(); }}
+      title={upstream.name}
+      description={upstream.base_url}
+      tabs={[
+        { value: 'overview', label: '概览', content: <Overview key={upstream.id} u={upstream} onClose={onClose} /> },
+        { value: 'groups', label: '分组倍率', content: <GroupsTab upstreamId={upstream.id} /> },
+        { value: 'models', label: '上游模型价格', content: <ModelsTab upstreamId={upstream.id} /> },
+        { value: 'tokens', label: '令牌', content: <TokensTab upstream={upstream} /> },
+        { value: 'adapter', label: '适配器配置', content: <AdapterTab key={upstream.id + upstream.updated_at} upstream={upstream} /> },
+        ...PLACEHOLDER_TABS.map((t) => ({
+          value: t,
+          label: t,
+          content: (
+            <div className="m-4 flex h-32 items-center justify-center rounded border border-dashed text-muted-foreground">「{t}」将在后续里程碑实现</div>
+          ),
+        })),
+      ]}
+      defaultTab="overview"
+    />
   );
 }

@@ -84,7 +84,6 @@ export function StepTokens({ upstreamId, value, onChange, single = false }: Step
         <AddTokenDialog
           upstream={upstream}
           mode={dialog}
-          groups={groups.data}
           onClose={() => setDialog(null)}
           onCreated={(token) => onChange(single ? [token.id] : [...value.filter((v) => v !== token.id), token.id])}
         />

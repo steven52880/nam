@@ -5,6 +5,7 @@ import type { UpstreamType } from '@/api/types';
 import { useActionMutation } from '@/hooks/useActionMutation';
 import { Input, Textarea } from '@/components/ui/input';
 import { Field } from '@/components/form/Field';
+import { Banner } from '@/components/ui/banner';
 import { CredentialPicker, TypeSelect } from '../UpstreamForm';
 import { credPatchForType, type UpstreamDraft } from './state';
 
@@ -75,9 +76,9 @@ export function StepCredential({ draft, onChange }: StepProps) {
         </div>
       )}
       {captchaSite && draft.credType === 'password' && (
-        <div className="rounded bg-warning/15 px-3 py-2 text-sm text-warning">
+        <Banner tone="warning" className="px-3 py-2">
           该站开启了人机验证，账号密码大概率无法登录，建议改用会话 Cookie。
-        </div>
+        </Banner>
       )}
       <CredentialPicker
         upstreamType={draft.type}

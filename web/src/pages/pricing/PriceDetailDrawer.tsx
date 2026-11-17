@@ -2,20 +2,12 @@ import { usePriceDetail } from '@/api/queries';
 import type { PriceRow } from '@/api/types';
 import { StatusBadge } from '@/components/cells/StatusBadge';
 import { NewapiPriceText, OfficialPriceText } from '@/components/PriceText';
-import { Dialog, DialogDescription, DialogTitle, SheetContent } from '@/components/ui/dialog';
+import { DrawerShell } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/misc';
+import { Section } from '@/components/ui/section';
 import { formatNumber, formatSignificant } from '@/lib/format';
 import { PRICE_STATUS } from '@/lib/labels';
 import { sourceLabel } from './constants';
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="grid gap-1">
-      <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
-      {children}
-    </section>
-  );
-}
 
 function DetailBody({ row }: { row: PriceRow }) {
   const model = row.model;
@@ -25,28 +17,28 @@ function DetailBody({ row }: { row: PriceRow }) {
   const { override, channels, aliases } = query.data;
 
   return (
-    <div className="grid gap-4 overflow-y-auto p-4">
+    <div className="grid gap-4 p-4">
       <div className="flex flex-wrap items-center gap-2">
         <StatusBadge dict={PRICE_STATUS} value={row.status} />
         {row.vendor && <Badge>{row.vendor}</Badge>}
         <span className="text-sm text-muted-foreground">价格来源：{sourceLabel(row.source)}</span>
         {override && <Badge tone="warning">有手动覆盖</Badge>}
       </div>
-      <Section title="价格对比（美元 / 百万）">
+      <Section variant="plain" title="价格对比（美元 / 百万）">
         <div className="grid gap-1 rounded border p-2">
           <div><span className="mr-2 text-sm text-muted-foreground">原厂价</span><OfficialPriceText price={row.official} /></div>
           <div><span className="mr-2 text-sm text-muted-foreground">NewAPI</span><NewapiPriceText price={row.newapi} /></div>
         </div>
       </Section>
       {aliases.length > 0 && (
-        <Section title="别名">
+        <Section variant="plain" title="别名">
           <div className="flex flex-wrap gap-1">{aliases.map((a) => <Badge key={a}>{a}</Badge>)}</div>
         </Section>
       )}
       {override?.remark && (
-        <Section title="覆盖备注"><p className="text-sm">{override.remark}</p></Section>
+        <Section variant="plain" title="覆盖备注"><p className="text-sm">{override.remark}</p></Section>
       )}
-      <Section title={`使用该模型的渠道（${channels.length}）`}>
+      <Section variant="plain" title={`使用该模型的渠道（${channels.length}）`}>
         <div className="overflow-auto rounded border">
           <table className="w-full text-base">
             <thead className="bg-muted text-left text-sm text-muted-foreground">
@@ -79,16 +71,13 @@ function DetailBody({ row }: { row: PriceRow }) {
 
 export function PriceDetailDrawer({ row, onClose }: { row: PriceRow | null; onClose: () => void }) {
   return (
-    <Dialog open={row !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
-      {row && (
-        <SheetContent>
-          <div className="border-b px-4 py-3">
-            <DialogTitle>{row.model}</DialogTitle>
-            <DialogDescription>模型价格明细与使用该模型的渠道</DialogDescription>
-          </div>
-          <DetailBody row={row} />
-        </SheetContent>
-      )}
-    </Dialog>
+    <DrawerShell
+      open={row !== null}
+      onOpenChange={(open) => { if (!open) onClose(); }}
+      title={row?.model}
+      description="模型价格明细与使用该模型的渠道"
+    >
+      {row && <DetailBody row={row} />}
+    </DrawerShell>
   );
 }

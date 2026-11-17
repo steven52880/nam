@@ -1,36 +1,15 @@
 import type { StatsWindow } from '@/api/types';
+import { FilterBar } from '@/components/filters/FilterBar';
+import { FilterSelect } from '@/components/filters/FilterSelect';
+import { SearchInput } from '@/components/filters/SearchInput';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { ALL_FILTER, GROUP_MODE_OPTIONS, type GroupMode } from './constants';
+import { GROUP_MODE_OPTIONS, type GroupMode } from './constants';
 import { EMPTY_FILTERS, isFiltering, type ChannelFilters } from './filter';
 import { optionsOf, CHANNEL_STATUS, STATS_WINDOW, SYNC_STATE } from '@/lib/labels';
 
 const STATUS_FILTER_OPTIONS = optionsOf(CHANNEL_STATUS);
 const SYNC_FILTER_OPTIONS = optionsOf(SYNC_STATE, ['synced', 'draft', 'drift', 'error']);
 const STATS_WINDOW_OPTIONS = optionsOf(STATS_WINDOW, ['latest', '3d', '7d']);
-
-function FilterSelect({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: Array<[string, string]>;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
-      <SelectContent>
-        <SelectItem value={ALL_FILTER}>全部{label}</SelectItem>
-        {options.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
-      </SelectContent>
-    </Select>
-  );
-}
 
 interface ChannelToolbarProps {
   groupMode: GroupMode;
@@ -58,7 +37,21 @@ export function ChannelToolbar({
   const set = (key: keyof ChannelFilters) => (value: string) => onFilters({ ...filters, [key]: value });
   const pair = (items: string[]): Array<[string, string]> => items.map((i) => [i, i]);
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <FilterBar
+      clearable={isFiltering(filters)}
+      onClear={() => onFilters(EMPTY_FILTERS)}
+      trailing={
+        <span className="ml-auto flex items-center gap-1 text-sm text-muted-foreground">
+          统计时长
+          <Select value={statsWindow} onValueChange={(v) => onStatsWindow(v as StatsWindow)}>
+            <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {STATS_WINDOW_OPTIONS.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </span>
+      }
+    >
       <Select value={groupMode} onValueChange={(v) => onGroupMode(v as GroupMode)}>
         <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
         <SelectContent>
@@ -70,22 +63,12 @@ export function ChannelToolbar({
       <FilterSelect label="厂商" value={filters.vendor} options={pair(vendors)} onChange={set('vendor')} />
       <FilterSelect label="标签" value={filters.tag} options={pair(tags)} onChange={set('tag')} />
       <FilterSelect label="同步状态" value={filters.sync} options={SYNC_FILTER_OPTIONS} onChange={set('sync')} />
-      <Input
+      <SearchInput
         className="w-52"
         placeholder="搜索名称、令牌或模型"
         value={filters.search}
-        onChange={(e) => onFilters({ ...filters, search: e.target.value })}
+        onChange={(search) => onFilters({ ...filters, search })}
       />
-      {isFiltering(filters) && <Button variant="link" onClick={() => onFilters(EMPTY_FILTERS)}>清除筛选</Button>}
-      <span className="ml-auto flex items-center gap-1 text-sm text-muted-foreground">
-        统计时长
-        <Select value={statsWindow} onValueChange={(v) => onStatsWindow(v as StatsWindow)}>
-          <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {STATS_WINDOW_OPTIONS.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </span>
-    </div>
+    </FilterBar>
   );
 }

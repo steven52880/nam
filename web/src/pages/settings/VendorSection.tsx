@@ -8,9 +8,9 @@ import { ChipEditor } from '@/components/ChipEditor';
 import { ModelCountCell } from '@/components/cells/ModelCountCell';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Field } from '@/components/form/Field';
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/misc';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useActionMutation } from '@/hooks/useActionMutation';
 import { CHANNEL_TYPE, optionsOf } from '@/lib/labels';
@@ -63,40 +63,35 @@ function VendorDialog({ form, onClose }: { form: VendorForm | null; onClose: () 
 
   return (
     <Dialog open={form !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-w-xl">
+      <DialogContent size="xl">
         <DialogHeader>
           <DialogTitle>{draft.id === null ? '新增厂商' : '编辑厂商'}</DialogTitle>
           <DialogDescription>一个模型名只能属于一个厂商，保存时会校验。</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-3">
+        <DialogBody className="grid content-start gap-3">
           <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-1"><Label>厂商</Label><Input autoFocus value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></div>
-            <div className="grid gap-1"><Label>分组名（留空与厂商同名）</Label><Input value={draft.groupName} onChange={(e) => setDraft({ ...draft, groupName: e.target.value })} /></div>
+            <Field label="厂商"><Input autoFocus value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></Field>
+            <Field label="分组名（留空与厂商同名）"><Input value={draft.groupName} onChange={(e) => setDraft({ ...draft, groupName: e.target.value })} /></Field>
           </div>
-          <div className="grid gap-1">
-            <Label>渠道类型</Label>
+          <Field label="渠道类型" hint={TYPE_HELP}>
             <Select value={String(draft.channelType)} onValueChange={(v) => setDraft({ ...draft, channelType: v === '24' ? 24 : 58 })}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 {optionsOf(CHANNEL_TYPE, [58, 24]).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
               </SelectContent>
             </Select>
-            <span className="text-xs text-muted-foreground">{TYPE_HELP}</span>
-          </div>
-          <div className="grid gap-1">
-            <Label>包含模型</Label>
+          </Field>
+          <Field label="包含模型">
             <ChipEditor value={draft.models} onChange={(models) => setDraft({ ...draft, models })} />
-          </div>
-          <div className="grid gap-1">
-            <Label>模型名前缀</Label>
+          </Field>
+          <Field label="模型名前缀" hint={PREFIX_HELP}>
             <ChipEditor
               value={draft.prefixes}
               placeholder="如 gpt-、claude-，回车添加"
               onChange={(prefixes) => setDraft({ ...draft, prefixes })}
             />
-            <span className="text-xs text-muted-foreground">{PREFIX_HELP}</span>
-          </div>
-        </div>
+          </Field>
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>取消</Button>
           <Button disabled={draft.name.trim() === '' || save.isPending} onClick={() => save.mutate()}>保存</Button>

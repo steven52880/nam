@@ -1,12 +1,13 @@
 import { Plus } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import { useChannels, useLatestCacheTests, useVendors } from '@/api/queries';
 import type { ChannelRow, StatsWindow } from '@/api/types';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { DataGrid, type GridRange } from '@/components/data-grid';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { Banner } from '@/components/ui/banner';
 import { Button } from '@/components/ui/button';
+import { useUrlState } from '@/lib/url-state';
 import { Badge } from '@/components/ui/misc';
 import { ApplyDialog } from '@/components/entities/ApplyDialog';
 import { BatchWizard } from './channels/wizard/BatchWizard';
@@ -31,14 +32,14 @@ const NO_ROWS: ChannelRow[] = [];
 
 export default function ChannelsPage() {
   const list = useChannels();
-  const [params, setParams] = useSearchParams();
+  const url = useUrlState();
   const rows = list.data?.items ?? NO_ROWS;
   const draftCount = list.data?.draft_count ?? 0;
   const actions = useChannelActions(rows);
   const { setUpstream, setToken, setVendor } = actions;
 
   const [groupMode, setGroupMode] = useState<GroupMode>('upstream');
-  const [filters, setFilters] = useState<ChannelFilters>(() => ({ ...EMPTY_FILTERS, search: params.get('search') ?? '' }));
+  const [filters, setFilters] = useState<ChannelFilters>(() => ({ ...EMPTY_FILTERS, search: url.get('search') ?? '' }));
   const [statsWindow, setStatsWindow] = useState<StatsWindow>('latest');
   const { stats, errorLogHint } = useChannelStats(statsWindow);
   const [focusId, setFocusId] = useState<string | null>(null);
@@ -58,17 +59,12 @@ export default function ChannelsPage() {
     setWizardOpen(true);
   };
 
-  const batchParam = Number(params.get('batch')) || null;
-  const tokenParam = Number(params.get('token')) || null;
+  const batchParam = Number(url.get('batch')) || null;
+  const tokenParam = Number(url.get('token')) || null;
   const wizardVisible = wizardOpen || batchParam !== null;
   const closeWizard = (open: boolean) => {
     setWizardOpen(open);
-    if (!open && params.has('batch')) {
-      const next = new URLSearchParams(params);
-      next.delete('batch');
-      next.delete('token');
-      setParams(next, { replace: true });
-    }
+    if (!open && url.get('batch') !== null) url.patch({ batch: null, token: null });
   };
 
   const visible = useMemo(() => filterChannels(rows, filters), [rows, filters]);
@@ -194,11 +190,11 @@ export default function ChannelsPage() {
         statsWindow={statsWindow}
         onStatsWindow={setStatsWindow}
       />
-      {list.isError && <div className="rounded bg-destructive/10 px-2 py-1 text-sm text-destructive">{list.error.message}</div>}
+      {list.isError && <Banner tone="error">{list.error.message}</Banner>}
       {errorLogHint && (
-        <div className="rounded bg-warning/15 px-2 py-1 text-sm text-warning">
+        <Banner tone="warning">
           最近 7 天没有任何错误日志，NewAPI 可能没开 <code>ERROR_LOG_ENABLED</code>，成功率会偏高
-        </div>
+        </Banner>
       )}
       <SplitPane
         top={

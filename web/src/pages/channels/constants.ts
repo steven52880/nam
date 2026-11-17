@@ -25,4 +25,4 @@ export const COLUMN_FIELDS: Record<string, string[]> = {
 /** 允许复制粘贴的列（顺序即复制时的列顺序）。 */
 export const COPYABLE_COLUMNS = ['status', 'discount', 'priority', 'weight', 'tag', 'models'];
 
-export const ALL_FILTER = 'all';
+export { ALL_FILTER } from '@/components/filters/FilterSelect';

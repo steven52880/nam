@@ -5,6 +5,7 @@ import { api } from '@/api/endpoints';
 import { ApiError } from '@/api/client';
 import { keys } from '@/api/keys';
 import type { LoginFailure } from '@/api/types';
+import { Banner } from '@/components/ui/banner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useActionMutation } from '@/hooks/useActionMutation';
@@ -87,11 +88,11 @@ export default function LoginPage() {
           disabled={locked}
         />
         {error && (
-          <div className="rounded bg-destructive/10 px-2 py-1 text-sm text-destructive">
+          <Banner tone="error">
             {error}
             {failures > 0 && !locked && `，已连续失败 ${failures} 次（满 5 次将锁定 60 秒）`}
             {locked && `，请 ${remaining} 秒后重试`}
-          </div>
+          </Banner>
         )}
         <Button type="submit" disabled={locked || !password || login.isPending}>
           {locked ? `已锁定（${remaining} 秒）` : '登录'}

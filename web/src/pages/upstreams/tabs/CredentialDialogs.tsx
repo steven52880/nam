@@ -4,7 +4,7 @@ import { errorText } from '@/api/errors';
 import { invalidate } from '@/api/invalidate';
 import type { Credential, CredType, Upstream, UpstreamInput, UpstreamType } from '@/api/types';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useActionMutation } from '@/hooks/useActionMutation';
 import { allowsCredType, defaultCredType, needsUserId } from '../constants';
 import { CredentialPicker } from '../UpstreamForm';
@@ -44,18 +44,20 @@ function CredentialForm({ upstream, type, onOpenChange }: { upstream: Upstream; 
         <DialogTitle>更换凭证</DialogTitle>
         <DialogDescription>新凭证会覆盖旧凭证，保存后建议再测试一次连通性。</DialogDescription>
       </DialogHeader>
-      <div className="grid gap-3">
-        <CredentialPicker
-          upstreamType={type}
-          credType={credType}
-          onCredType={(t) => { setCredType(t); setCred({}); }}
-          value={cred}
-          onChange={setCred}
-          userId={userId}
-          onUserId={setUserId}
-        />
-        {typeChanged && <p className="text-xs text-muted-foreground">类型将一并保存为 {type}</p>}
-      </div>
+      <DialogBody>
+        <div className="grid gap-3">
+          <CredentialPicker
+            upstreamType={type}
+            credType={credType}
+            onCredType={(t) => { setCredType(t); setCred({}); }}
+            value={cred}
+            onChange={setCred}
+            userId={userId}
+            onUserId={setUserId}
+          />
+          {typeChanged && <p className="text-xs text-muted-foreground">类型将一并保存为 {type}</p>}
+        </div>
+      </DialogBody>
       <DialogFooter>
         <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
         <Button disabled={save.isPending || invalid} onClick={() => save.mutate()}>保存</Button>
@@ -69,7 +71,7 @@ export function CredentialDialog({ upstream, type, open, onOpenChange }: { upstr
   const effectiveType = type ?? upstream.type;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent size="md">
         <CredentialForm key={`${upstream.id}-${effectiveType}`} upstream={upstream} type={effectiveType} onOpenChange={onOpenChange} />
       </DialogContent>
     </Dialog>
@@ -87,12 +89,14 @@ export function TestUpstreamDialog({ upstream, open, onOpenChange }: { upstream:
         if (next) test.mutate();
       }}
     >
-      <DialogContent className="max-w-lg">
+      <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>测试连通性</DialogTitle>
           <DialogDescription>{upstream.name}</DialogDescription>
         </DialogHeader>
-        <CheckList results={test.data ?? []} pending={test.isPending} error={test.isError ? errorText(test.error) : undefined} />
+        <DialogBody>
+          <CheckList results={test.data ?? []} pending={test.isPending} error={test.isError ? errorText(test.error) : undefined} />
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" disabled={test.isPending} onClick={() => test.mutate()}>重新测试</Button>
           <Button onClick={() => onOpenChange(false)}>关闭</Button>

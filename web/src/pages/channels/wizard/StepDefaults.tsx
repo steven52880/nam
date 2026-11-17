@@ -1,23 +1,13 @@
 import { useEffect } from 'react';
 import { useVendorMatches } from '@/components/model-picker/useModelGroups';
+import { Field } from '@/components/form/Field';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/misc';
 import { allSelectedModels, isInt, type WizardState } from './state';
 
 interface StepDefaultsProps {
   state: WizardState;
   tokenNames: Map<number, string>;
   onChange: (patch: Partial<WizardState>) => void;
-}
-
-function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
-  return (
-    <div className="grid gap-1">
-      <Label>{label}</Label>
-      {children}
-      {error && <span className="text-xs text-destructive">{error}</span>}
-    </div>
-  );
 }
 
 export function StepDefaults({ state, tokenNames, onChange }: StepDefaultsProps) {
@@ -52,8 +42,7 @@ export function StepDefaults({ state, tokenNames, onChange }: StepDefaultsProps)
           <Input value={state.tag} onChange={(e) => onChange({ tag: e.target.value })} />
         </Field>
       </div>
-      <div className="grid gap-1">
-        <Label>测试模型（每个厂商一个，默认取该厂商的第一个模型）</Label>
+      <Field label="测试模型（每个厂商一个，默认取该厂商的第一个模型）">
         {vendorNames.map((name) => (
           <div key={name} className="flex items-center gap-2">
             <span className="w-24 shrink-0 text-base">{name}</span>
@@ -64,9 +53,8 @@ export function StepDefaults({ state, tokenNames, onChange }: StepDefaultsProps)
           </div>
         ))}
         {vendorNames.length === 0 && <span className="text-sm text-muted-foreground">所选模型没有归属厂商</span>}
-      </div>
-      <div className="grid gap-1">
-        <Label>上游分组折扣（留空表示根据上游分组倍率自动推算；填写则标记为手动）</Label>
+      </Field>
+      <Field label="上游分组折扣（留空表示根据上游分组倍率自动推算；填写则标记为手动）">
         {state.tokenIds.map((id) => (
           <div key={id} className="flex items-center gap-2">
             <span className="w-40 shrink-0 truncate text-base">{tokenNames.get(id) ?? `令牌 ${id}`}</span>
@@ -79,7 +67,7 @@ export function StepDefaults({ state, tokenNames, onChange }: StepDefaultsProps)
             />
           </div>
         ))}
-      </div>
+      </Field>
     </div>
   );
 }

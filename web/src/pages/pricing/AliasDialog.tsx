@@ -3,7 +3,7 @@ import { api } from '@/api/endpoints';
 import { invalidate } from '@/api/invalidate';
 import type { PriceRow } from '@/api/types';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/input';
 import { useActionMutation } from '@/hooks/useActionMutation';
 
@@ -21,12 +21,14 @@ function AliasForm({ row, onDone }: { row: PriceRow; onDone: () => void }) {
   });
   return (
     <>
-      <Textarea
-        className="min-h-36 font-mono"
-        placeholder="每行一个上游模型名"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-      />
+      <DialogBody>
+        <Textarea
+          className="min-h-36 font-mono"
+          placeholder="每行一个上游模型名"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+        />
+      </DialogBody>
       <DialogFooter>
         <Button variant="outline" onClick={onDone}>取消</Button>
         <Button disabled={save.isPending} onClick={() => save.mutate()}>保存</Button>

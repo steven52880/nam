@@ -4,8 +4,8 @@ import { api } from '@/api/endpoints';
 import type { ChannelRow } from '@/api/types';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useActionMutation } from '@/hooks/useActionMutation';
+import { Field } from '@/components/form/Field';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/misc';
 
 export function TestChannelDialog({ row, onClose }: { row: ChannelRow | null; onClose: () => void }) {
   const [model, setModel] = useState('');
@@ -34,13 +34,12 @@ export function TestChannelDialog({ row, onClose }: { row: ChannelRow | null; on
       disabled={model.trim() === ''}
       onConfirm={() => run.mutate()}
     >
-      <div className="grid gap-1">
-        <Label>测试模型（默认为渠道的测试模型）</Label>
+      <Field label="测试模型（默认为渠道的测试模型）">
         <Input value={model} onChange={(e) => setModel(e.target.value)} list="channel-test-models" />
         <datalist id="channel-test-models">
           {row?.models.map((m) => <option key={m} value={m} />)}
         </datalist>
-      </div>
+      </Field>
     </ConfirmDialog>
   );
 }

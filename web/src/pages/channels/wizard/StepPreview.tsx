@@ -2,6 +2,7 @@ import type { UseMutationResult } from '@tanstack/react-query';
 import { errorText } from '@/api/errors';
 import type { BatchPreview, BatchRequest } from '@/api/types';
 import { ModelCountCell } from '@/components/cells/ModelCountCell';
+import { Banner } from '@/components/ui/banner';
 import { Badge } from '@/components/ui/misc';
 import { formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -21,30 +22,30 @@ export function StepPreview({ preview, tokenNames }: StepPreviewProps) {
   return (
     <div className="grid gap-2">
       {preview.isPending && <div className="py-6 text-center text-muted-foreground">生成预览中…</div>}
-      {preview.isError && <div className="rounded bg-destructive/10 px-2 py-1 text-sm text-destructive">{errorText(preview.error)}</div>}
+      {preview.isError && <Banner tone="error">{errorText(preview.error)}</Banner>}
       {warnings.length > 0 && (
-        <div className="rounded bg-warning/15 px-2 py-1 text-sm text-warning">
+        <Banner tone="warning">
           {warnings.map((w) => <div key={w}>{w}</div>)}
-        </div>
+        </Banner>
       )}
       {byToken.length > 0 ? (
-        <div className="rounded bg-warning/15 px-2 py-1 text-sm text-warning">
+        <Banner tone="warning">
           <div>以下模型不属于任何厂商，不会生成渠道：</div>
           {byToken.map(([tokenId, models]) => (
             <div key={tokenId}>{tokenNames.get(Number(tokenId)) ?? `令牌 ${tokenId}`}：{models.join('，')}</div>
           ))}
-        </div>
+        </Banner>
       ) : (
         unassigned.length > 0 && (
-          <div className="rounded bg-warning/15 px-2 py-1 text-sm text-warning">
+          <Banner tone="warning">
             以下模型不属于任何厂商，不会生成渠道：{unassigned.join('，')}
-          </div>
+          </Banner>
         )
       )}
       {duplicates > 0 && (
-        <div className="rounded bg-destructive/10 px-2 py-1 text-sm text-destructive">
+        <Banner tone="error">
           有 {duplicates} 个渠道名称重复（标红），请返回修改后再加入草稿。
-        </div>
+        </Banner>
       )}
       {preview.isSuccess && (
         <div className="max-h-80 overflow-auto rounded border">

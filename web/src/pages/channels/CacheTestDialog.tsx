@@ -8,10 +8,10 @@ import { useCacheTest } from '@/api/queries';
 import type { CacheTest, CacheTestRound, ChannelRow } from '@/api/types';
 import { useActionMutation } from '@/hooks/useActionMutation';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Field } from '@/components/form/Field';
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { formatPercent } from '@/lib/format';
-import { Label } from '@/components/ui/misc';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 function isRound(v: unknown): v is CacheTestRound {
@@ -127,28 +127,28 @@ export function CacheTestDialog({ row, onClose }: { row: ChannelRow | null; onCl
 
   return (
     <Dialog open={row !== null} onOpenChange={(open) => { if (!open) close(); }}>
-      <DialogContent className="max-w-xl">
+      <DialogContent size="xl">
         <DialogHeader>
           <DialogTitle>测缓存：{row?.name ?? ''}</DialogTitle>
           <DialogDescription>由 nam 直接请求上游（不经过 NewAPI，不会出现在 NewAPI 日志中），会真实计费；渠道在 NewAPI 中的模型映射、参数覆盖不生效。</DialogDescription>
         </DialogHeader>
-        <div className="grid grid-cols-[1fr_6rem] gap-3">
-          <div className="grid gap-1">
-            <Label>测试模型</Label>
-            <Select value={model} onValueChange={setModel} disabled={running}>
-              <SelectTrigger><SelectValue placeholder="选择模型" /></SelectTrigger>
-              <SelectContent>
-                {row?.models.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
-              </SelectContent>
-            </Select>
+        <DialogBody className="grid content-start gap-3">
+          <div className="grid grid-cols-[1fr_6rem] gap-3">
+            <Field label="测试模型">
+              <Select value={model} onValueChange={setModel} disabled={running}>
+                <SelectTrigger><SelectValue placeholder="选择模型" /></SelectTrigger>
+                <SelectContent>
+                  {row?.models.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="轮数（2~10）">
+              <Input inputMode="numeric" value={rounds} disabled={running} onChange={(e) => setRounds(e.target.value)} />
+            </Field>
           </div>
-          <div className="grid gap-1">
-            <Label>轮数（2~10）</Label>
-            <Input inputMode="numeric" value={rounds} disabled={running} onChange={(e) => setRounds(e.target.value)} />
-          </div>
-        </div>
-        {test && <RoundsTable test={test} />}
-        {poll.isError && <div className="text-sm text-destructive">{errorText(poll.error)}</div>}
+          {test && <RoundsTable test={test} />}
+          {poll.isError && <div className="text-sm text-destructive">{errorText(poll.error)}</div>}
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={close}>关闭</Button>
           <Button disabled={running || model === '' || !roundsOk} onClick={() => start.mutate()}>

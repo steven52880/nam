@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -48,7 +49,7 @@ export function ModelPickerDialog(props: ModelPickerProps) {
   const { open, title = '选择模型', description, onClose } = props;
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent size="3xl">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription className={description ? undefined : 'sr-only'}>
@@ -202,7 +203,7 @@ function PickerBody({
           ))}
         </TabsList>
       </Tabs>
-      <div className="max-h-[50vh] min-h-40 overflow-y-auto pr-1">
+      <DialogBody className="min-h-40 pr-1">
         {groups.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">
             {needle ? '没有匹配的模型' : '这里还没有模型'}
@@ -216,7 +217,7 @@ function PickerBody({
             onToggleGroup={setMany}
           />
         )}
-      </div>
+      </DialogBody>
       {(matching || matchFailed) && (
         <p className="text-xs text-muted-foreground">
           {matching ? '厂商匹配中…' : '厂商匹配失败，模型暂按「未归属」显示'}

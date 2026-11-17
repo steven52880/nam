@@ -6,6 +6,7 @@ import { useAuditRecent, useJobs } from '@/api/queries';
 import { StatusBadge } from '@/components/cells/StatusBadge';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
+import { Section } from '@/components/ui/section';
 import { useActionMutation } from '@/hooks/useActionMutation';
 import { formatDuration, formatIntervalSeconds, formatTime } from '@/lib/format';
 import { JOB_STATUS, JOB_TITLES, type JobStatusKey } from '@/lib/labels';
@@ -33,8 +34,7 @@ function JobsTable() {
   });
 
   return (
-    <section className="rounded border bg-card">
-      <div className="flex h-9 items-center border-b px-3 font-medium">后台任务</div>
+    <Section title="后台任务" flush>
       <table className="w-full text-base">
         <thead className="bg-muted text-left text-sm text-muted-foreground">
           <tr>
@@ -63,18 +63,18 @@ function JobsTable() {
           {jobs.isError && <tr><td colSpan={7} className="h-12 text-center text-destructive">{jobs.error.message}</td></tr>}
         </tbody>
       </table>
-    </section>
+    </Section>
   );
 }
 
 function RecentAudit() {
   const q = useAuditRecent();
   return (
-    <section className="rounded border bg-card">
-      <div className="flex h-9 items-center justify-between border-b px-3">
-        <span className="font-medium">最近 5 条写入</span>
-        <Link to="/audit" className="text-sm text-primary hover:underline">全部写入历史</Link>
-      </div>
+    <Section
+      title="最近 5 条写入"
+      flush
+      actions={<Link to="/audit" className="text-sm font-normal text-primary hover:underline">全部写入历史</Link>}
+    >
       <ul>
         {(q.data?.items ?? []).map((a) => (
           <li key={a.id} className="flex h-7 items-center gap-3 border-t px-3 first:border-t-0">
@@ -88,7 +88,7 @@ function RecentAudit() {
         {q.isLoading && <li className="flex h-12 items-center justify-center text-muted-foreground">加载中…</li>}
         {q.isError && <li className="flex h-12 items-center justify-center text-destructive">{q.error.message}</li>}
       </ul>
-    </section>
+    </Section>
   );
 }
 
