@@ -11,6 +11,7 @@ import { useSession } from '@/hooks/useSession';
 import { formatNumber, formatTime, parseGoDuration, toGoDuration, type ParsedInterval } from '@/lib/format';
 import { CacheTestSection } from './settings/CacheTestSection';
 import { IntervalRow, JOB_ORDER } from './settings/IntervalRow';
+import { isBackfillDaysValid, RetentionFields, StatsStatusBlock } from './settings/StatsSection';
 import { VendorSection } from './settings/VendorSection';
 
 const SECTIONS = [
@@ -52,6 +53,8 @@ export default function SettingsPage() {
   const [autoWrite, setAutoWrite] = useState(false);
   const [logDays, setLogDays] = useState('30');
   const [statsDays, setStatsDays] = useState('180');
+  const [backfillDays, setBackfillDays] = useState('7');
+  const [logCleanup, setLogCleanup] = useState(false);
   const [intervals, setIntervals] = useState<Partial<Record<JobName, ParsedInterval>>>({});
   const loaded = useRef('');
 
@@ -65,6 +68,8 @@ export default function SettingsPage() {
     setAutoWrite(s.auto_write === 'true');
     setLogDays(s.log_retention_days ?? '30');
     setStatsDays(s.stats_retention_days ?? '180');
+    setBackfillDays(s.stats_backfill_days ?? '7');
+    setLogCleanup(s.newapi_log_cleanup === 'true');
     const next: Partial<Record<JobName, ParsedInterval>> = {};
     for (const j of JOB_ORDER) next[j] = parseGoDuration(s[`job_interval.${j}`]) ?? DEFAULT_INTERVAL;
     setIntervals(next);
@@ -77,6 +82,8 @@ export default function SettingsPage() {
         auto_write: String(autoWrite),
         log_retention_days: logDays,
         stats_retention_days: statsDays,
+        stats_backfill_days: backfillDays,
+        newapi_log_cleanup: String(logCleanup),
       };
       for (const j of JOB_ORDER) {
         const v = intervals[j];
@@ -93,7 +100,7 @@ export default function SettingsPage() {
   });
 
   const thresholdOk = Number(threshold) >= 0 && threshold !== '';
-  const daysOk = /^\d+$/.test(logDays) && /^\d+$/.test(statsDays);
+  const daysOk = /^\d+$/.test(logDays) && /^\d+$/.test(statsDays) && isBackfillDaysValid(backfillDays);
   const intervalsOk = JOB_ORDER.every((j) => (intervals[j]?.value ?? 1) > 0);
   const valid = thresholdOk && daysOk && intervalsOk;
   const b = backend.data;
@@ -142,9 +149,17 @@ export default function SettingsPage() {
           })}
         </Section>
         <Section id="retention" title="日志保留">
-          <Line label="NewAPI 原始日志（天）"><Input className="w-24 text-right" inputMode="numeric" value={logDays} onChange={(e) => setLogDays(e.target.value)} /></Line>
-          <Line label="nam 聚合数据（天）"><Input className="w-24 text-right" inputMode="numeric" value={statsDays} onChange={(e) => setStatsDays(e.target.value)} /></Line>
-          <p className="text-sm text-muted-foreground">NewAPI 原始日志由 nam 负责清理，会写入 NewAPI。</p>
+          <RetentionFields
+            logDays={logDays}
+            statsDays={statsDays}
+            backfillDays={backfillDays}
+            logCleanup={logCleanup}
+            onLogDays={setLogDays}
+            onStatsDays={setStatsDays}
+            onBackfillDays={setBackfillDays}
+            onLogCleanup={setLogCleanup}
+          />
+          <StatsStatusBlock backfillDays={backfillDays} />
         </Section>
       </div>
     </div>
