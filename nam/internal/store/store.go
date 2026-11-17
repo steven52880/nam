@@ -147,6 +147,8 @@ var Defaults = map[string]string{
 	KeyAutoWrite:          "true",
 	KeyLogRetentionDays:   "30",
 	KeyStatsRetentionDays: "180",
+	KeyStatsBackfillDays:  "7",
+	KeyNewAPILogCleanup:   "false",
 }
 
 // EnsureDefaults inserts default settings that are missing.

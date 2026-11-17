@@ -45,6 +45,9 @@ type fakeNewAPI struct {
 	logs     []map[string]any
 	logReqs  []map[string][]string // query of every /api/log/ request
 	times    []int64               // unix nano receive time per request
+	// afterLogGet runs after every GET /api/log/ reply with the request count, under mu
+	// (use appendLogLocked to simulate inserts between requests).
+	afterLogGet func(n int)
 }
 
 func newFakeNewAPI(t *testing.T) *fakeNewAPI {

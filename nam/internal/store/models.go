@@ -209,38 +209,6 @@ type ModelAlias struct {
 	Official string `gorm:"size:128;index;not null" json:"official"`
 }
 
-// StatsHourly is aggregated per channel/model/hour. Never stores raw logs.
-type StatsHourly struct {
-	ChannelID int    `gorm:"primaryKey;autoIncrement:false" json:"channel_id"`
-	Model     string `gorm:"primaryKey;size:128" json:"model"`
-	Hour      int64  `gorm:"primaryKey;autoIncrement:false;index" json:"hour"` // unix seconds, truncated to hour
-	Group     string `gorm:"size:64" json:"group"`
-
-	Success     int64  `json:"success"`
-	Fail        int64  `json:"fail"`
-	FailByClass string `json:"fail_by_class"` // JSON {"429":n,"5xx":n,"timeout":n,"401":n,"balance":n,"other":n}
-
-	PromptTokens     int64 `json:"prompt_tokens"`
-	CompletionTokens int64 `json:"completion_tokens"`
-	CacheReadTokens  int64 `json:"cache_read_tokens"`
-	CacheWriteTokens int64 `json:"cache_write_tokens"`
-
-	FRTHist   string `json:"frt_hist"`   // log histogram JSON
-	SpeedHist string `json:"speed_hist"` // log histogram JSON
-
-	CostCNY     float64 `json:"cost_cny"`
-	OfficialUSD float64 `json:"official_usd"`
-	Quota       int64   `json:"quota"`
-	RevenueCNY  float64 `json:"revenue_cny"`
-}
-
-// LogCursor tracks incremental log fetching.
-type LogCursor struct {
-	LogType int   `gorm:"primaryKey;autoIncrement:false" json:"log_type"`
-	LastID  int64 `json:"last_id"`
-	LastAt  int64 `json:"last_at"`
-}
-
 // Audit kinds, triggers and results.
 const (
 	AuditChannel  = "channel"

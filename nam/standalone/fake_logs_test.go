@@ -17,6 +17,25 @@ func (f *fakeNewAPI) seedLogs(n int) {
 	}
 }
 
+// seedTypedLogs stores n logs with ids 1..n whose type is typeOf(id).
+func (f *fakeNewAPI) seedTypedLogs(n int, typeOf func(id int) int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := 1; i <= n; i++ {
+		f.logs = append(f.logs, map[string]any{
+			"id": i, "created_at": 1000 + i, "type": typeOf(i), "channel": 7, "model_name": "m", "content": "",
+		})
+	}
+}
+
+// appendLogLocked adds one log with the next id; the caller holds f.mu.
+func (f *fakeNewAPI) appendLogLocked(typ int) {
+	id := len(f.logs) + 1
+	f.logs = append(f.logs, map[string]any{
+		"id": id, "created_at": 1000 + id, "type": typ, "channel": 7, "model_name": "m", "content": "",
+	})
+}
+
 func (f *fakeNewAPI) logRequests() []map[string][]string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -43,6 +62,9 @@ func (f *fakeNewAPI) serveLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f.logReqs = append(f.logReqs, q)
+	if f.afterLogGet != nil {
+		defer f.afterLogGet(len(f.logReqs)) // runs after the reply, still under f.mu
+	}
 	if q.Get("start_timestamp") == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		reply(w, false, "start_timestamp is required", nil)

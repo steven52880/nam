@@ -2,6 +2,7 @@ package standalone
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"sort"
@@ -41,49 +42,86 @@ func (s logStore) page(ctx context.Context, q url.Values, p int) (logPage, error
 	return res, err
 }
 
-// FetchAfter pages newest-first (NewAPI orders by id desc) until it reaches AfterID, then
-// returns the collected rows ascending, capped at Limit (oldest first, so the caller can
-// advance its cursor without gaps). With several Types it runs one series per type.
+// logMaxPages bounds one FetchAfter scan (a var so tests can lower it).
+var logMaxPages = maxPages
+
+// errScanTooLong is returned instead of a partial result when the page cap is hit.
+var errScanTooLong = errors.New("日志分页超过上限，未读完")
+
+// FetchAfter returns rows of the requested types with id > AfterID ascending, capped at
+// Limit, so the caller can advance its cursor without gaps.
+//
+// ONE scan over every type (type=0) is filtered client-side: scanning each type separately
+// could skip a row of type A inserted after A's scan with an id below a type-B row read
+// later. NewAPI pages are id desc, so the scan runs from the OLDEST page towards page 1 and
+// stops once Limit requested-type rows are collected; then only rows with id ≤ the last
+// collected id are returned, so every id below the cut has been seen.
+//
+// Positions are tracked from the OLDEST row (stable while new rows are appended): `done`
+// rows from the old end are consumed. Each page number is derived from the latest total;
+// if inserts between requests moved the page past `done`, the step is retried with the new
+// total, so reading backwards can repeat rows (deduped by id) but not miss one.
+//
+// Residual risk (standalone mode only; embedded mode reads SQL directly): NewAPI's
+// GET /api/log/ runs COUNT and SELECT as separate queries. Rows inserted between them
+// inside ONE request shift the page without changing the reported total, so a few rows at
+// a page boundary can be missed.
 func (s logStore) FetchAfter(ctx context.Context, q ports.LogQuery) ([]ports.LogRecord, error) {
 	limit := q.Limit
 	if limit <= 0 || limit > logMaxLimit {
 		limit = logMaxLimit
 	}
-	types := q.Types
-	if len(types) == 0 {
-		types = []int{0} // 0 = every type
+	want, every := map[int]bool{}, len(q.Types) == 0
+	for _, t := range q.Types {
+		want[t] = true
+		every = every || t == 0 // 0 = every type
 	}
-	start := since(q.Since)
+	match := func(t int) bool { return every || want[t] }
+	params := func() url.Values {
+		return url.Values{"type": {"0"}, "start_timestamp": {strconv.FormatInt(since(q.Since), 10)}}
+	}
+	first, err := s.page(ctx, params(), 1)
+	if err != nil {
+		return nil, err
+	}
+	total, done, hits := first.Total, 0, 0
 	seen := map[int64]struct{}{}
-	var all []ports.LogRecord
-	for _, t := range types {
-		for p := 1; p <= maxPages; p++ {
-			params := url.Values{"type": {strconv.Itoa(t)}, "start_timestamp": {strconv.FormatInt(start, 10)}}
-			res, err := s.page(ctx, params, p)
-			if err != nil {
-				return nil, err
-			}
-			reached := false
-			for _, r := range res.Items {
-				if r.ID <= q.AfterID {
-					reached = true
-					continue
+	var rows []ports.LogRecord // every type, id > AfterID
+	for step := 0; done < total && hits < limit; step++ {
+		if step >= logMaxPages {
+			return nil, errScanTooLong
+		}
+		p := (total-done-1)/logPageSize + 1
+		res, err := s.page(ctx, params(), p)
+		if err != nil {
+			return nil, err
+		}
+		if lo := res.Total - p*logPageSize; lo > done {
+			total = res.Total // rows were appended meanwhile; recompute the page
+			continue
+		}
+		for _, r := range res.Items {
+			if _, dup := seen[r.ID]; !dup && r.ID > q.AfterID {
+				seen[r.ID] = struct{}{}
+				rows = append(rows, r)
+				if match(r.Type) {
+					hits++
 				}
-				if _, dup := seen[r.ID]; !dup {
-					seen[r.ID] = struct{}{}
-					all = append(all, r)
-				}
 			}
-			if reached || len(res.Items) < logPageSize {
-				break
+		}
+		total, done = res.Total, res.Total-(p-1)*logPageSize
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].ID < rows[j].ID })
+	out := make([]ports.LogRecord, 0, min(hits, limit))
+	for _, r := range rows {
+		if match(r.Type) {
+			out = append(out, r)
+			if len(out) == limit {
+				break // rows above this id may be unread
 			}
 		}
 	}
-	sort.Slice(all, func(i, j int) bool { return all[i].ID < all[j].ID })
-	if len(all) > limit {
-		all = all[:limit]
-	}
-	return all, nil
+	return out, nil
 }
 
 // Recent returns the newest logs of one channel (NewAPI supports the `channel` filter).
