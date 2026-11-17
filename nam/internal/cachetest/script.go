@@ -46,8 +46,10 @@ type message struct {
 // BuildRound builds the request body of round i (1-based): corpus + history + question i.
 // Anthropic: system is one text block (the corpus) carrying cache_control ephemeral.
 // OpenAI: the corpus is the system message and relies on automatic prefix caching.
-// Both use max_tokens 128, non-streaming. temperature is left at the model default:
-// newer models (e.g. claude-sonnet-5-5) reject any non-default temperature with 400.
+// Both are non-streaming. Anthropic requires max_tokens, so it is set to 128. OpenAI omits
+// it, because newer OpenAI models reject max_tokens with 400 (they want max_completion_tokens).
+// temperature is left at the model default: newer models (e.g. claude-sonnet-5-5) reject
+// any non-default temperature with 400.
 func BuildRound(protocol, model string, i int, history []Turn) ([]byte, error) {
 	msgs := make([]message, 0, len(history)*2+1)
 	for _, t := range history {
@@ -69,8 +71,7 @@ func BuildRound(protocol, model string, i int, history []Turn) ([]byte, error) {
 	}
 	all := append([]message{{Role: "system", Content: corpus}}, msgs...)
 	return json.Marshal(map[string]any{
-		"model":      model,
-		"max_tokens": 128,
-		"messages":   all,
+		"model":    model,
+		"messages": all,
 	})
 }
