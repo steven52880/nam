@@ -238,3 +238,25 @@ func TestResetClearsCallsAndState(t *testing.T) {
 		t.Fatalf("calls after reset = %d, want 0", len(calls))
 	}
 }
+
+func TestFailKeyOnlyFailsMatchingKey(t *testing.T) {
+	s := newTestServer()
+	do(s, http.MethodPost, "/_ctl", `{"fail_next":2,"fail_status":500,"fail_key":"sk-mock-a"}`, nil)
+	other := map[string]string{"Authorization": "Bearer sk-mock-b"}
+	target := map[string]string{"Authorization": "Bearer sk-mock-a"}
+	if rec := do(s, http.MethodPost, "/v1/chat/completions", `{"model":"m"}`, other); rec.Code != http.StatusOK {
+		t.Fatalf("other key status = %d, want 200", rec.Code)
+	}
+	for i := 0; i < 2; i++ {
+		if rec := do(s, http.MethodPost, "/v1/chat/completions", `{"model":"m"}`, target); rec.Code != http.StatusInternalServerError {
+			t.Fatalf("target key call %d status = %d, want 500", i, rec.Code)
+		}
+	}
+	if rec := do(s, http.MethodPost, "/v1/chat/completions", `{"model":"m"}`, target); rec.Code != http.StatusOK {
+		t.Fatalf("target key after budget status = %d, want 200", rec.Code)
+	}
+	do(s, http.MethodPost, "/_ctl", `{"reset":true}`, nil)
+	if s.failKey != "" {
+		t.Fatalf("failKey after reset = %q, want empty", s.failKey)
+	}
+}

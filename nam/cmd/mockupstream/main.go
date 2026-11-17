@@ -42,6 +42,7 @@ type server struct {
 	mu           sync.Mutex
 	failNext     int
 	failStatus   int
+	failKey      string // when set, fail_next only applies to requests carrying this key
 	latencyScale float64
 	calls        []callRecord
 
@@ -122,7 +123,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if isRelayPath(r.URL.Path) {
-		if status, ok := s.consumeFail(); ok {
+		if status, ok := s.consumeFail(r); ok {
 			writeJSON(rw, status, map[string]any{
 				"error": map[string]any{"message": "mock injected error", "type": "mock"},
 			})
@@ -190,14 +191,28 @@ func splitGeminiPath(path string) (model, action string) {
 	return rest, ""
 }
 
-func (s *server) consumeFail() (int, bool) {
+func (s *server) consumeFail(r *http.Request) (int, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.failKey != "" && !requestHasKey(r, s.failKey) {
+		return 0, false
+	}
 	if s.failNext > 0 {
 		s.failNext--
 		return s.failStatus, true
 	}
 	return 0, false
+}
+
+// requestHasKey reports whether the request carries key in any of the supported auth headers.
+func requestHasKey(r *http.Request, key string) bool {
+	if strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ") == key {
+		return true
+	}
+	if r.Header.Get("x-api-key") == key || r.Header.Get("x-goog-api-key") == key {
+		return true
+	}
+	return r.URL.Query().Get("key") == key
 }
 
 func (s *server) getScale() float64 {
@@ -251,6 +266,7 @@ func (s *server) handleCtl(w http.ResponseWriter, body []byte) {
 	var req struct {
 		FailNext        *int                `json:"fail_next"`
 		FailStatus      *int                `json:"fail_status"`
+		FailKey         *string             `json:"fail_key"`
 		LatencyScale    *float64            `json:"latency_scale"`
 		Reset           *bool               `json:"reset"`
 		Quota           *int                `json:"quota"`
@@ -268,6 +284,7 @@ func (s *server) handleCtl(w http.ResponseWriter, body []byte) {
 	if req.Reset != nil && *req.Reset {
 		s.failNext = 0
 		s.failStatus = defaultFailureStatus
+		s.failKey = ""
 		s.latencyScale = 1.0
 		s.calls = nil
 		s.resetMgmt()
@@ -277,6 +294,9 @@ func (s *server) handleCtl(w http.ResponseWriter, body []byte) {
 	}
 	if req.FailStatus != nil {
 		s.failStatus = *req.FailStatus
+	}
+	if req.FailKey != nil {
+		s.failKey = *req.FailKey
 	}
 	if req.LatencyScale != nil {
 		s.latencyScale = *req.LatencyScale
@@ -309,6 +329,7 @@ func (s *server) handleCtl(w http.ResponseWriter, body []byte) {
 	state := map[string]any{
 		"fail_next":        s.failNext,
 		"fail_status":      s.failStatus,
+		"fail_key":         s.failKey,
 		"latency_scale":    s.latencyScale,
 		"quota":            s.quota,
 		"access_token":     s.accessToken,
