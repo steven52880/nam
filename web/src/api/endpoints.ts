@@ -48,6 +48,14 @@ import type {
   VendorUpdateResult,
   VendorMatchResponse,
   JobStatus,
+  ChannelStatsList,
+  ModelStatsList,
+  OverviewQuery,
+  SeriesQuery,
+  StatsOverview,
+  StatsSeries,
+  StatsStatus,
+  StatsWindow,
 } from './types';
 
 export const api = {
@@ -145,6 +153,15 @@ export const api = {
 
   settings: () => request<Settings>('/settings'),
   saveSettings: (body: Settings) => request<Settings>('/settings', { method: 'PUT', body }),
+
+  statsChannels: (window: StatsWindow) =>
+    request<ChannelStatsList>('/stats/channels', { query: { window } }),
+  statsChannelModels: (id: number, window: StatsWindow) =>
+    request<ModelStatsList>(`/stats/channels/${id}/models`, { query: { window } }),
+  statsOverview: (q: OverviewQuery) => request<StatsOverview>('/stats/overview', { query: { ...q } }),
+  statsSeries: (q: SeriesQuery) => request<StatsSeries>('/stats/series', { query: { ...q } }),
+  statsStatus: () => request<StatsStatus>('/stats/status'),
+  statsRebuild: (days: number) => request<null>('/stats/rebuild', { method: 'POST', body: { days } }),
 
   audit: (q: AuditQuery) =>
     request<Page<AuditLog>>('/audit', { query: { ...q } }),
