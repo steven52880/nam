@@ -1,10 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/endpoints';
-import type { ChannelModels, ChannelRow, ModelRow } from '@/api/types';
+import { useMemo } from 'react';
+import type { ChannelModels, ChannelRow, ModelRow, ModelStatsItem, StatsWindow } from '@/api/types';
 import { OfficialPriceText } from '@/components/PriceText';
 import { Badge } from '@/components/ui/misc';
 import { formatNumber, formatPercent, formatSignificant } from '@/lib/format';
 import { CacheOverridePopover, channelModelsKey, DiscountCell } from './ModelDiscountControls';
+import { Dash, FirstTokenCell, SpeedCell, SuccessRateCell } from './StatCells';
 
 const HEADERS = [
   '模型名',
@@ -18,10 +20,16 @@ const HEADERS = [
   '首字延迟',
   '吐字速度',
 ];
-const STATS_COLUMNS = 4;
 
-function Dash() {
-  return <span className="text-muted-foreground">—</span>;
+function ModelStatCells({ metrics }: { metrics: ModelStatsItem | undefined }) {
+  return (
+    <>
+      <td className="border-b border-r px-2 text-right tabular-nums">{metrics ? metrics.requests : <Dash />}</td>
+      <td className="border-b border-r px-2 text-right"><SuccessRateCell metrics={metrics} /></td>
+      <td className="border-b border-r px-2 text-right"><FirstTokenCell metrics={metrics} /></td>
+      <td className="border-b border-r px-2 text-right"><SpeedCell metrics={metrics} /></td>
+    </>
+  );
 }
 
 function DerivedCell({ row }: { row: ModelRow }) {
@@ -77,8 +85,22 @@ function useModelsData(channelId: number | null) {
   });
 }
 
-export function ModelDetail({ row }: { row: ChannelRow | null }) {
+function useModelStats(channelId: number | null, statsWindow: StatsWindow) {
+  const query = useQuery({
+    queryKey: ['stats', 'channel-models', channelId ?? 0, statsWindow],
+    queryFn: () => api.statsChannelModels(channelId ?? 0, statsWindow),
+    enabled: channelId !== null && channelId > 0,
+    refetchInterval: 60_000,
+  });
+  return useMemo(
+    () => new Map((query.data?.items ?? []).map((item) => [item.model, item])),
+    [query.data],
+  );
+}
+
+export function ModelDetail({ row, statsWindow }: { row: ChannelRow | null; statsWindow: StatsWindow }) {
   const query = useModelsData(row?.id ?? null);
+  const modelStats = useModelStats(row?.id ?? null, statsWindow);
   if (!row) {
     return (
       <div className="flex h-full items-center justify-center rounded border bg-card text-muted-foreground">
@@ -122,9 +144,7 @@ export function ModelDetail({ row }: { row: ChannelRow | null }) {
                   <DiscountCell channelId={row.id} model={m.model} override={m.override} fallback={detail?.discount ?? row.discount} />
                 </td>
                 <td className="border-b border-r px-2 text-right"><CostCell row={m} /></td>
-                {Array.from({ length: STATS_COLUMNS }, (_, i) => (
-                  <td key={i} className="border-b border-r px-2 text-right"><Dash /></td>
-                ))}
+                <ModelStatCells metrics={modelStats.get(m.model)} />
               </tr>
             ))}
             {detail && models.length === 0 && (

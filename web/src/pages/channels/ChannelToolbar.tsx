@@ -1,8 +1,10 @@
+import type { StatsWindow } from '@/api/types';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ALL_FILTER, GROUP_MODE_OPTIONS, STATUS_FILTER_OPTIONS, SYNC_FILTER_OPTIONS, type GroupMode } from './constants';
 import { EMPTY_FILTERS, isFiltering, type ChannelFilters } from './filter';
+import { STATS_WINDOW_OPTIONS } from './useChannelStats';
 
 function FilterSelect({
   label,
@@ -34,9 +36,21 @@ interface ChannelToolbarProps {
   upstreams: string[];
   vendors: string[];
   tags: string[];
+  statsWindow: StatsWindow;
+  onStatsWindow: (window: StatsWindow) => void;
 }
 
-export function ChannelToolbar({ groupMode, onGroupMode, filters, onFilters, upstreams, vendors, tags }: ChannelToolbarProps) {
+export function ChannelToolbar({
+  groupMode,
+  onGroupMode,
+  filters,
+  onFilters,
+  upstreams,
+  vendors,
+  tags,
+  statsWindow,
+  onStatsWindow,
+}: ChannelToolbarProps) {
   const set = (key: keyof ChannelFilters) => (value: string) => onFilters({ ...filters, [key]: value });
   const pair = (items: string[]): Array<[string, string]> => items.map((i) => [i, i]);
   return (
@@ -59,6 +73,15 @@ export function ChannelToolbar({ groupMode, onGroupMode, filters, onFilters, ups
         onChange={(e) => onFilters({ ...filters, search: e.target.value })}
       />
       {isFiltering(filters) && <Button variant="link" onClick={() => onFilters(EMPTY_FILTERS)}>清除筛选</Button>}
+      <span className="ml-auto flex items-center gap-1 text-sm text-muted-foreground">
+        统计时长
+        <Select value={statsWindow} onValueChange={(v) => onStatsWindow(v as StatsWindow)}>
+          <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {STATS_WINDOW_OPTIONS.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </span>
     </div>
   );
 }

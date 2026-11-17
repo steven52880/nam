@@ -3,7 +3,7 @@ import { Plus } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '@/api/endpoints';
-import type { ChannelRow } from '@/api/types';
+import type { ChannelRow, StatsWindow } from '@/api/types';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { DataGrid, type GridRange } from '@/components/data-grid';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -25,6 +25,8 @@ import { RowContextMenu, type MenuItem } from './channels/RowContextMenu';
 import { SplitPane } from './channels/SplitPane';
 import { TestChannelDialog } from './channels/TestChannelDialog';
 import { useChannelActions } from './channels/useChannelActions';
+import { buildStatColumns } from './channels/statColumns';
+import { summarizeGroup, useChannelStats } from './channels/useChannelStats';
 import { useChannelList } from './channels/useChannels';
 
 const NO_ROWS: ChannelRow[] = [];
@@ -38,7 +40,9 @@ export default function ChannelsPage() {
   const { setUpstream, setToken, setVendor } = actions;
 
   const [groupMode, setGroupMode] = useState<GroupMode>('upstream');
-  const [filters, setFilters] = useState<ChannelFilters>(EMPTY_FILTERS);
+  const [filters, setFilters] = useState<ChannelFilters>(() => ({ ...EMPTY_FILTERS, search: params.get('search') ?? '' }));
+  const [statsWindow, setStatsWindow] = useState<StatsWindow>('latest');
+  const { stats, errorLogHint } = useChannelStats(statsWindow);
   const [focusId, setFocusId] = useState<string | null>(null);
   const [range, setRange] = useState<GridRange | null>(null);
   const [modelRow, setModelRow] = useState<ChannelRow | null>(null);
@@ -78,6 +82,15 @@ export default function ChannelsPage() {
 
   const channelCostRange = useMemo(() => costRangeOf(visible.map((r) => r.channel_cost)), [visible]);
   const unitCostRange = useMemo(() => costRangeOf(visible.map((r) => r.unit_cost)), [visible]);
+  const statColumns = useMemo(
+    () =>
+      buildStatColumns({
+        stats,
+        effectiveCostRange: costRangeOf(visible.map((r) => stats.get(r.id)?.effective_cost_price ?? null)),
+        stdCostRange: costRangeOf(visible.map((r) => stats.get(r.id)?.std_cost_price ?? null)),
+      }),
+    [stats, visible],
+  );
   const vendors = useQuery({ queryKey: ['vendors'], queryFn: api.vendors });
   const vendorGroups = useMemo(
     () => new Map((vendors.data ?? []).map((v) => [v.name, v.group_name])),
@@ -104,8 +117,9 @@ export default function ChannelsPage() {
         cacheTests,
         channelCostRange,
         unitCostRange,
+        statColumns,
       }),
-    [channelCostRange, unitCostRange, vendorGroups, cacheTests, setUpstream, setToken, setVendor],
+    [channelCostRange, unitCostRange, statColumns, vendorGroups, cacheTests, setUpstream, setToken, setVendor],
   );
   const rowById = useMemo(() => new Map(rows.map((r) => [rowKey(r), r])), [rows]);
 
@@ -183,8 +197,15 @@ export default function ChannelsPage() {
         upstreams={distinct(rows, (r) => r.upstream_name)}
         vendors={distinct(rows, (r) => r.vendor)}
         tags={distinct(rows, (r) => r.tag)}
+        statsWindow={statsWindow}
+        onStatsWindow={setStatsWindow}
       />
       {list.isError && <div className="rounded bg-destructive/10 px-2 py-1 text-sm text-destructive">{list.error.message}</div>}
+      {errorLogHint && (
+        <div className="rounded bg-warning/15 px-2 py-1 text-sm text-warning">
+          最近 7 天没有任何错误日志，NewAPI 可能没开 <code>ERROR_LOG_ENABLED</code>，成功率会偏高
+        </div>
+      )}
       <SplitPane
         top={
           <DataGrid<ChannelRow>
@@ -193,7 +214,7 @@ export default function ChannelsPage() {
             columns={columns}
             getRowId={rowKey}
             groupBy={groupKeyOf(groupMode)}
-            groupSummary={(_key, groupRows) => `启用 ${groupRows.filter((r) => r.status === 1).length}`}
+            groupSummary={(_key, groupRows) => summarizeGroup(groupRows, stats)}
             isDirty={isDirty}
             rowClassName={rowClass}
             cellClassName={cellClassName}
@@ -209,7 +230,7 @@ export default function ChannelsPage() {
             }}
           />
         }
-        bottom={<ModelDetail row={focused} />}
+        bottom={<ModelDetail row={focused} statsWindow={statsWindow} />}
       />
       <RowContextMenu state={menu} items={menuItems} onClose={() => setMenu(null)} />
       <ModelEditorDialog row={modelRow} onClose={() => setModelRow(null)} onSave={actions.saveModels} />

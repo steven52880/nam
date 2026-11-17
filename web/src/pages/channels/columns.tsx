@@ -16,7 +16,6 @@ function noEditor(): void {
   return undefined;
 }
 const COST_REASON = '上游渠道成本价 = 上游分组折扣 × 上游货币汇率，不能直接编辑';
-const STATS_REASON = '统计列由系统计算，不能编辑';
 
 interface ColumnOptions {
   onOpenModels: (row: ChannelRow) => void;
@@ -32,6 +31,8 @@ interface ColumnOptions {
   channelCostRange: CostRange | null;
   /** 当前可见行的单次成本范围。 */
   unitCostRange: CostRange | null;
+  /** 统计列（成功率、延迟、实测成本等）。 */
+  statColumns: { main: GridColumn<ChannelRow>[]; extra: GridColumn<ChannelRow>[] };
 }
 
 function readOnly(
@@ -42,16 +43,6 @@ function readOnly(
   extra: Partial<GridColumn<ChannelRow>> = {},
 ): GridColumn<ChannelRow> {
   return { id, header, accessor, readOnlyReason: reason, ...extra };
-}
-
-function statColumn(id: string, header: string, hidden = false): GridColumn<ChannelRow> {
-  return readOnly(id, header, () => null, STATS_REASON, {
-    width: 80,
-    align: 'right',
-    sortable: false,
-    hidden,
-    cell: () => <span className="text-muted-foreground">{DASH}</span>,
-  });
 }
 
 function SyncBadge({ row, onOpenDrift }: { row: ChannelRow; onOpenDrift: (row: ChannelRow) => void }) {
@@ -128,6 +119,7 @@ export function buildChannelColumns({
   cacheTests,
   channelCostRange,
   unitCostRange,
+  statColumns,
 }: ColumnOptions): GridColumn<ChannelRow>[] {
   return [
     {
@@ -273,18 +265,13 @@ export function buildChannelColumns({
       accessor: (r) => r.tag,
       validate: (v) => validateCell('tag', v),
     },
-    statColumn('success_rate', '成功率'),
-    statColumn('first_token', '首字延迟'),
-    statColumn('speed', '吐字速度'),
-    statColumn('cache_hit', '缓存命中率', true),
+    ...statColumns.main,
     readOnly('manual_cache', '手动缓存率', (r) => cacheTests.get(r.id)?.rate ?? null, '手动缓存率来自「测缓存」，不能编辑', {
       width: 100,
       align: 'right',
       cell: (r) => <ManualCacheCell test={cacheTests.get(r.id)} />,
     }),
-    statColumn('cost_price', '成本价', true),
-    statColumn('rating', '评级', true),
-    statColumn('cost', '成本（元）', true),
+    ...statColumns.extra,
     readOnly('sync_state', '同步状态', (r) => SYNC_LABELS[r.sync_state], '同步状态由系统维护，不能编辑', {
       width: 100,
       cell: (r) => <SyncBadge row={r} onOpenDrift={onOpenDrift} />,
