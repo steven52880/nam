@@ -471,6 +471,106 @@ components:
           type: array
           description: old = nam 上次应用的值；new = NewAPI 现在的值
           items: { $ref: '#/components/schemas/FieldChange' }
+    StatsMetrics:
+      type: object
+      description: 统计指标。比率都是 0–1 的小数，可空字段无数据时为 null。
+      properties:
+        requests: { type: integer }
+        success: { type: integer }
+        fail: { type: integer }
+        success_rate: { type: number, nullable: true }
+        wilson: { type: number, nullable: true, description: 成功率的 Wilson 下界（z = 1.96） }
+        fail_by_class: { type: object, additionalProperties: { type: integer }, description: '键 timeout / 429 / 401 / balance / 5xx / other' }
+        frt_p50: { type: number, nullable: true, description: 首字延迟毫秒 }
+        frt_p95: { type: number, nullable: true }
+        speed_p50: { type: number, nullable: true, description: 吐字速度 token/秒 }
+        speed_p95: { type: number, nullable: true }
+        speed_estimated: { type: boolean, description: true = NewAPI 未打补丁 P1，按整秒估算 }
+        cache_hit: { type: number, nullable: true }
+        prompt_tokens: { type: integer, description: 非缓存输入 token }
+        completion_tokens: { type: integer }
+        cache_read_tokens: { type: integer }
+        cache_write_tokens: { type: integer }
+        cost_cny: { type: number }
+        revenue_cny: { type: number }
+        priced_requests: { type: integer }
+        effective_cost_price: { type: number, nullable: true, description: 实测成本价（有效口径）= 成本 ÷ 不算缓存的原厂成本 }
+        measured_cost_price: { type: number, nullable: true, description: 定价口径 = 成本 ÷ 按原厂缓存价算的原厂成本 }
+        margin: { type: number, nullable: true }
+    StatsChannelItem:
+      allOf:
+        - { $ref: '#/components/schemas/StatsMetrics' }
+        - type: object
+          properties:
+            channel_id: { type: integer }
+            std_cost_price: { type: number, nullable: true }
+            price_tier: { type: string, nullable: true, enum: [cheap, mid, expensive] }
+            quality_tier: { type: string, enum: [good, mid, bad, insufficient], description: 请求数 < 20 为 insufficient }
+    StatsChannelList:
+      type: object
+      properties:
+        window: { type: string, enum: [latest, 3d, 7d] }
+        generated_at: { type: integer }
+        patch_p1: { type: boolean }
+        error_log_hint: { type: boolean }
+        items: { type: array, items: { $ref: '#/components/schemas/StatsChannelItem' } }
+    StatsModelItem:
+      allOf:
+        - { $ref: '#/components/schemas/StatsMetrics' }
+        - type: object
+          properties:
+            model: { type: string }
+    StatsRow:
+      allOf:
+        - { $ref: '#/components/schemas/StatsMetrics' }
+        - type: object
+          properties:
+            key: { type: string, description: '渠道/上游为 id 字符串（未纳管上游为 ""）；模型为模型名；厂商为厂商名（未归属为 ""）' }
+            name: { type: string }
+    StatsScatterPoint:
+      type: object
+      properties:
+        channel_id: { type: integer }
+        name: { type: string }
+        vendor: { type: string }
+        std_cost_price: { type: number, nullable: true }
+        wilson: { type: number, nullable: true }
+        requests: { type: integer }
+    StatsOverview:
+      type: object
+      properties:
+        from: { type: integer }
+        to: { type: integer }
+        dim: { type: string, enum: [channel, model, upstream, vendor] }
+        patch_p1: { type: boolean }
+        error_log_hint: { type: boolean }
+        totals: { $ref: '#/components/schemas/StatsMetrics' }
+        rows: { type: array, items: { $ref: '#/components/schemas/StatsRow' } }
+        error_classes: { type: object, additionalProperties: { type: integer } }
+        scatter: { type: array, items: { $ref: '#/components/schemas/StatsScatterPoint' } }
+    StatsSeriesPoint:
+      allOf:
+        - { $ref: '#/components/schemas/StatsMetrics' }
+        - type: object
+          properties:
+            t: { type: integer, description: 桶起点 Unix 秒（day 为本地自然日 0 点） }
+    StatsSeries:
+      type: object
+      properties:
+        bucket: { type: string, enum: [hour, day] }
+        points: { type: array, items: { $ref: '#/components/schemas/StatsSeriesPoint' } }
+    StatsStatus:
+      type: object
+      properties:
+        cursor_id: { type: integer }
+        cursor_at: { type: integer }
+        rows: { type: integer }
+        oldest_hour: { type: integer, nullable: true }
+        backfill_days: { type: integer }
+        patch_p1: { type: boolean }
+        error_log_hint: { type: boolean }
+        last_pull_at: { type: integer }
+        last_pull_message: { type: string }
 paths:
   /ping:
     get:
@@ -816,3 +916,46 @@ paths:
     parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
     get:
       responses: { '200': { description: data = AuditLog } }
+  /stats/channels:
+    get:
+      summary: 渠道统计（latest = 每渠道最近 100 条日志，缓存 60 秒；3d / 7d 读小时聚合）
+      parameters:
+        - { name: window, in: query, schema: { type: string, enum: [latest, 3d, 7d], default: latest } }
+      responses: { '200': { description: data = StatsChannelList }, '400': { description: window 不合法 } }
+  /stats/channels/{id}/models:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    get:
+      summary: 渠道的模型明细
+      parameters:
+        - { name: window, in: query, schema: { type: string, enum: [latest, 3d, 7d], default: latest } }
+      responses: { '200': { description: 'data = {items: StatsModelItem[]}' }, '400': { description: window 或 id 不合法 } }
+  /stats/overview:
+    get:
+      summary: 统计总览：总计、排行、错误类别、价格-质量散点
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: integer }, description: Unix 秒 }
+        - { name: to, in: query, required: true, schema: { type: integer }, description: Unix 秒，须大于 from，跨度不超过 186 天 }
+        - { name: dim, in: query, required: true, schema: { type: string, enum: [channel, model, upstream, vendor] } }
+      responses: { '200': { description: data = StatsOverview }, '400': { description: 参数不合法 } }
+  /stats/series:
+    get:
+      summary: 时间序列，只返回有数据的点，按 t 升序
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: integer } }
+        - { name: to, in: query, required: true, schema: { type: integer } }
+        - { name: dim, in: query, schema: { type: string, enum: [channel, model, upstream, vendor] }, description: 为空 = 全站 }
+        - { name: key, in: query, schema: { type: string }, description: dim 对应的 key }
+        - { name: bucket, in: query, required: true, schema: { type: string, enum: [hour, day] } }
+      responses: { '200': { description: data = StatsSeries }, '400': { description: 参数不合法 } }
+  /stats/status:
+    get:
+      summary: 统计拉取状态
+      responses: { '200': { description: data = StatsStatus } }
+  /stats/rebuild:
+    post:
+      summary: 清空聚合和游标，并重新统计最近 N 天（随后触发 pull_logs）
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [days], properties: { days: { type: integer, minimum: 1, maximum: 90 } } }
+      responses: { '200': { description: data = null }, '400': { description: days 不在 1–90 } }

@@ -9,6 +9,7 @@ import (
 	"github.com/steven52880/nam/internal/crypto"
 	"github.com/steven52880/nam/internal/resp"
 	"github.com/steven52880/nam/internal/scheduler"
+	"github.com/steven52880/nam/internal/stats"
 	"github.com/steven52880/nam/internal/store"
 	"github.com/steven52880/nam/internal/upstream"
 	"github.com/steven52880/nam/internal/vendors"
@@ -25,6 +26,7 @@ type Deps struct {
 	Channels *channels.Service
 	Syncer   *upstream.Syncer
 	Vendors  *vendors.Service
+	Stats    *stats.Service
 	// CacheTest runs manual cache-rate tests; nil disables the endpoints.
 	CacheTest *cachetest.Runner
 	Version   string
@@ -63,6 +65,7 @@ func (s *Server) Register(g *gin.RouterGroup) {
 	s.registerChannelPricingRoutes(p)
 	s.registerPriceRoutes(p)
 	s.registerCacheTestRoutes(p)
+	s.registerStatsRoutes(p)
 
 	// raw NewAPI channels (read only passthrough, for M1 acceptance and debugging)
 	p.GET("/newapi/channels", s.listNewAPIChannels)

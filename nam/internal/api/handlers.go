@@ -38,6 +38,9 @@ func (s *Server) getBackend(c *gin.Context) {
 		info.Mode = s.Ports.Auth.Mode()
 		info.LastError = err.Error()
 	}
+	if s.Stats != nil {
+		info.PatchP1 = info.PatchP1 || s.Stats.PatchP1(c.Request.Context())
+	}
 	resp.OK(c, info)
 }
 
@@ -69,6 +72,7 @@ func (s *Server) triggerJob(c *gin.Context) {
 var settingKeys = []string{
 	store.KeySiteRate, store.KeyProtectThreshold, store.KeyAutoWrite,
 	store.KeyLogRetentionDays, store.KeyStatsRetentionDays, store.KeyNewAPIURL,
+	store.KeyStatsBackfillDays, store.KeyNewAPILogCleanup,
 }
 
 // Write-only token setting and its read-only hint (the token itself is never returned).
@@ -169,6 +173,15 @@ func validateSetting(k, v string) error {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 0 {
 			return resp.Invalid("保留天数必须是非负整数")
+		}
+	case k == store.KeyStatsBackfillDays:
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 90 {
+			return resp.Invalid("首次回填天数必须是 1–90 的整数")
+		}
+	case k == store.KeyNewAPILogCleanup:
+		if v != "true" && v != "false" {
+			return resp.Invalid("清理 NewAPI 日志开关必须是 true 或 false")
 		}
 	case strings.HasPrefix(k, store.KeyJobIntervalPrefix):
 		d, err := time.ParseDuration(v)
