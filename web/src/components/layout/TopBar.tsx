@@ -1,9 +1,9 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, KeyRound, LogOut, Moon, Sun, User } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
+import { useChannels } from '@/api/queries';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -13,9 +13,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useActionMutation } from '@/hooks/useActionMutation';
 import { useSession } from '@/hooks/useSession';
-import { ApplyDialog } from '@/pages/channels/ApplyDialog';
-import { useChannelList } from '@/pages/channels/useChannels';
+import { ApplyDialog } from '@/components/entities/ApplyDialog';
 import { useTheme } from '@/hooks/useTheme';
 import { ConnectionStatus } from './ConnectionStatus';
 import { GlobalSearch } from './GlobalSearch';
@@ -28,16 +28,15 @@ export function TopBar() {
   const qc = useQueryClient();
   const [pwOpen, setPwOpen] = useState(false);
   const [applyOpen, setApplyOpen] = useState(false);
-  const channels = useChannelList();
+  const channels = useChannels();
   const draftCount = channels.data?.draft_count ?? 0;
 
-  const logout = useMutation({
+  const logout = useActionMutation({
     mutationFn: api.logout,
     onSuccess: () => {
       qc.clear();
       navigate('/login', { replace: true });
     },
-    onError: (e: Error) => toast.error(e.message),
   });
 
   const afterPasswordChange = () => {

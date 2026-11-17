@@ -1,12 +1,14 @@
 import { MoreHorizontal } from 'lucide-react';
 import type { PriceRow } from '@/api/types';
+import { StatusBadge } from '@/components/cells/StatusBadge';
 import { NewapiPriceText, OfficialPriceText } from '@/components/PriceText';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Badge, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/misc';
 import { formatPercent } from '@/lib/format';
+import { PRICE_STATUS } from '@/lib/labels';
 import { cn } from '@/lib/utils';
-import { DEVIATION_THRESHOLD, sourceLabel, STATUS_LABELS, STATUS_TONES } from './constants';
+import { DEVIATION_THRESHOLD, sourceLabel } from './constants';
 
 export const PRICE_HEADERS = ['模型', '原厂价（美元 / 百万）', '来源', 'NewAPI 当前价', '偏差', '渠道数', '状态', '操作'];
 
@@ -23,7 +25,7 @@ function Deviation({ row }: { row: PriceRow }) {
     <span className="inline-flex gap-2 tabular-nums">
       {items.map(([label, value]) => (
         <span key={label} className={cn(value !== null && Math.abs(value) > DEVIATION_THRESHOLD && 'font-medium text-destructive')}>
-          <span className="text-xs text-muted-foreground">{label}</span> {formatPercent(value)}
+          <span className="text-xs text-muted-foreground">{label}</span> {formatPercent(value, { signed: true })}
         </span>
       ))}
     </span>
@@ -80,7 +82,7 @@ export function PriceTableRow({ row, actions }: { row: PriceRow; actions: RowAct
       <td className="border-b border-r px-2"><NewapiPriceText price={row.newapi} /></td>
       <td className="border-b border-r px-2"><Deviation row={row} /></td>
       <td className="border-b border-r px-2 text-right tabular-nums">{row.channel_count}</td>
-      <td className="border-b border-r px-2"><Badge tone={STATUS_TONES[row.status]}>{STATUS_LABELS[row.status]}</Badge></td>
+      <td className="border-b border-r px-2"><StatusBadge dict={PRICE_STATUS} value={row.status} /></td>
       <td className="border-b px-2 text-right"><Actions row={row} actions={actions} /></td>
     </tr>
   );

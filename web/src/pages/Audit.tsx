@@ -1,14 +1,14 @@
-﻿import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+﻿import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Fragment, useState } from 'react';
-import { api } from '@/api/endpoints';
+import { useAudit } from '@/api/queries';
 import type { AuditLog } from '@/api/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatTime } from '@/lib/format';
-import { AuditResultBadge, KIND_LABELS, TriggerBadge } from './audit/AuditBadges';
+import { AUDIT_KIND, labelOf } from '@/lib/labels';
+import { AuditResultBadge, TriggerBadge } from '@/components/entities/AuditBadges';
 
 const PAGE_SIZE = 50;
 const ALL = 'all';
@@ -78,18 +78,13 @@ export default function AuditPage() {
   const [openId, setOpenId] = useState<number | null>(null);
 
   const param = (v: string) => (v === ALL ? undefined : v);
-  const query = useQuery({
-    queryKey: ['audit', { kind, trigger, result, q, page }],
-    queryFn: () =>
-      api.audit({
-        kind: param(kind),
-        trigger: param(trigger),
-        result: param(result),
-        q: q || undefined,
-        limit: PAGE_SIZE,
-        offset: page * PAGE_SIZE,
-      }),
-    placeholderData: (prev) => prev,
+  const query = useAudit({
+    kind: param(kind),
+    trigger: param(trigger),
+    result: param(result),
+    q: q || undefined,
+    limit: PAGE_SIZE,
+    offset: page * PAGE_SIZE,
   });
 
   const total = query.data?.total ?? 0;
@@ -136,7 +131,7 @@ export default function AuditPage() {
                   <tr className="cursor-pointer border-t hover:bg-accent/40" onClick={() => setOpenId(open ? null : a.id)}>
                     <td className="pl-2">{open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}</td>
                     <td className="h-7 whitespace-nowrap px-2 tabular-nums">{formatTime(a.at)}</td>
-                    <td className="px-2">{KIND_LABELS[a.kind] ?? a.kind}</td>
+                    <td className="px-2">{labelOf(AUDIT_KIND, a.kind).label}</td>
                     <td className="max-w-40 truncate px-2" title={a.target}>{a.target}</td>
                     <td className="max-w-md truncate px-2" title={a.summary}>{a.summary}</td>
                     <td className="px-2"><TriggerBadge trigger={a.trigger} /></td>

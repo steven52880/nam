@@ -1,12 +1,12 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
-import { errorText } from '@/api/errors';
+import { invalidate } from '@/api/invalidate';
+import { useStatsStatus } from '@/api/queries';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/misc';
+import { useActionMutation } from '@/hooks/useActionMutation';
 import { formatTime } from '@/lib/format';
 
 const MIN_BACKFILL_DAYS = 1;
@@ -105,16 +105,12 @@ function RebuildDialog({
   onOpenChange: (open: boolean) => void;
   defaultDays: string;
 }) {
-  const qc = useQueryClient();
   const [days, setDays] = useState(defaultDays);
-  const rebuild = useMutation({
+  const rebuild = useActionMutation({
     mutationFn: (value: number) => api.statsRebuild(value),
-    onSuccess: () => {
-      toast.success('已清空统计数据，正在后台重新统计');
-      void qc.invalidateQueries({ queryKey: ['stats'] });
-      onOpenChange(false);
-    },
-    onError: (e: Error) => toast.error(errorText(e)),
+    success: '已清空统计数据，正在后台重新统计',
+    invalidate: invalidate.stats,
+    onSuccess: () => onOpenChange(false),
   });
   return (
     <ConfirmDialog
@@ -142,7 +138,7 @@ function RebuildDialog({
 
 /** 统计状态块与「清空并重新统计」。接口出错时显示「—」，不弹提示。 */
 export function StatsStatusBlock({ backfillDays }: { backfillDays: string }) {
-  const status = useQuery({ queryKey: ['stats', 'status'], queryFn: api.statsStatus, refetchInterval: 30_000 });
+  const status = useStatsStatus();
   const [rebuildOpen, setRebuildOpen] = useState(false);
   const s = status.data;
   return (

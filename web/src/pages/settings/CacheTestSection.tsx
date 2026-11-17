@@ -1,10 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
-import { errorText } from '@/api/errors';
+import { keys } from '@/api/keys';
+import { useSettings } from '@/api/queries';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useActionMutation } from '@/hooks/useActionMutation';
 
 function Line({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -18,7 +19,7 @@ function Line({ label, children }: { label: string; children: React.ReactNode })
 /** 手动缓存率测试所需的 NewAPI 令牌与地址。令牌只写不读，界面只显示 hint。 */
 export function CacheTestSection() {
   const qc = useQueryClient();
-  const settings = useQuery({ queryKey: ['settings'], queryFn: api.settings });
+  const settings = useSettings();
   const [token, setToken] = useState('');
   const [url, setUrl] = useState('');
   const savedUrl = settings.data?.newapi_url ?? '';
@@ -28,13 +29,13 @@ export function CacheTestSection() {
     setUrl(savedUrl);
   }, [savedUrl]);
 
-  const save = useMutation({
+  const save = useActionMutation({
     mutationFn: (body: Record<string, string>) => api.saveSettings(body),
+    success: (_, body) => (body.newapi_test_token === '' ? '测试令牌已清除' : '缓存测试设置已保存'),
     onSuccess: (data) => {
-      qc.setQueryData(['settings'], data);
+      qc.setQueryData(keys.settings(), data);
       setToken('');
     },
-    onError: (e: Error) => toast.error(errorText(e)),
   });
 
   const urlTrimmed = url.trim();
@@ -44,7 +45,7 @@ export function CacheTestSection() {
   const onSave = () => {
     const body: Record<string, string> = { newapi_url: urlTrimmed };
     if (token.trim() !== '') body.newapi_test_token = token.trim();
-    save.mutate(body, { onSuccess: () => toast.success('缓存测试设置已保存') });
+    save.mutate(body);
   };
 
   return (
@@ -63,7 +64,7 @@ export function CacheTestSection() {
           <Button
             variant="outline"
             disabled={!hint || save.isPending}
-            onClick={() => save.mutate({ newapi_test_token: '' }, { onSuccess: () => toast.success('测试令牌已清除') })}
+            onClick={() => save.mutate({ newapi_test_token: '' })}
           >
             清除
           </Button>

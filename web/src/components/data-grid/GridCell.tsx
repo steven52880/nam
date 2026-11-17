@@ -52,7 +52,7 @@ export function GridCell<T>({
         className,
       )}
     >
-      {dirty && <span className="absolute left-0 top-0 h-0 w-0 border-l-[6px] border-t-[6px] border-l-warning border-t-transparent" />}
+      {dirty && <span className="absolute left-0 top-0 h-0 w-0 border-l-[0.375rem] border-t-[0.375rem] border-l-warning border-t-transparent" />}
       {editing ? (
         <CellEditor initial={cellText(column, row)} align={column.align} onCommit={onCommit} onCancel={onCancel} />
       ) : column.cell ? (

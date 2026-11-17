@@ -1,10 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
-import { api } from '@/api/endpoints';
+import { useUpstreams } from '@/api/queries';
 import { cn } from '@/lib/utils';
 import { formatNumber } from '@/lib/format';
 
 export function StepUpstream({ value, onChange }: { value: number | null; onChange: (id: number) => void }) {
-  const upstreams = useQuery({ queryKey: ['upstreams'], queryFn: api.upstreams });
+  const upstreams = useUpstreams();
   const list = upstreams.data ?? [];
   return (
     <div className="grid gap-1">

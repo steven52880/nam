@@ -1,17 +1,18 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
 import { errorText } from '@/api/errors';
+import { invalidate } from '@/api/invalidate';
+import { useCacheTest } from '@/api/queries';
 import type { CacheTest, CacheTestRound, ChannelRow } from '@/api/types';
+import { useActionMutation } from '@/hooks/useActionMutation';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { formatPercent } from '@/lib/format';
 import { Label } from '@/components/ui/misc';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { LATEST_CACHE_TESTS_KEY } from './constants';
-
-const POLL_MS = 2000;
 
 function isRound(v: unknown): v is CacheTestRound {
   return typeof v === 'object' && v !== null && 'round' in v && 'input' in v;
@@ -66,13 +67,13 @@ function RoundsTable({ test }: { test: CacheTest }) {
       {running && <div className="text-sm text-muted-foreground">测试中…每 2 秒刷新一次</div>}
       {running && test.rate !== null && (
         <div className="text-sm">
-          缓存率：<span className="font-medium">{(test.rate * 100).toFixed(1)}%</span>
+          缓存率：<span className="font-medium">{formatPercent(test.rate)}</span>
           <span className="ml-2 text-muted-foreground">（暂定，已完成 {rounds.length} / {test.rounds} 轮）</span>
         </div>
       )}
       {test.status === 'ok' && (
         <div className="text-sm">
-          缓存率：<span className="font-medium">{test.rate === null ? '—' : `${(test.rate * 100).toFixed(1)}%`}</span>
+          缓存率：<span className="font-medium">{formatPercent(test.rate)}</span>
           <span className="ml-2 text-muted-foreground">（统计第 2 轮起；{test.model}，{test.rounds} 轮）</span>
         </div>
       )}
@@ -95,30 +96,21 @@ export function CacheTestDialog({ row, onClose }: { row: ChannelRow | null; onCl
     notified.current = null;
   }, [row]);
 
-  const start = useMutation({
+  const start = useActionMutation({
     mutationFn: () => api.startCacheTest(row?.id ?? 0, { model, rounds: Number(rounds), mode: 'direct' }),
-    onSuccess: (res) => {
-      setTestId(res.test_id);
-      void qc.invalidateQueries({ queryKey: LATEST_CACHE_TESTS_KEY });
-    },
-    onError: (e: Error) => toast.error(errorText(e)),
+    invalidate: invalidate.cacheTests,
+    onSuccess: (res) => setTestId(res.test_id),
   });
 
-  const poll = useQuery({
-    queryKey: ['cache-test', testId],
-    queryFn: () => api.cacheTest(testId ?? 0),
-    enabled: row !== null && testId !== null,
-    refetchInterval: (q) => (q.state.data?.status === 'running' ? POLL_MS : false),
-    gcTime: 0,
-  });
+  const poll = useCacheTest(row !== null ? testId : null);
   const test = poll.data;
 
   useEffect(() => {
     if (!test || test.status === 'running' || notified.current === test.id) return;
     notified.current = test.id;
-    void qc.invalidateQueries({ queryKey: LATEST_CACHE_TESTS_KEY });
+    void invalidate.cacheTests(qc);
     if (test.status === 'ok') {
-      const rate = test.rate === null ? '—' : `${(test.rate * 100).toFixed(1)}%`;
+      const rate = formatPercent(test.rate);
       toast.success(`缓存率 ${rate}（${test.model}，${test.rounds} 轮）`);
     } else {
       toast.error(`缓存测试失败：${test.error || '未知错误'}`);
@@ -129,7 +121,7 @@ export function CacheTestDialog({ row, onClose }: { row: ChannelRow | null; onCl
   const roundsOk = Number.isInteger(roundsNum) && roundsNum >= 2 && roundsNum <= 10;
   const running = start.isPending || test?.status === 'running';
   const close = () => {
-    void qc.invalidateQueries({ queryKey: LATEST_CACHE_TESTS_KEY });
+    void invalidate.cacheTests(qc);
     onClose();
   };
 

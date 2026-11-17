@@ -1,7 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '@/api/endpoints';
+import { useUpstreams } from '@/api/queries';
 import {
   CommandDialog,
   CommandEmpty,
@@ -16,7 +15,7 @@ import { ALL_NAV_ITEMS } from './nav';
 export function GlobalSearch() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
-  const upstreams = useQuery({ queryKey: ['upstreams'], queryFn: api.upstreams });
+  const upstreams = useUpstreams();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

@@ -1,17 +1,17 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
 import { errorText } from '@/api/errors';
+import { invalidate } from '@/api/invalidate';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useActionMutation } from '@/hooks/useActionMutation';
 import { cn } from '@/lib/utils';
 import { StepBasics, StepCredential, StepDetect, StepFinish } from './Steps';
 import { StepTest } from './StepTest';
 import { credentialOk, INITIAL_DRAFT, toCreateInput, URL_PATTERN, WIZARD_STEPS, type UpstreamDraft } from './state';
 
 export function AddUpstreamWizard({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
-  const qc = useQueryClient();
   const [step, setStep] = useState(0);
   const [draft, setDraft] = useState<UpstreamDraft>(INITIAL_DRAFT);
 
@@ -24,7 +24,7 @@ export function AddUpstreamWizard({ open, onOpenChange }: { open: boolean; onOpe
 
   const patch = (next: Partial<UpstreamDraft>) => setDraft((cur) => ({ ...cur, ...next }));
 
-  const save = useMutation({
+  const save = useActionMutation({
     mutationFn: async () => {
       const created = await api.createUpstream(toCreateInput(draft));
       let syncNote = '';
@@ -39,13 +39,12 @@ export function AddUpstreamWizard({ open, onOpenChange }: { open: boolean; onOpe
       }
       return { created, syncNote };
     },
+    invalidate: (qc) => invalidate.upstream(qc),
     onSuccess: ({ created, syncNote }) => {
       if (syncNote) toast.warning(`已新增上游「${created.name}」${syncNote}`);
       else toast.success(`已新增上游「${created.name}」`);
-      void qc.invalidateQueries({ queryKey: ['upstreams'] });
       onOpenChange(false);
     },
-    onError: (e: Error) => toast.error(errorText(e)),
   });
 
   const canNext = [

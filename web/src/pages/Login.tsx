@@ -1,11 +1,13 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/api/endpoints';
 import { ApiError } from '@/api/client';
+import { keys } from '@/api/keys';
 import type { LoginFailure } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useActionMutation } from '@/hooks/useActionMutation';
 
 function asFailure(data: unknown): LoginFailure {
   if (typeof data !== 'object' || data === null) return {};
@@ -34,18 +36,18 @@ export default function LoginPage() {
   const remaining = Math.max(0, Math.ceil(lockedUntil - now / 1000));
   const locked = remaining > 0;
 
-  const login = useMutation({
+  const login = useActionMutation({
     mutationFn: () => api.login(password),
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ['session'] });
+      await qc.invalidateQueries({ queryKey: keys.session() });
       navigate('/', { replace: true });
     },
-    onError: (e: Error) => {
+    onError: (e) => {
       if (e instanceof ApiError) {
         // 404：嵌入模式没有 nam 自己的登录接口，转去 NewAPI 登录页
         if (e.status === 404) {
           window.location.href = '/login';
-          return;
+          return true;
         }
         const f = asFailure(e.data);
         if (f.failures !== undefined) setFailures(f.failures);
@@ -58,6 +60,7 @@ export default function LoginPage() {
         setError(e.message);
       }
       setPassword('');
+      return true;
     },
   });
 

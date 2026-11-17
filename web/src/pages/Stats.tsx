@@ -1,8 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { api } from '@/api/endpoints';
 import { errorText } from '@/api/errors';
+import { useStatsOverview, useStatsSeries } from '@/api/queries';
 import type { StatsDim, StatsRow } from '@/api/types-stats';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -43,16 +42,8 @@ export default function StatsPage() {
   const result = useMemo(() => buildRange(preset, start, end, anchor), [preset, start, end, anchor]);
   const range = result.ok ? result.range : null;
 
-  const overview = useQuery({
-    queryKey: ['stats', 'overview', range?.from, range?.to, dim],
-    queryFn: () => api.statsOverview({ from: range!.from, to: range!.to, dim }),
-    enabled: range !== null,
-  });
-  const series = useQuery({
-    queryKey: ['stats', 'series', range?.from, range?.to, range?.bucket],
-    queryFn: () => api.statsSeries({ from: range!.from, to: range!.to, bucket: range!.bucket }),
-    enabled: range !== null,
-  });
+  const overview = useStatsOverview(range, dim);
+  const series = useStatsSeries(range);
 
   const data = useMemo(
     () => (range && series.data ? toSeriesData(series.data.points, range.bucket) : []),

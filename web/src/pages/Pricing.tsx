@@ -1,22 +1,23 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 import { useDeferredValue, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
-import { errorText } from '@/api/errors';
+import { invalidate } from '@/api/invalidate';
+import { usePriceList } from '@/api/queries';
 import type { PriceRow, PriceStatusFilter } from '@/api/types';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { ModelCountCell } from '@/components/cells/ModelCountCell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/misc';
+import { useActionMutation } from '@/hooks/useActionMutation';
 import { cn } from '@/lib/utils';
 import { AliasDialog } from './pricing/AliasDialog';
-import { ALL_VENDORS, PRICES_KEY, STATUS_TABS } from './pricing/constants';
+import { ALL_VENDORS, STATUS_TABS } from './pricing/constants';
 import { OverrideDialog } from './pricing/OverrideDialog';
 import { PriceDetailDrawer } from './pricing/PriceDetailDrawer';
 import { PRICE_HEADERS, PriceTableRow } from './pricing/PriceTableRow';
-import { usePriceList } from './pricing/usePrices';
 
 function DisabledButton({ label }: { label: string }) {
   return (
@@ -30,15 +31,13 @@ function DisabledButton({ label }: { label: string }) {
 }
 
 function useSyncPrices() {
-  const qc = useQueryClient();
-  return useMutation({
+  return useActionMutation({
     mutationFn: api.syncPrices,
+    invalidate: invalidate.prices,
     onSuccess: (result) => {
       if (result.last_result === 'fail') toast.error(`价格库同步失败：${result.last_message}`);
       else toast.success(result.last_message ? `价格库已同步：${result.last_message}` : '价格库已同步');
-      void qc.invalidateQueries({ queryKey: PRICES_KEY });
     },
-    onError: (e: Error) => toast.error(errorText(e)),
   });
 }
 
@@ -108,7 +107,7 @@ export default function PricingPage() {
           </SelectContent>
         </Select>
         <Input className="w-56" placeholder="搜索模型名或别名" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <span className="text-sm text-muted-foreground">{items.length} 个模型</span>
+        <span className="text-sm text-muted-foreground"><ModelCountCell count={items.length} variant="text" /></span>
       </div>
       {list.isError && <div className="rounded bg-destructive/10 px-2 py-1 text-sm text-destructive">{list.error.message}</div>}
       <div className="min-h-0 flex-1 overflow-auto rounded border bg-card">

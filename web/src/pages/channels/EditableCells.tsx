@@ -1,10 +1,8 @@
-import { useQuery } from '@tanstack/react-query';
 import type { KeyboardEvent } from 'react';
-import { api } from '@/api/endpoints';
+import { useUpstreams, useUpstreamTokens, useVendors } from '@/api/queries';
 import type { ChannelRow } from '@/api/types';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-
-const DASH = '—';
+import { DASH } from '@/lib/format';
 
 /** 单元格内的下拉：阻止键盘事件冒泡到表格，避免触发表格的方向键 / Enter 处理。 */
 function stopKeys(e: KeyboardEvent<HTMLElement>) {
@@ -21,7 +19,7 @@ interface UpstreamCellProps {
 }
 
 export function UpstreamCell({ row, onChange }: UpstreamCellProps) {
-  const upstreams = useQuery({ queryKey: ['upstreams'], queryFn: api.upstreams });
+  const upstreams = useUpstreams();
   return (
     <div onKeyDown={stopKeys}>
       <Select
@@ -47,11 +45,7 @@ interface TokenCellProps {
 
 export function TokenCell({ row, onChange }: TokenCellProps) {
   const upstreamId = row.upstream_id;
-  const tokens = useQuery({
-    queryKey: ['upstream-tokens', upstreamId],
-    queryFn: () => api.upstreamTokens(upstreamId ?? 0),
-    enabled: upstreamId !== null,
-  });
+  const tokens = useUpstreamTokens(upstreamId);
   return (
     <div onKeyDown={stopKeys}>
       <Select
@@ -78,7 +72,7 @@ interface VendorCellProps {
 }
 
 export function VendorCell({ row, onChange }: VendorCellProps) {
-  const vendors = useQuery({ queryKey: ['vendors'], queryFn: api.vendors });
+  const vendors = useVendors();
   const vendor = (vendors.data ?? []).find((v) => v.name === row.vendor);
   return (
     <div onKeyDown={stopKeys} title={vendor ? `托管分组：${vendor.group_name}；改厂商会移除其他厂商的分组` : undefined}>
@@ -99,7 +93,7 @@ export function VendorCell({ row, onChange }: VendorCellProps) {
 
 /** 工具栏：对选中的多行批量设置上游。 */
 export function BulkUpstreamSelect({ count, onPick }: { count: number; onPick: (upstreamId: number) => void }) {
-  const upstreams = useQuery({ queryKey: ['upstreams'], queryFn: api.upstreams });
+  const upstreams = useUpstreams();
   return (
     <Select value="" onValueChange={(v) => onPick(Number(v))}>
       <SelectTrigger className="w-40"><SelectValue placeholder={`设置上游（${count}）`} /></SelectTrigger>

@@ -1,13 +1,11 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
-import { errorText } from '@/api/errors';
+import { invalidate } from '@/api/invalidate';
+import { useActionMutation } from '@/hooks/useActionMutation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-
-export const channelModelsKey = (channelId: number) => ['channel-models', channelId] as const;
 
 /** 输入文本转分数：空串为 null，非法返回 undefined。 */
 function parseFraction(text: string): number | null | undefined {
@@ -18,14 +16,9 @@ function parseFraction(text: string): number | null | undefined {
 }
 
 export function useModelDiscountMutation(channelId: number) {
-  const qc = useQueryClient();
-  return useMutation({
+  return useActionMutation({
     mutationFn: (input: { model: string; discount: number | null }) => api.setModelDiscount(channelId, input),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: channelModelsKey(channelId) });
-      void qc.invalidateQueries({ queryKey: ['channels'] });
-    },
-    onError: (e: Error) => toast.error(errorText(e)),
+    invalidate: invalidate.prices,
   });
 }
 
@@ -80,18 +73,14 @@ export function DiscountCell({
 
 /** 缓存价覆盖：读 / 写相对输入价的比例。 */
 export function CacheOverridePopover({ channelId }: { channelId: number }) {
-  const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [readText, setReadText] = useState('');
   const [writeText, setWriteText] = useState('');
-  const save = useMutation({
+  const save = useActionMutation({
     mutationFn: (body: { read?: number | null; write?: number | null }) => api.setCacheOverride(channelId, body),
-    onSuccess: () => {
-      toast.success('已更新缓存价覆盖');
-      void qc.invalidateQueries({ queryKey: channelModelsKey(channelId) });
-      setOpen(false);
-    },
-    onError: (e: Error) => toast.error(errorText(e)),
+    success: '已更新缓存价覆盖',
+    invalidate: invalidate.prices,
+    onSuccess: () => setOpen(false),
   });
 
   const submit = () => {

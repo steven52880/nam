@@ -18,6 +18,7 @@ import {
 } from 'react';
 import { toast } from 'sonner';
 import { useGridSelection } from '@/lib/selection/useGridSelection';
+import { remToPx } from '@/lib/size';
 import { cn } from '@/lib/utils';
 import { ColumnVisibilityMenu, GridHintBar } from './GridChrome';
 import { GridCell, cellText } from './GridCell';
@@ -210,7 +211,7 @@ export function DataGrid<T>({
                 return (
                   <th
                     key={vc.id}
-                    style={{ minWidth: col?.width ?? 100 }}
+                    style={{ minWidth: remToPx((col?.width ?? 100) / 16) }}
                     title={col?.headerTitle}
                     onClick={vc.getCanSort() ? vc.getToggleSortingHandler() : undefined}
                     className={cn(

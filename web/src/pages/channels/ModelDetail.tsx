@@ -1,12 +1,12 @@
-import { useQuery } from '@tanstack/react-query';
-import { api } from '@/api/endpoints';
+import { useChannelModels, useChannelModelStats } from '@/api/queries';
 import { useMemo } from 'react';
 import type { ChannelModels, ChannelRow, ModelRow, ModelStatsItem, StatsWindow } from '@/api/types';
+import { Dash } from '@/components/cells/Dash';
 import { OfficialPriceText } from '@/components/PriceText';
 import { Badge } from '@/components/ui/misc';
 import { formatNumber, formatPercent, formatSignificant } from '@/lib/format';
-import { CacheOverridePopover, channelModelsKey, DiscountCell } from './ModelDiscountControls';
-import { Dash, FirstTokenCell, SpeedCell, SuccessRateCell } from './StatCells';
+import { CacheOverridePopover, DiscountCell } from './ModelDiscountControls';
+import { FirstTokenCell, SpeedStatCell, SuccessRateCell } from './StatCells';
 
 const HEADERS = [
   '模型名',
@@ -27,7 +27,7 @@ function ModelStatCells({ metrics }: { metrics: ModelStatsItem | undefined }) {
       <td className="border-b border-r px-2 text-right tabular-nums">{metrics ? metrics.requests : <Dash />}</td>
       <td className="border-b border-r px-2 text-right"><SuccessRateCell metrics={metrics} /></td>
       <td className="border-b border-r px-2 text-right"><FirstTokenCell metrics={metrics} /></td>
-      <td className="border-b border-r px-2 text-right"><SpeedCell metrics={metrics} /></td>
+      <td className="border-b border-r px-2 text-right"><SpeedStatCell metrics={metrics} /></td>
     </>
   );
 }
@@ -38,7 +38,7 @@ function DerivedCell({ row }: { row: ModelRow }) {
   }
   return (
     <span className="inline-flex items-center justify-end gap-1 tabular-nums">
-      {row.deviates && <Badge tone="warning" title={row.reason}>偏离 {formatPercent(row.deviation)}</Badge>}
+      {row.deviates && <Badge tone="warning" title={row.reason}>偏离 {formatPercent(row.deviation, { signed: true })}</Badge>}
       {formatNumber(row.derived, 3)}
     </span>
   );
@@ -77,21 +77,8 @@ function Header({ detail }: { detail: ChannelModels }) {
   );
 }
 
-function useModelsData(channelId: number | null) {
-  return useQuery({
-    queryKey: channelModelsKey(channelId ?? 0),
-    queryFn: () => api.channelModels(channelId ?? 0),
-    enabled: channelId !== null && channelId > 0,
-  });
-}
-
 function useModelStats(channelId: number | null, statsWindow: StatsWindow) {
-  const query = useQuery({
-    queryKey: ['stats', 'channel-models', channelId ?? 0, statsWindow],
-    queryFn: () => api.statsChannelModels(channelId ?? 0, statsWindow),
-    enabled: channelId !== null && channelId > 0,
-    refetchInterval: 60_000,
-  });
+  const query = useChannelModelStats(channelId, statsWindow);
   return useMemo(
     () => new Map((query.data?.items ?? []).map((item) => [item.model, item])),
     [query.data],
@@ -99,7 +86,7 @@ function useModelStats(channelId: number | null, statsWindow: StatsWindow) {
 }
 
 export function ModelDetail({ row, statsWindow }: { row: ChannelRow | null; statsWindow: StatsWindow }) {
-  const query = useModelsData(row?.id ?? null);
+  const query = useChannelModels(row?.id ?? null);
   const modelStats = useModelStats(row?.id ?? null, statsWindow);
   if (!row) {
     return (

@@ -1,15 +1,5 @@
 import type { CredType, Upstream, UpstreamType } from '@/api/types';
 
-export const TYPE_OPTIONS: Array<[UpstreamType, string]> = [
-  ['newapi', 'newapi'],
-  ['sk-key', 'sk-key'],
-  ['sub2api', 'sub2api'],
-  ['onehub', 'onehub'],
-  ['official', 'official'],
-  ['generic', 'generic'],
-  ['rightcode', 'rightcode'],
-];
-
 export const CRED_OPTIONS: Array<[CredType, string]> = [
   ['access_token', 'Access Token + 用户 ID'],
   ['password', '账号 + 密码'],

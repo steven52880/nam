@@ -1,7 +1,11 @@
-import type { JobName } from '@/api/types';
+import type { FailClass } from '@/api/types';
+import { FAIL_CLASS, FAIL_CLASS_ORDER } from './labels';
+
+/** 空值占位符：所有格式化函数遇到 null / undefined 都返回它。 */
+export const DASH = '—';
 
 export function formatTime(unix: number): string {
-  if (!unix) return '—';
+  if (!unix) return DASH;
   const d = new Date(unix * 1000);
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
@@ -9,7 +13,7 @@ export function formatTime(unix: number): string {
 
 /** Unix 秒 → 「x 分钟前 / x 小时前 / x 天前」；空值显示「—」。 */
 export function formatAgo(unix: number, nowMs: number = Date.now()): string {
-  if (!unix) return '—';
+  if (!unix) return DASH;
   const sec = Math.max(0, Math.floor(nowMs / 1000) - unix);
   if (sec < 60) return '刚刚';
   if (sec < 3600) return `${Math.floor(sec / 60)} 分钟前`;
@@ -18,29 +22,111 @@ export function formatAgo(unix: number, nowMs: number = Date.now()): string {
 }
 
 export function formatDuration(ms: number): string {
-  if (!ms) return '—';
+  if (!ms) return DASH;
   if (ms < 1000) return `${ms} 毫秒`;
   return `${(ms / 1000).toFixed(1)} 秒`;
 }
 
-export function formatNumber(v: number | null | undefined, digits = 2): string {
-  if (v === null || v === undefined) return '—';
-  return v.toFixed(digits);
+/** 默认 toFixed(digits)；trim：去掉小数部分末尾的 0；group：整数部分加千分位逗号。 */
+export function formatNumber(
+  v: number | null | undefined,
+  digits = 2,
+  opts?: { trim?: boolean; group?: boolean },
+): string {
+  if (v === null || v === undefined) return DASH;
+  let text = v.toFixed(digits);
+  if (opts?.trim && text.includes('.')) text = text.replace(/\.?0+$/, '');
+  if (opts?.group) {
+    const [int, frac] = text.split('.');
+    const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    text = frac === undefined ? grouped : `${grouped}.${frac}`;
+  }
+  return text;
 }
 
 /** 保留有效数字（默认 4 位），去掉多余的 0；空值显示「—」。 */
 export function formatSignificant(v: number | null | undefined, digits = 4): string {
-  if (v === null || v === undefined) return '—';
+  if (v === null || v === undefined) return DASH;
   if (v === 0) return '0';
   const text = Number(v.toPrecision(digits)).toString();
   return text.includes('e') ? v.toPrecision(digits) : text;
 }
 
-/** 小数形式的比例显示为带符号的百分比，如 0.123 → +12.3%。 */
-export function formatPercent(fraction: number | null | undefined): string {
-  if (fraction === null || fraction === undefined) return '—';
-  const percent = fraction * 100;
-  return `${percent > 0 ? '+' : ''}${percent.toFixed(1)}%`;
+/** 0–1 的比率 → 百分比，默认 1 位小数、不带正号；signed 时正数带「+」（如 0.123 → +12.3%）。 */
+export function formatPercent(
+  ratio: number | null | undefined,
+  opts?: { digits?: number; signed?: boolean },
+): string {
+  if (ratio === null || ratio === undefined) return DASH;
+  const percent = ratio * 100;
+  const sign = opts?.signed && percent > 0 ? '+' : '';
+  return `${sign}${percent.toFixed(opts?.digits ?? 1)}%`;
+}
+
+/** 毫秒：默认「850 ms」；unit:false 只返回数字。 */
+export function formatMs(v: number | null | undefined, opts?: { unit?: boolean }): string {
+  if (v === null || v === undefined) return DASH;
+  return opts?.unit === false ? String(Math.round(v)) : `${Math.round(v)} ms`;
+}
+
+/** 吐字速度：默认「42.0 t/s」；unit:false 只返回数字；estimated 时末尾加「 估」。 */
+export function formatSpeed(v: number | null | undefined, opts?: { unit?: boolean; estimated?: boolean }): string {
+  if (v === null || v === undefined) return DASH;
+  const text = opts?.unit === false ? v.toFixed(1) : `${v.toFixed(1)} t/s`;
+  return opts?.estimated ? `${text} 估` : text;
+}
+
+export function formatInt(v: number | null | undefined): string {
+  if (v === null || v === undefined) return DASH;
+  return String(Math.round(v));
+}
+
+/** Unix 秒 → 「MM-DD HH:00」。 */
+export function formatHour(sec: number): string {
+  const d = new Date(sec * 1000);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:00`;
+}
+
+/** Date → 「YYYYMMDD」（用于导出文件名）。 */
+export function formatDate(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}`;
+}
+
+/** 折扣：最多 4 位小数，去掉多余的 0。 */
+export function formatDiscount(v: number): string {
+  return String(Number(v.toFixed(4)));
+}
+
+/**
+ * 失败类别。list：「名称 数量」用「、」连接，空为「无」；
+ * compact：「名称×数量」用「，」连接，空为 DASH。
+ */
+export function formatFailClasses(
+  m: { fail_by_class: Partial<Record<FailClass, number>> },
+  opts?: { style?: 'list' | 'compact' },
+): string {
+  if (opts?.style === 'compact') {
+    const parts: string[] = [];
+    for (const c of FAIL_CLASS_ORDER) {
+      const n = m.fail_by_class[c];
+      if (n) parts.push(`${FAIL_CLASS[c].label}×${n}`);
+    }
+    return parts.length > 0 ? parts.join('，') : DASH;
+  }
+  const parts = (Object.keys(FAIL_CLASS) as FailClass[])
+    .filter((key) => (m.fail_by_class[key] ?? 0) > 0)
+    .map((key) => `${FAIL_CLASS[key].label} ${m.fail_by_class[key]}`);
+  return parts.length > 0 ? parts.join('、') : '无';
+}
+
+/** 差异对比里显示一个值：空值显示「（空）」，数组用逗号连接，对象转 JSON。 */
+export function showValue(v: unknown): string {
+  if (v === null || v === undefined || v === '') return '（空）';
+  if (Array.isArray(v)) return v.join(', ') || '（空）';
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
 }
 
 export type DurationUnit = 'm' | 'h' | 'd';
@@ -73,20 +159,8 @@ export function toGoDuration(v: ParsedInterval): string {
   return `${v.value}${v.unit}`;
 }
 
-export const JOB_TITLES: Record<JobName, string> = {
-  balance: '余额同步',
-  ratio: '倍率同步',
-  price_book: '价格库同步',
-  announcements: '公告检查',
-  pull_logs: '日志拉取',
-  pricing: '定价计算',
-  consistency: '一致性检查',
-  cleanup: '数据清理',
-  backup: '备份',
-};
-
 export function formatIntervalSeconds(s: number): string {
-  if (!s) return '—';
+  if (!s) return DASH;
   if (s % 86400 === 0) return `${s / 86400} 天`;
   if (s % 3600 === 0) return `${s / 3600} 小时`;
   return `${Math.round(s / 60)} 分钟`;

@@ -8,12 +8,12 @@ const config: Config = {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     fontSize: {
-      xs: ['11px', '16px'],
-      sm: ['12px', '16px'],
-      base: ['13px', '20px'],
-      lg: ['15px', '22px'],
-      xl: ['18px', '26px'],
-      '2xl': ['22px', '30px'],
+      xs: ['0.6875rem', '1rem'],
+      sm: ['0.75rem', '1rem'],
+      base: ['0.8125rem', '1.25rem'],
+      lg: ['0.9375rem', '1.375rem'],
+      xl: ['1.125rem', '1.625rem'],
+      '2xl': ['1.375rem', '1.875rem'],
     },
     extend: {
       fontFamily: {
@@ -35,7 +35,7 @@ const config: Config = {
         input: hsl('input'),
         ring: hsl('ring'),
       },
-      borderRadius: { DEFAULT: '4px', md: '5px', lg: '6px' },
+      borderRadius: { DEFAULT: '0.25rem', md: '0.3125rem', lg: '0.375rem' },
     },
   },
   plugins: [animate],

@@ -1,11 +1,12 @@
-import { useQuery } from '@tanstack/react-query';
-import { api } from '@/api/endpoints';
+import { usePriceDetail } from '@/api/queries';
 import type { PriceRow } from '@/api/types';
+import { StatusBadge } from '@/components/cells/StatusBadge';
 import { NewapiPriceText, OfficialPriceText } from '@/components/PriceText';
 import { Dialog, DialogDescription, DialogTitle, SheetContent } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/misc';
 import { formatNumber, formatSignificant } from '@/lib/format';
-import { sourceLabel, STATUS_LABELS, STATUS_TONES } from './constants';
+import { PRICE_STATUS } from '@/lib/labels';
+import { sourceLabel } from './constants';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -18,7 +19,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function DetailBody({ row }: { row: PriceRow }) {
   const model = row.model;
-  const query = useQuery({ queryKey: ['price-detail', model], queryFn: () => api.priceDetail(model) });
+  const query = usePriceDetail(model);
   if (query.isLoading) return <div className="p-4 text-muted-foreground">加载中…</div>;
   if (query.isError || !query.data) return <div className="p-4 text-destructive">{query.error?.message ?? '加载失败'}</div>;
   const { override, channels, aliases } = query.data;
@@ -26,7 +27,7 @@ function DetailBody({ row }: { row: PriceRow }) {
   return (
     <div className="grid gap-4 overflow-y-auto p-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Badge tone={STATUS_TONES[row.status]}>{STATUS_LABELS[row.status]}</Badge>
+        <StatusBadge dict={PRICE_STATUS} value={row.status} />
         {row.vendor && <Badge>{row.vendor}</Badge>}
         <span className="text-sm text-muted-foreground">价格来源：{sourceLabel(row.source)}</span>
         {override && <Badge tone="warning">有手动覆盖</Badge>}

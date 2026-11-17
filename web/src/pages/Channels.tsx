@@ -1,21 +1,20 @@
-import { useQuery } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { api } from '@/api/endpoints';
+import { useChannels, useLatestCacheTests, useVendors } from '@/api/queries';
 import type { ChannelRow, StatsWindow } from '@/api/types';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { DataGrid, type GridRange } from '@/components/data-grid';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/misc';
-import { ApplyDialog } from './channels/ApplyDialog';
+import { ApplyDialog } from '@/components/entities/ApplyDialog';
 import { BatchWizard } from './channels/wizard/BatchWizard';
 import { ChannelToolbar } from './channels/ChannelToolbar';
 import { buildChannelColumns, rowClass } from './channels/columns';
-import { costRangeOf } from './channels/costColor';
+import { costRangeOf } from '@/components/cells/costColor';
 import { CacheTestDialog } from './channels/CacheTestDialog';
-import { COLUMN_FIELDS, LATEST_CACHE_TESTS_KEY, type GroupMode } from './channels/constants';
+import { COLUMN_FIELDS, type GroupMode } from './channels/constants';
 import { DriftDialog } from './channels/DriftDialog';
 import { BulkUpstreamSelect } from './channels/EditableCells';
 import { distinct, EMPTY_FILTERS, filterChannels, groupKeyOf, rowKey, type ChannelFilters } from './channels/filter';
@@ -27,12 +26,11 @@ import { TestChannelDialog } from './channels/TestChannelDialog';
 import { useChannelActions } from './channels/useChannelActions';
 import { buildStatColumns } from './channels/statColumns';
 import { summarizeGroup, useChannelStats } from './channels/useChannelStats';
-import { useChannelList } from './channels/useChannels';
 
 const NO_ROWS: ChannelRow[] = [];
 
 export default function ChannelsPage() {
-  const list = useChannelList();
+  const list = useChannels();
   const [params, setParams] = useSearchParams();
   const rows = list.data?.items ?? NO_ROWS;
   const draftCount = list.data?.draft_count ?? 0;
@@ -91,16 +89,12 @@ export default function ChannelsPage() {
       }),
     [stats, visible],
   );
-  const vendors = useQuery({ queryKey: ['vendors'], queryFn: api.vendors });
+  const vendors = useVendors();
   const vendorGroups = useMemo(
     () => new Map((vendors.data ?? []).map((v) => [v.name, v.group_name])),
     [vendors.data],
   );
-  const cacheTestList = useQuery({
-    queryKey: LATEST_CACHE_TESTS_KEY,
-    queryFn: api.latestCacheTests,
-    refetchInterval: (q) => (q.state.data?.items.some((t) => t.status === 'running') ? 3000 : false),
-  });
+  const cacheTestList = useLatestCacheTests();
   const cacheTests = useMemo(
     () => new Map((cacheTestList.data?.items ?? []).map((t) => [t.channel_id, t])),
     [cacheTestList.data],

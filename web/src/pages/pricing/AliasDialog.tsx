@@ -1,35 +1,28 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
-import { errorText } from '@/api/errors';
+import { invalidate } from '@/api/invalidate';
 import type { PriceRow } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/input';
-import { PRICES_KEY } from './constants';
+import { useActionMutation } from '@/hooks/useActionMutation';
 
 function parseAliases(text: string): string[] {
   return [...new Set(text.split(/\r?\n/).map((line) => line.trim()).filter((line) => line !== ''))];
 }
 
 function AliasForm({ row, onDone }: { row: PriceRow; onDone: () => void }) {
-  const qc = useQueryClient();
   const [text, setText] = useState(row.aliases.join('\n'));
-  const save = useMutation({
+  const save = useActionMutation({
     mutationFn: () => api.setAliases(row.model, parseAliases(text)),
-    onSuccess: () => {
-      toast.success('已保存别名（只写 nam）');
-      void qc.invalidateQueries({ queryKey: PRICES_KEY });
-      void qc.invalidateQueries({ queryKey: ['price-detail', row.model] });
-      onDone();
-    },
-    onError: (e: Error) => toast.error(errorText(e)),
+    success: '已保存别名（只写 nam）',
+    invalidate: invalidate.prices,
+    onSuccess: onDone,
   });
   return (
     <>
       <Textarea
-        className="min-h-[140px] font-mono"
+        className="min-h-36 font-mono"
         placeholder="每行一个上游模型名"
         value={text}
         onChange={(e) => setText(e.target.value)}

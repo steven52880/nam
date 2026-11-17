@@ -1,10 +1,11 @@
-import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { api } from '@/api/endpoints';
+import { groupRatioOf, useUpstreamGroups, useUpstreams, useUpstreamTokens } from '@/api/queries';
+import { StatusBadge } from '@/components/cells/StatusBadge';
+import { AddTokenDialog, type TokenDialog } from '@/components/entities/AddTokenDialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/misc';
 import { formatNumber } from '@/lib/format';
-import { AddTokenDialog, canCreateRemoteToken, type TokenDialog } from '@/pages/upstreams/AddTokenDialog';
+import { TOKEN_STATUS, UPSTREAM_CAPS } from '@/lib/labels';
 
 interface StepTokensProps {
   upstreamId: number;
@@ -16,12 +17,12 @@ interface StepTokensProps {
 
 export function StepTokens({ upstreamId, value, onChange, single = false }: StepTokensProps) {
   const [dialog, setDialog] = useState<TokenDialog>(null);
-  const upstreams = useQuery({ queryKey: ['upstreams'], queryFn: api.upstreams });
-  const tokens = useQuery({ queryKey: ['upstream-tokens', upstreamId], queryFn: () => api.upstreamTokens(upstreamId) });
-  const groups = useQuery({ queryKey: ['upstream-groups', upstreamId], queryFn: () => api.upstreamGroups(upstreamId) });
+  const upstreams = useUpstreams();
+  const tokens = useUpstreamTokens(upstreamId);
+  const groups = useUpstreamGroups(upstreamId);
   const upstream = upstreams.data?.find((u) => u.id === upstreamId) ?? null;
   const list = tokens.data ?? [];
-  const ratioOf = (group: string) => groups.data?.find((g) => g.name === group)?.ratio ?? null;
+  const ratioOf = (group: string) => groupRatioOf(groups.data, group);
   const toggle = (id: number) => {
     if (single) onChange(value.includes(id) ? [] : [id]);
     else onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id]);
@@ -42,7 +43,7 @@ export function StepTokens({ upstreamId, value, onChange, single = false }: Step
         </span>
         {upstream && (
           <span className="ml-auto flex gap-2">
-            {canCreateRemoteToken(upstream.type) && (
+            {UPSTREAM_CAPS[upstream.type]?.remoteToken && (
               <Button size="sm" variant="outline" onClick={() => setDialog('remote')}>在上游新建令牌</Button>
             )}
             <Button size="sm" variant="outline" onClick={() => setDialog('manual')}>手动录入 key</Button>
@@ -70,7 +71,7 @@ export function StepTokens({ upstreamId, value, onChange, single = false }: Step
                 <td className="px-2">{t.group || '—'}</td>
                 <td className="px-2 text-right tabular-nums">{formatNumber(ratioOf(t.group), 3)}</td>
                 <td className="px-2 text-right tabular-nums">{t.unlimited ? '不限' : formatNumber(t.quota_usd)}</td>
-                <td className="px-2">{t.status === 1 ? <Badge tone="success">启用</Badge> : <Badge>停用</Badge>}</td>
+                <td className="px-2"><StatusBadge dict={TOKEN_STATUS} value={t.status === 1 ? 1 : 0} /></td>
                 <td className="px-2">{(t.channel_count ?? 0) > 0 ? <Badge tone="accent">已建 {t.channel_count}</Badge> : <span className="text-muted-foreground">未建</span>}</td>
               </tr>
             ))}

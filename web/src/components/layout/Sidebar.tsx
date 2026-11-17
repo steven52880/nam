@@ -1,15 +1,12 @@
-import { useQuery } from '@tanstack/react-query';
 import { NavLink } from 'react-router-dom';
-import { api } from '@/api/endpoints';
+import { useChannels, usePriceCounts, useUpstreams } from '@/api/queries';
 import { Badge } from '@/components/ui/misc';
 import { cn } from '@/lib/utils';
-import { useChannelList } from '@/pages/channels/useChannels';
-import { usePriceCounts } from '@/pages/pricing/usePrices';
 import { NAV_GROUPS } from './nav';
 
 export function Sidebar() {
-  const upstreams = useQuery({ queryKey: ['upstreams'], queryFn: api.upstreams });
-  const channels = useChannelList();
+  const upstreams = useUpstreams();
+  const channels = useChannels();
   const priceCounts = usePriceCounts();
   const attention = priceCounts.data ? priceCounts.data.no_price + priceCounts.data.deviation : undefined;
   const counts: Record<string, number | undefined> = {

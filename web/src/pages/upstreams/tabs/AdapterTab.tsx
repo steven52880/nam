@@ -1,13 +1,11 @@
-import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
-import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
-import { errorText } from '@/api/errors';
 import type { Upstream } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useActionMutation } from '@/hooks/useActionMutation';
 import { CheckList } from '../wizard/StepTest';
-import { Field } from '../UpstreamForm';
+import { Field } from '@/components/form/Field';
 
 interface AdapterForm {
   url: string;
@@ -78,17 +76,15 @@ export function AdapterTab({ upstream }: { upstream: Upstream }) {
   const set = (patch: Partial<AdapterForm>) => setForm((cur) => ({ ...cur, ...patch }));
   const editable = upstream.type === 'generic';
 
-  const save = useMutation({
+  const save = useActionMutation({
     mutationFn: () => api.updateUpstream(upstream.id, { adapter_config: serialize(form) }),
-    onSuccess: () => toast.success('适配器配置已保存'),
-    onError: (e: Error) => toast.error(errorText(e)),
+    success: '适配器配置已保存',
   });
-  const test = useMutation({
+  const test = useActionMutation({
     mutationFn: async () => {
       await api.updateUpstream(upstream.id, { adapter_config: serialize(form) });
       return api.testUpstream(upstream.id);
     },
-    onError: (e: Error) => toast.error(errorText(e)),
   });
 
   if (!editable) {
@@ -110,7 +106,7 @@ export function AdapterTab({ upstream }: { upstream: Upstream }) {
       </div>
       <Field label="请求头" hint="每行一个，格式：名称: 值">
         <textarea
-          className="min-h-[56px] w-full rounded border border-input bg-background px-2 py-1 text-base"
+          className="min-h-14 w-full rounded border border-input bg-background px-2 py-1 text-base"
           value={form.headers}
           onChange={(e) => set({ headers: e.target.value })}
         />

@@ -1,18 +1,20 @@
 import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { remToPx } from '@/lib/size';
 
 interface SplitPaneProps {
   top: ReactNode;
   bottom: ReactNode;
-  /** 下栏初始高度（像素）。 */
+  /** 下栏初始高度（rem）。 */
   initialBottom?: number;
 }
 
-const MIN_PANE = 90;
+/** 单栏最小高度（rem）。 */
+const MIN_PANE_REM = 5.625;
 
 /** 上下分栏，中间的分隔条可拖动调整下栏高度。 */
-export function SplitPane({ top, bottom, initialBottom = 220 }: SplitPaneProps) {
+export function SplitPane({ top, bottom, initialBottom = 13.75 }: SplitPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [bottomHeight, setBottomHeight] = useState(initialBottom);
+  const [bottomHeight, setBottomHeight] = useState(() => remToPx(initialBottom));
 
   const onPointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -21,7 +23,8 @@ export function SplitPane({ top, bottom, initialBottom = 220 }: SplitPaneProps) 
     const onMove = (ev: PointerEvent) => {
       const rect = container.getBoundingClientRect();
       const next = rect.bottom - ev.clientY;
-      setBottomHeight(Math.max(MIN_PANE, Math.min(rect.height - MIN_PANE, next)));
+      const minPane = remToPx(MIN_PANE_REM);
+      setBottomHeight(Math.max(minPane, Math.min(rect.height - minPane, next)));
     };
     const onUp = () => {
       window.removeEventListener('pointermove', onMove);

@@ -1,11 +1,12 @@
 import { Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Credential, CredType, UpstreamType } from '@/api/types';
+import { Field } from '@/components/form/Field';
 import { Button } from '@/components/ui/button';
 import { Input, Textarea } from '@/components/ui/input';
-import { Label } from '@/components/ui/misc';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { credOptionsWithCurrent, needsUserId, TYPE_OPTIONS } from './constants';
+import { optionsOf, UPSTREAM_TYPE } from '@/lib/labels';
+import { credOptionsWithCurrent, needsUserId } from './constants';
 
 const USER_ID_SNIPPET = "JSON.parse(localStorage.getItem('user')).id";
 const TOKEN_SNIPPET = "Object.keys(localStorage).filter(k=>/token/i.test(k)).forEach(k=>console.log(k, localStorage.getItem(k)))";
@@ -31,16 +32,6 @@ function HelpBox({ children }: { children: React.ReactNode }) {
       <summary className="cursor-pointer select-none text-muted-foreground">怎么获取</summary>
       <div className="mt-1.5 grid gap-1.5">{children}</div>
     </details>
-  );
-}
-
-export function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <div className="grid gap-1">
-      <Label>{label}</Label>
-      {children}
-      {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
-    </div>
   );
 }
 
@@ -184,7 +175,7 @@ export function TypeSelect({ value, onChange }: { value: UpstreamType; onChange:
     <Select value={value} onValueChange={(v) => onChange(v as UpstreamType)}>
       <SelectTrigger><SelectValue /></SelectTrigger>
       <SelectContent>
-        {TYPE_OPTIONS.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+        {optionsOf(UPSTREAM_TYPE).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
       </SelectContent>
     </Select>
   );

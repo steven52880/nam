@@ -1,12 +1,15 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
+import { invalidate } from '@/api/invalidate';
+import { keys } from '@/api/keys';
+import { useBackend, useSettings } from '@/api/queries';
 import type { JobName, Settings } from '@/api/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/misc';
+import { useActionMutation } from '@/hooks/useActionMutation';
 import { useSession } from '@/hooks/useSession';
 import { formatNumber, formatTime, parseGoDuration, toGoDuration, type ParsedInterval } from '@/lib/format';
 import { CacheTestSection } from './settings/CacheTestSection';
@@ -46,8 +49,8 @@ function Line({ label, children }: { label: string; children: React.ReactNode })
 export default function SettingsPage() {
   const qc = useQueryClient();
   const session = useSession();
-  const settings = useQuery({ queryKey: ['settings'], queryFn: api.settings });
-  const backend = useQuery({ queryKey: ['backend'], queryFn: api.backend });
+  const settings = useSettings();
+  const backend = useBackend();
 
   const [threshold, setThreshold] = useState('50');
   const [autoWrite, setAutoWrite] = useState(false);
@@ -75,7 +78,7 @@ export default function SettingsPage() {
     setIntervals(next);
   }, [settings.data]);
 
-  const save = useMutation({
+  const save = useActionMutation({
     mutationFn: () => {
       const body: Settings = {
         protect_threshold: String(Number(threshold) / 100),
@@ -91,12 +94,11 @@ export default function SettingsPage() {
       }
       return api.saveSettings(body);
     },
+    success: '设置已保存',
+    invalidate: invalidate.settings,
     onSuccess: (data) => {
-      toast.success('设置已保存');
-      qc.setQueryData(['settings'], data);
-      void qc.invalidateQueries({ queryKey: ['jobs'] });
+      qc.setQueryData(keys.settings(), data);
     },
-    onError: (e: Error) => toast.error(e.message),
   });
 
   const thresholdOk = Number(threshold) >= 0 && threshold !== '';

@@ -1,43 +1,40 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
-import { errorText } from '@/api/errors';
+import { invalidate } from '@/api/invalidate';
+import { useUpstreamTokens } from '@/api/queries';
 import type { Upstream, UpstreamToken } from '@/api/types';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { StatusBadge } from '@/components/cells/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/misc';
+import { useActionMutation } from '@/hooks/useActionMutation';
 import { formatNumber } from '@/lib/format';
-import { AddTokenDialog, canCreateRemoteToken, type TokenDialog } from '../AddTokenDialog';
+import { TOKEN_STATUS, UPSTREAM_CAPS } from '@/lib/labels';
+import { AddTokenDialog, type TokenDialog } from '@/components/entities/AddTokenDialog';
 
 export function TokensTab({ upstream }: { upstream: Upstream }) {
-  const qc = useQueryClient();
   const navigate = useNavigate();
   const [dialog, setDialog] = useState<TokenDialog>(null);
   const [removing, setRemoving] = useState<UpstreamToken | null>(null);
-  const tokens = useQuery({ queryKey: ['upstream-tokens', upstream.id], queryFn: () => api.upstreamTokens(upstream.id) });
+  const tokens = useUpstreamTokens(upstream.id);
   const list = tokens.data ?? [];
-  const canRemote = canCreateRemoteToken(upstream.type);
+  const canRemote = UPSTREAM_CAPS[upstream.type]?.remoteToken ?? false;
 
-  const sync = useMutation({
+  const sync = useActionMutation({
     mutationFn: () => api.syncUpstream(upstream.id, ['tokens']),
+    invalidate: (qc) => invalidate.upstream(qc),
     onSuccess: (results) => {
       const bad = results.find((r) => !r.ok);
       if (bad) toast.error(`同步令牌失败：${bad.error ?? ''}`);
       else toast.success('已同步令牌');
-      void qc.invalidateQueries({ queryKey: ['upstream-tokens', upstream.id] });
-      void qc.invalidateQueries({ queryKey: ['upstreams'] });
     },
-    onError: (e: Error) => toast.error(errorText(e)),
   });
-  const remove = useMutation({
+  const remove = useActionMutation({
     mutationFn: (id: number) => api.deleteToken(upstream.id, id),
-    onSuccess: () => {
-      toast.success('已删除令牌记录');
-      void qc.invalidateQueries({ queryKey: ['upstream-tokens', upstream.id] });
-    },
-    onError: (e: Error) => toast.error(errorText(e)),
+    success: '已删除令牌记录',
+    invalidate: (qc) => invalidate.tokens(qc, upstream.id),
   });
 
   return (
@@ -62,7 +59,7 @@ export function TokensTab({ upstream }: { upstream: Upstream }) {
                 <td className="px-2 text-muted-foreground">{t.key_hint || '—'}</td>
                 <td className="px-2">{t.group || '—'}</td>
                 <td className="px-2 text-right tabular-nums">{t.unlimited ? '不限' : formatNumber(t.quota_usd)}</td>
-                <td className="px-2">{t.status === 1 ? <Badge tone="success">启用</Badge> : <Badge>停用</Badge>}</td>
+                <td className="px-2"><StatusBadge dict={TOKEN_STATUS} value={t.status === 1 ? 1 : 0} /></td>
                 <td className="px-2">{(t.channel_count ?? 0) > 0 ? <Badge tone="accent">已建 {t.channel_count}</Badge> : <span className="text-muted-foreground">未建</span>}</td>
                 <td className="whitespace-nowrap px-2 text-right">
                   {(t.channel_count ?? 0) === 0 && (

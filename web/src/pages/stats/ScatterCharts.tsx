@@ -1,7 +1,9 @@
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis, ZAxis } from 'recharts';
-import { FAIL_CLASS_LABELS, type FailClass, type ScatterPoint, type StatsOverview } from '@/api/types-stats';
+import type { FailClass, ScatterPoint, StatsOverview } from '@/api/types-stats';
 import { AXIS_TICK, BAR_CURSOR, COLORS, ChartCard, GRID_STROKE, TOOLTIP_PROPS } from './chartTheme';
-import { CLASS_ORDER, cny, pct } from './fmt';
+import { remToPx } from '@/lib/size';
+import { formatPercent, formatSignificant } from '@/lib/format';
+import { FAIL_CLASS, FAIL_CLASS_ORDER } from '@/lib/labels';
 
 interface ScatterDatum {
   name: string;
@@ -23,8 +25,8 @@ function ScatterTip({ active, payload }: { active?: boolean; payload?: Array<{ p
     <div style={TOOLTIP_PROPS.contentStyle}>
       <div className="font-medium">{d.name}</div>
       <div className="text-muted-foreground">厂商：{d.vendor || '未归属'}</div>
-      <div>标准负载成本价：{cny(d.x)}</div>
-      <div>成功率下界：{pct(d.y / 100)}</div>
+      <div>标准负载成本价：{formatSignificant(d.x)}</div>
+      <div>成功率下界：{formatPercent(d.y / 100)}</div>
       <div>请求数：{d.z}</div>
     </div>
   );
@@ -39,7 +41,7 @@ export function PriceQualityChart({ points }: { points: StatsOverview['scatter']
           <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" />
           <XAxis type="number" dataKey="x" name="成本价" tick={AXIS_TICK} domain={['auto', 'auto']} />
           <YAxis type="number" dataKey="y" name="成功率下界" tick={AXIS_TICK} domain={[0, 100]} unit="%" />
-          <ZAxis type="number" dataKey="z" range={[40, 360]} />
+          <ZAxis type="number" dataKey="z" range={[0.15625 * remToPx(1) ** 2, 1.40625 * remToPx(1) ** 2]} />
           <Tooltip content={<ScatterTip />} cursor={{ strokeDasharray: '3 3' }} />
           <Scatter data={data} fill={COLORS.primary} fillOpacity={0.6} />
         </ScatterChart>
@@ -55,7 +57,7 @@ interface ClassDatum {
 }
 
 export function ErrorClassChart({ classes }: { classes: StatsOverview['error_classes'] }) {
-  const data: ClassDatum[] = CLASS_ORDER.map((cls) => ({ cls, label: FAIL_CLASS_LABELS[cls], count: classes[cls] ?? 0 })).filter(
+  const data: ClassDatum[] = FAIL_CLASS_ORDER.map((cls) => ({ cls, label: FAIL_CLASS[cls].label, count: classes[cls] ?? 0 })).filter(
     (d) => d.count > 0,
   );
   return (
@@ -64,7 +66,7 @@ export function ErrorClassChart({ classes }: { classes: StatsOverview['error_cla
         <BarChart data={data} layout="vertical" margin={{ top: 6, right: 16, bottom: 0, left: 8 }}>
           <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" horizontal={false} />
           <XAxis type="number" tick={AXIS_TICK} allowDecimals={false} />
-          <YAxis type="category" dataKey="label" tick={AXIS_TICK} width={72} />
+          <YAxis type="category" dataKey="label" tick={AXIS_TICK} width={remToPx(4.5)} />
           <Tooltip {...TOOLTIP_PROPS} cursor={BAR_CURSOR} formatter={(v) => String(v)} />
           <Bar dataKey="count" name="次数">
             {data.map((d) => (

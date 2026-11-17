@@ -1,33 +1,35 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Play } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
+import { invalidate } from '@/api/invalidate';
+import { useAuditRecent, useJobs } from '@/api/queries';
+import { StatusBadge } from '@/components/cells/StatusBadge';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/misc';
-import { formatDuration, formatIntervalSeconds, formatTime, JOB_TITLES } from '@/lib/format';
+import { useActionMutation } from '@/hooks/useActionMutation';
+import { formatDuration, formatIntervalSeconds, formatTime } from '@/lib/format';
+import { JOB_STATUS, JOB_TITLES, type JobStatusKey } from '@/lib/labels';
 import type { JobStatus } from '@/api/types';
-import { AuditResultBadge } from '@/pages/audit/AuditBadges';
+import { AuditResultBadge } from '@/components/entities/AuditBadges';
+
+function jobStatusKey(job: JobStatus): JobStatusKey {
+  if (job.running) return 'running';
+  if (job.queued) return 'queued';
+  if (job.last_result === 'ok') return 'ok';
+  if (job.last_result === 'fail') return 'fail';
+  return 'idle';
+}
 
 function JobResult({ job }: { job: JobStatus }) {
-  if (job.running) return <Badge tone="accent">运行中</Badge>;
-  if (job.queued) return <Badge tone="warning">排队中</Badge>;
-  if (job.last_result === 'ok') return <Badge tone="success">成功</Badge>;
-  if (job.last_result === 'fail') return <Badge tone="danger">失败</Badge>;
-  return <Badge>未运行</Badge>;
+  return <StatusBadge dict={JOB_STATUS} value={jobStatusKey(job)} />;
 }
 
 function JobsTable() {
-  const qc = useQueryClient();
-  const jobs = useQuery({ queryKey: ['jobs'], queryFn: api.jobs, refetchInterval: 10000 });
-  const run = useMutation({
+  const jobs = useJobs();
+  const run = useActionMutation({
     mutationFn: (name: string) => api.runJob(name),
-    onSuccess: (_, name) => {
-      toast.success(`已将「${JOB_TITLES[name as keyof typeof JOB_TITLES] ?? name}」加入队列`);
-      void qc.invalidateQueries({ queryKey: ['jobs'] });
-    },
-    onError: (e: Error) => toast.error(e.message),
+    success: (_, name) => `已将「${JOB_TITLES[name as keyof typeof JOB_TITLES] ?? name}」加入队列`,
+    invalidate: invalidate.jobs,
   });
 
   return (
@@ -66,7 +68,7 @@ function JobsTable() {
 }
 
 function RecentAudit() {
-  const q = useQuery({ queryKey: ['audit', 'recent'], queryFn: () => api.audit({ limit: 5 }) });
+  const q = useAuditRecent();
   return (
     <section className="rounded border bg-card">
       <div className="flex h-9 items-center justify-between border-b px-3">

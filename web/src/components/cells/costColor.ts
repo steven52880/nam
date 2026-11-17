@@ -19,5 +19,5 @@ export function costStyle(value: number | null, range: CostRange | null): CSSPro
   if (value === null || range === null) return undefined;
   const ratio = Math.min(1, Math.max(0, (value - range.min) / (range.max - range.min)));
   const hue = 142 * (1 - ratio);
-  return { backgroundColor: `hsl(${hue.toFixed(0)} 70% 45% / 0.16)`, borderRadius: 4, padding: '0 4px' };
+  return { backgroundColor: `hsl(${hue.toFixed(0)} 70% 45% / 0.16)`, borderRadius: '0.25rem', padding: '0 0.25rem' };
 }

@@ -1,14 +1,13 @@
-import { useQuery } from '@tanstack/react-query';
 import { Navigate } from 'react-router-dom';
 import { ApiError } from '@/api/client';
-import { api } from '@/api/endpoints';
+import { useSessionQuery } from '@/api/queries';
 import { SessionContext } from '@/hooks/useSession';
 import { AppShell } from '@/components/layout/AppShell';
 import ForbiddenPage from '@/pages/Forbidden';
 
 /** 启动时检查 /session：401 → 登录页，403 → 无权限页。 */
 export function AuthGate() {
-  const q = useQuery({ queryKey: ['session'], queryFn: api.session, retry: false, staleTime: Infinity });
+  const q = useSessionQuery();
 
   if (q.isLoading) {
     return <div className="flex h-full items-center justify-center text-muted-foreground">加载中…</div>;

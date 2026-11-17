@@ -1,6 +1,7 @@
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { JOB_TITLES, type DurationUnit, type ParsedInterval } from '@/lib/format';
+import { type DurationUnit, type ParsedInterval } from '@/lib/format';
+import { JOB_TITLES } from '@/lib/labels';
 import type { JobName } from '@/api/types';
 
 const UNIT_LABELS: Record<DurationUnit, string> = { m: '分钟', h: '小时', d: '天' };

@@ -1,6 +1,4 @@
-import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
-import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,6 +10,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/misc';
+import { useActionMutation } from '@/hooks/useActionMutation';
 
 export function PasswordDialog({
   open,
@@ -26,15 +25,14 @@ export function PasswordDialog({
   const [newPw, setNewPw] = useState('');
   const [confirmPw, setConfirmPw] = useState('');
 
-  const mutation = useMutation({
+  const mutation = useActionMutation({
     mutationFn: () =>
       api.changePassword({ old_password: oldPw, new_password: newPw, confirm_password: confirmPw }),
+    success: '密码已修改，所有会话已失效，请重新登录',
     onSuccess: () => {
-      toast.success('密码已修改，所有会话已失效，请重新登录');
       onOpenChange(false);
       onChanged();
     },
-    onError: (e: Error) => toast.error(e.message),
   });
 
   const tooShort = newPw.length > 0 && newPw.length < 8;

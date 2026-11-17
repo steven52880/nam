@@ -1,21 +1,21 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
-import { errorText } from '@/api/errors';
+import { invalidate } from '@/api/invalidate';
+import { useVendors } from '@/api/queries';
 import type { Vendor, VendorInput, VendorUpdateResult } from '@/api/types';
 import { ChipEditor } from '@/components/ChipEditor';
+import { ModelCountCell } from '@/components/cells/ModelCountCell';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/misc';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useActionMutation } from '@/hooks/useActionMutation';
+import { CHANNEL_TYPE, optionsOf } from '@/lib/labels';
 import { parseStringArray } from '@/lib/list';
-import { CHANNELS_KEY } from '@/pages/channels/useChannels';
 
-const VENDORS_KEY = ['vendors'] as const;
 const TYPE_HELP = '透传（58）适用于 OpenAI / Claude 格式；Gemini 原生格式的渠道必须选 24，否则计费不正确。';
 
 interface VendorForm {
@@ -35,7 +35,6 @@ function prefixesOf(v: Vendor): string[] {
 }
 
 function VendorDialog({ form, onClose }: { form: VendorForm | null; onClose: () => void }) {
-  const qc = useQueryClient();
   const [draft, setDraft] = useState<VendorForm>(EMPTY_FORM);
   const [lastForm, setLastForm] = useState<VendorForm | null>(null);
   if (form !== lastForm) {
@@ -43,7 +42,7 @@ function VendorDialog({ form, onClose }: { form: VendorForm | null; onClose: () 
     if (form) setDraft(form);
   }
 
-  const save = useMutation({
+  const save = useActionMutation({
     mutationFn: () => {
       const body: VendorInput = {
         name: draft.name.trim(),
@@ -54,19 +53,12 @@ function VendorDialog({ form, onClose }: { form: VendorForm | null; onClose: () 
       };
       return draft.id === null ? api.createVendor(body) : api.updateVendor(draft.id, body);
     },
-    onSuccess: (res) => {
+    success: (res) => {
       const drafts = draft.id === null ? 0 : (res as VendorUpdateResult).group_drafts;
-      if (drafts > 0) {
-        toast.success(`已为 ${drafts} 个渠道生成分组草稿，请到渠道页应用变更`);
-      } else {
-        toast.success('厂商已保存');
-      }
-      void qc.invalidateQueries({ queryKey: VENDORS_KEY });
-      void qc.invalidateQueries({ queryKey: CHANNELS_KEY });
-      void qc.invalidateQueries({ queryKey: ['vendor-match'] });
-      onClose();
+      return drafts > 0 ? `已为 ${drafts} 个渠道生成分组草稿，请到渠道页应用变更` : '厂商已保存';
     },
-    onError: (e: Error) => toast.error(errorText(e)),
+    invalidate: invalidate.vendors,
+    onSuccess: onClose,
   });
 
   return (
@@ -86,8 +78,7 @@ function VendorDialog({ form, onClose }: { form: VendorForm | null; onClose: () 
             <Select value={String(draft.channelType)} onValueChange={(v) => setDraft({ ...draft, channelType: v === '24' ? 24 : 58 })}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="58">透传（58）</SelectItem>
-                <SelectItem value="24">Gemini 原生（24）</SelectItem>
+                {optionsOf(CHANNEL_TYPE, [58, 24]).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
               </SelectContent>
             </Select>
             <span className="text-xs text-muted-foreground">{TYPE_HELP}</span>
@@ -116,22 +107,19 @@ function VendorDialog({ form, onClose }: { form: VendorForm | null; onClose: () 
 }
 
 export function VendorSection() {
-  const qc = useQueryClient();
-  const vendors = useQuery({ queryKey: VENDORS_KEY, queryFn: api.vendors });
+  const vendors = useVendors();
   const [editing, setEditing] = useState<VendorForm | null>(null);
   const [removing, setRemoving] = useState<Vendor | null>(null);
   const list = [...(vendors.data ?? [])].sort((a, b) => a.order - b.order);
 
-  const refresh = () => void qc.invalidateQueries({ queryKey: VENDORS_KEY });
-  const reorder = useMutation({
+  const reorder = useActionMutation({
     mutationFn: (ids: number[]) => api.reorderVendors(ids),
-    onSuccess: refresh,
-    onError: (e: Error) => toast.error(errorText(e)),
+    invalidate: invalidate.vendors,
   });
-  const remove = useMutation({
+  const remove = useActionMutation({
     mutationFn: (id: number) => api.deleteVendor(id),
-    onSuccess: () => { toast.success('已删除厂商'); refresh(); },
-    onError: (e: Error) => toast.error(errorText(e)),
+    success: '已删除厂商',
+    invalidate: invalidate.vendors,
   });
 
   const move = (index: number, delta: number) => {
@@ -165,8 +153,8 @@ export function VendorSection() {
                 <tr key={v.id} className="h-8 border-t">
                   <td className="px-2 font-medium">{v.name}</td>
                   <td className="px-2">{v.group_name}</td>
-                  <td className="whitespace-nowrap px-2">{v.channel_type === 24 ? 'Gemini 原生（24）' : '透传（58）'}</td>
-                  <td className="max-w-64 truncate px-2" title={models.join('，')}>{models.length} 个：{models.slice(0, 3).join('，')}{models.length > 3 && '…'}</td>
+                  <td className="whitespace-nowrap px-2">{CHANNEL_TYPE[v.channel_type === 24 ? 24 : 58].label}</td>
+                  <td className="max-w-64 truncate px-2" title={models.join('，')}><ModelCountCell models={models} variant="preview" /></td>
                   <td className="max-w-48 truncate px-2" title={prefixes.join('，')}>{prefixes.length > 0 ? prefixes.join('，') : '—'}</td>
                   <td className="whitespace-nowrap px-2">
                     <Button size="icon" variant="ghost" disabled={index === 0 || reorder.isPending} onClick={() => move(index, -1)} title="上移"><ArrowUp className="h-3.5 w-3.5" /></Button>

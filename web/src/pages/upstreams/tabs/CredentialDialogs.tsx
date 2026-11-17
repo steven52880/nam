@@ -1,11 +1,11 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
 import { errorText } from '@/api/errors';
+import { invalidate } from '@/api/invalidate';
 import type { Credential, CredType, Upstream, UpstreamInput, UpstreamType } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useActionMutation } from '@/hooks/useActionMutation';
 import { allowsCredType, defaultCredType, needsUserId } from '../constants';
 import { CredentialPicker } from '../UpstreamForm';
 import { CheckList } from '../wizard/StepTest';
@@ -18,7 +18,6 @@ function initialCredType(upstream: Upstream, type: UpstreamType): CredType {
 
 /** 表单放在 DialogContent 内：对话框每次打开才挂载，状态随当前 upstream 与有效类型重新初始化。 */
 function CredentialForm({ upstream, type, onOpenChange }: { upstream: Upstream; type: UpstreamType; onOpenChange: (open: boolean) => void }) {
-  const qc = useQueryClient();
   const [credType, setCredType] = useState<CredType>(() => initialCredType(upstream, type));
   const [cred, setCred] = useState<Credential>({});
   const [userId, setUserId] = useState(upstream.platform_user_id ? String(upstream.platform_user_id) : '');
@@ -27,19 +26,16 @@ function CredentialForm({ upstream, type, onOpenChange }: { upstream: Upstream; 
   const sessionType = credType === 'cookie' || credType === 'sub2api_session';
   const invalid = sessionType && !credentialValid(type, credType, cred, userId);
 
-  const save = useMutation({
+  const save = useActionMutation({
     mutationFn: () => {
       const body: UpstreamInput = { cred_type: credType, credential: credType ? cred : {} };
       if (typeChanged) body.type = type;
       if (needsUserId(type, credType) && userId) body.platform_user_id = Number(userId);
       return api.updateUpstream(upstream.id, body);
     },
-    onSuccess: () => {
-      toast.success('凭证已更新');
-      void qc.invalidateQueries({ queryKey: ['upstreams'] });
-      onOpenChange(false);
-    },
-    onError: (e: Error) => toast.error(errorText(e)),
+    success: '凭证已更新',
+    invalidate: (qc) => invalidate.upstream(qc),
+    onSuccess: () => onOpenChange(false),
   });
 
   return (
@@ -81,7 +77,8 @@ export function CredentialDialog({ upstream, type, open, onOpenChange }: { upstr
 }
 
 export function TestUpstreamDialog({ upstream, open, onOpenChange }: { upstream: Upstream; open: boolean; onOpenChange: (open: boolean) => void }) {
-  const test = useMutation({ mutationFn: () => api.testUpstream(upstream.id) });
+  // 原来没有错误提示，错误由 CheckList 内联显示
+  const test = useActionMutation({ mutationFn: () => api.testUpstream(upstream.id), onError: () => true });
   return (
     <Dialog
       open={open}

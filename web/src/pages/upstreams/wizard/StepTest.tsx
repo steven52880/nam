@@ -1,10 +1,10 @@
-import { useMutation } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { api } from '@/api/endpoints';
 import { errorText } from '@/api/errors';
 import type { CheckResult } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/misc';
+import { useActionMutation } from '@/hooks/useActionMutation';
 import { toTestInput, type UpstreamDraft } from './state';
 
 export function CheckList({ results, pending, error }: { results: CheckResult[]; pending: boolean; error?: string }) {
@@ -26,7 +26,8 @@ export function CheckList({ results, pending, error }: { results: CheckResult[];
 
 /** 第 4 步：进入时自动测试一次，可以重新测试。 */
 export function StepTest({ draft }: { draft: UpstreamDraft }) {
-  const test = useMutation({ mutationFn: () => api.testUpstreamInput(toTestInput(draft)) });
+  // 原来没有错误提示，错误由 CheckList 内联显示
+  const test = useActionMutation({ mutationFn: () => api.testUpstreamInput(toTestInput(draft)), onError: () => true });
 
   useEffect(() => {
     test.mutate();

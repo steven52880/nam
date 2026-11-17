@@ -1,10 +1,9 @@
-import { useMutation } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
-import { errorText } from '@/api/errors';
 import type { ChannelRow } from '@/api/types';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { useActionMutation } from '@/hooks/useActionMutation';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/misc';
 
@@ -15,14 +14,13 @@ export function TestChannelDialog({ row, onClose }: { row: ChannelRow | null; on
     if (row) setModel(row.test_model || row.models[0] || '');
   }, [row]);
 
-  const run = useMutation({
+  const run = useActionMutation({
     mutationFn: () => api.testChannel(row?.id ?? 0, model.trim()),
     onSuccess: (res) => {
       if (res.success) toast.success(`测试成功，用时 ${res.duration.toFixed(2)} 秒`);
       else toast.error(`测试失败：${res.message}`);
       onClose();
     },
-    onError: (e: Error) => toast.error(errorText(e)),
   });
 
   return (

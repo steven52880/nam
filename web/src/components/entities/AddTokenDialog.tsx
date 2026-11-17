@@ -1,20 +1,14 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useId, useState } from 'react';
-import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
-import { errorText } from '@/api/errors';
-import type { Upstream, UpstreamGroup, UpstreamToken, UpstreamType } from '@/api/types';
+import { invalidate } from '@/api/invalidate';
+import type { Upstream, UpstreamGroup, UpstreamToken } from '@/api/types';
+import { Field } from '@/components/form/Field';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Field } from './UpstreamForm';
+import { useActionMutation } from '@/hooks/useActionMutation';
 
 export type TokenDialog = 'manual' | 'remote' | null;
-
-/** 只有这些上游类型的适配器支持远程创建令牌。 */
-export function canCreateRemoteToken(type: UpstreamType): boolean {
-  return type === 'newapi' || type === 'onehub' || type === 'rightcode';
-}
 
 interface AddTokenDialogProps {
   upstream: Upstream;
@@ -27,28 +21,25 @@ interface AddTokenDialogProps {
 }
 
 export function AddTokenDialog({ upstream, mode, groups, onClose, onCreated }: AddTokenDialogProps) {
-  const qc = useQueryClient();
   const listId = useId();
   const [name, setName] = useState('');
   const [group, setGroup] = useState('');
   const [key, setKey] = useState('');
   const [quota, setQuota] = useState('');
 
-  const create = useMutation({
+  const create = useActionMutation({
     mutationFn: () => {
       const quotaUsd = quota.trim() === '' ? null : Number(quota);
       if (mode === 'remote') return api.createRemoteToken(upstream.id, { name: name.trim(), group: group.trim(), quota_usd: quotaUsd });
       return api.createToken(upstream.id, { name: name.trim(), group: group.trim(), key: key.trim() });
     },
+    success: mode === 'remote' ? '已在上游新建令牌' : '已录入令牌',
+    invalidate: (qc) => invalidate.tokens(qc, upstream.id),
     onSuccess: (token) => {
-      toast.success(mode === 'remote' ? '已在上游新建令牌' : '已录入令牌');
-      void qc.invalidateQueries({ queryKey: ['upstream-tokens', upstream.id] });
-      void qc.invalidateQueries({ queryKey: ['upstreams'] });
       setName(''); setGroup(''); setKey(''); setQuota('');
       onClose();
       onCreated?.(token);
     },
-    onError: (e: Error) => toast.error(errorText(e)),
   });
 
   const valid = name.trim() !== '' && (mode === 'remote' || key.trim() !== '') && (quota.trim() === '' || Number(quota) > 0);

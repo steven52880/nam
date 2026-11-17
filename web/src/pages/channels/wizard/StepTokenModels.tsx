@@ -1,8 +1,11 @@
-import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/api/endpoints';
 import { errorText } from '@/api/errors';
+import { keys } from '@/api/keys';
+import { groupRatioOf, useTokenModelsFetch, useUpstreamGroups, useVendors } from '@/api/queries';
 import type { UpstreamToken } from '@/api/types';
+import { ModelCountCell } from '@/components/cells/ModelCountCell';
 import { ModelPickerDialog } from '@/components/model-picker';
 import { useVendorMatches } from '@/components/model-picker/useModelGroups';
 import { Button } from '@/components/ui/button';
@@ -18,23 +21,14 @@ interface StepTokenModelsProps {
   onChange: (tokenId: number, models: string[]) => void;
 }
 
-const FETCH_KEY = 'token-models-fetch';
-const FIVE_MINUTES = 5 * 60 * 1000;
 
 /** 第 3 步：进入时自动从上游拉取每个令牌的模型，按厂商前缀预选；跨厂商的令牌会拆成多个渠道。 */
 export function StepTokenModels({ upstreamId, tokens, tokenIds, value, onChange }: StepTokenModelsProps) {
   const qc = useQueryClient();
   const [pickerId, setPickerId] = useState<number | null>(null);
-  const vendors = useQuery({ queryKey: ['vendors'], queryFn: api.vendors });
-  const groups = useQuery({ queryKey: ['upstream-groups', upstreamId], queryFn: () => api.upstreamGroups(upstreamId) });
-  const fetches = useQueries({
-    queries: tokenIds.map((id) => ({
-      queryKey: [FETCH_KEY, id],
-      queryFn: async () => (await api.fetchUpstreamModels(upstreamId, id)).models,
-      staleTime: FIVE_MINUTES,
-      retry: false,
-    })),
-  });
+  const vendors = useVendors();
+  const groups = useUpstreamGroups(upstreamId);
+  const fetches = useTokenModelsFetch(upstreamId, tokenIds);
 
   const fetchedKey = fetches.map((f) => (f.data ? f.data.length : -1)).join(',');
   const allModels = useMemo(
@@ -62,7 +56,7 @@ export function StepTokenModels({ upstreamId, tokens, tokenIds, value, onChange 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendors.data, matches, fetchedKey, tokenIds, value]);
 
-  const ratioOf = (group: string) => groups.data?.find((g) => g.name === group)?.ratio ?? null;
+  const ratioOf = (group: string) => groupRatioOf(groups.data, group);
 
   return (
     <div className="grid gap-3">
@@ -88,7 +82,7 @@ export function StepTokenModels({ upstreamId, tokens, tokenIds, value, onChange 
                 <span className="ml-2 text-sm font-normal text-muted-foreground">
                   {token?.group ? `分组 ${token.group}` : '无分组'}
                   {ratio !== null && `（倍率 ${formatNumber(ratio, 3)}）`}
-                  {` · 已选 ${selected.length} 个模型`}
+                  {' · '}<ModelCountCell count={selected.length} variant="selected" />
                 </span>
               </h3>
               <Button
@@ -134,7 +128,7 @@ export function StepTokenModels({ upstreamId, tokens, tokenIds, value, onChange 
                 selected={selected}
                 onFetch={async () => {
                   const res = await api.fetchUpstreamModels(upstreamId, id);
-                  qc.setQueryData([FETCH_KEY, id], res.models);
+                  qc.setQueryData(keys.upstreams.tokenModelsFetch(upstreamId, id), res.models);
                   return res.models;
                 }}
                 onConfirm={(models) => {

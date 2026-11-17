@@ -1,13 +1,15 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
-import { errorText, issueText } from '@/api/errors';
+import { issueText } from '@/api/errors';
+import { invalidate } from '@/api/invalidate';
 import type { ChannelChange, ChannelRow } from '@/api/types';
 import type { GridRange } from '@/components/data-grid';
+import { useActionMutation } from '@/hooks/useActionMutation';
 import { COPYABLE_COLUMNS } from './constants';
 import { copyText, mergePatch, parseCell, toChange, type Patch } from './edits';
-import { CHANNELS_KEY, useDraftPatch } from './useChannels';
+import { useDraftPatch } from './useChannels';
 
 const EMPTY_PATCH: Patch = { fields: {}, ext: {} };
 
@@ -106,7 +108,7 @@ export function useChannelActions(rows: ChannelRow[]) {
   );
 
   /** 改上游：先匹配令牌，匹配到就一起写入草稿；需要手动时只写上游并提示选令牌。 */
-  const setUpstream = useMutation({
+  const setUpstream = useActionMutation({
     mutationFn: async ({ targets, upstreamId }: { targets: ChannelRow[]; upstreamId: number }) => {
       const real = targets.filter((r) => r.id > 0 && r.sync_state !== 'draft_delete');
       if (real.length === 0) throw new Error('所选渠道还没有应用到 NewAPI，不能设置上游');
@@ -121,16 +123,16 @@ export function useChannelActions(rows: ChannelRow[]) {
       const res = await api.patchDrafts(changes);
       return { res, manual, count: changes.length };
     },
-    onSuccess: ({ res, manual, count }) => {
-      toast.success(`已修改 ${count} 个渠道的上游`);
+    success: ({ count }) => `已修改 ${count} 个渠道的上游`,
+    invalidate: invalidate.channels,
+    onSuccess: ({ res, manual }) => {
       if (manual.length > 0) toast.warning(`请手动为以下渠道选择令牌：${manual.join('；')}`);
       const issues = res.issues ?? [];
       if (issues.length > 0) toast.warning(issues.map(issueText).join('；'));
-      void qc.invalidateQueries({ queryKey: CHANNELS_KEY });
     },
-    onError: (e: Error) => {
-      toast.error(errorText(e));
-      void qc.invalidateQueries({ queryKey: CHANNELS_KEY });
+    onError: () => {
+      void invalidate.channels(qc);
+      return false;
     },
   });
 
@@ -144,7 +146,7 @@ export function useChannelActions(rows: ChannelRow[]) {
     [patch],
   );
 
-  const copyAsNew = useMutation({
+  const copyAsNew = useActionMutation({
     mutationFn: (row: ChannelRow) =>
       api.batchCreate([
         {
@@ -169,35 +171,27 @@ export function useChannelActions(rows: ChannelRow[]) {
           },
         },
       ]),
-    onSuccess: () => {
-      toast.success('已将副本加入草稿');
-      void qc.invalidateQueries({ queryKey: CHANNELS_KEY });
-    },
-    onError: (e: Error) => toast.error(errorText(e)),
+    success: '已将副本加入草稿',
+    invalidate: invalidate.channels,
   });
 
-  const remove = useMutation({
+  const remove = useActionMutation({
     mutationFn: (ids: number[]) => api.deleteChannels(ids),
-    onSuccess: () => {
-      toast.success('已将删除加入草稿');
-      void qc.invalidateQueries({ queryKey: CHANNELS_KEY });
-    },
-    onError: (e: Error) => toast.error(errorText(e)),
+    success: '已将删除加入草稿',
+    invalidate: invalidate.channels,
   });
 
-  const discard = useMutation({
+  const discard = useActionMutation({
     mutationFn: () => api.discardDrafts(),
-    onSuccess: () => {
-      toast.success('已放弃全部草稿');
-      void qc.invalidateQueries({ queryKey: CHANNELS_KEY });
-    },
-    onError: (e: Error) => toast.error(errorText(e)),
+    success: '已放弃全部草稿',
+    invalidate: invalidate.channels,
   });
 
-  const openInNewapi = useMutation({
+  const openInNewapi = useActionMutation({
     mutationFn: (id: number) => api.newapiLink(id),
-    onSuccess: ({ url }) => window.open(url, '_blank', 'noopener'),
-    onError: (e: Error) => toast.error(errorText(e)),
+    onSuccess: ({ url }) => {
+      window.open(url, '_blank', 'noopener');
+    },
   });
 
   return { edit, saveModels, setStatus, setUpstream, setToken, setVendor, copy, paste, copyAsNew, remove, discard, openInNewapi };

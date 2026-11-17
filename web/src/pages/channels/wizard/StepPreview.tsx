@@ -1,6 +1,7 @@
 import type { UseMutationResult } from '@tanstack/react-query';
 import { errorText } from '@/api/errors';
 import type { BatchPreview, BatchRequest } from '@/api/types';
+import { ModelCountCell } from '@/components/cells/ModelCountCell';
 import { Badge } from '@/components/ui/misc';
 import { formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -65,7 +66,7 @@ export function StepPreview({ preview, tokenNames }: StepPreviewProps) {
                   <td className="px-2">{it.vendor}</td>
                   <td className="px-2">{it.group}</td>
                   <td className="whitespace-nowrap px-2">{it.channel_type === 24 ? '24 Gemini 原生' : '58 透传'}</td>
-                  <td className="px-2" title={it.fields.models?.join('，')}>{it.fields.models?.length ?? 0} 个</td>
+                  <td className="px-2" title={it.fields.models?.join('，')}><ModelCountCell models={it.fields.models} variant="count" /></td>
                   <td className="px-2 text-right tabular-nums">
                     {it.ext.discount !== undefined ? formatNumber(it.ext.discount, 3) : '—'}
                     {it.ext.discount_source === 'manual' && <Badge tone="warning" className="ml-1">手动</Badge>}

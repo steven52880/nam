@@ -1,8 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
 import { Circle } from 'lucide-react';
 import { useState } from 'react';
-import { api } from '@/api/endpoints';
 import { lastCall } from '@/api/client';
+import { useBackend } from '@/api/queries';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -27,7 +26,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 export function ConnectionStatus() {
   const [open, setOpen] = useState(false);
   const session = useSession();
-  const backend = useQuery({ queryKey: ['backend'], queryFn: api.backend, refetchInterval: 30000 });
+  const backend = useBackend();
 
   const bad = backend.isError || Boolean(backend.data?.last_error);
   const label = backend.isLoading ? '连接中' : bad ? 'NewAPI 异常' : 'NewAPI 已连接';

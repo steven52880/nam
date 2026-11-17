@@ -1,13 +1,13 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
-import { errorText } from '@/api/errors';
+import { invalidate } from '@/api/invalidate';
+import { useChannelDrift } from '@/api/queries';
 import type { ChannelRow, DriftField } from '@/api/types';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { useActionMutation } from '@/hooks/useActionMutation';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useState } from 'react';
-import { CHANNELS_KEY } from './useChannels';
+import { showValue } from '@/lib/format';
 
 const FIELD_LABELS: Record<string, string> = {
   models: '模型',
@@ -20,13 +20,6 @@ const FIELD_LABELS: Record<string, string> = {
   base_url: '站点地址',
   name: '名称',
 };
-
-export function showValue(v: unknown): string {
-  if (v === null || v === undefined || v === '') return '（空）';
-  if (Array.isArray(v)) return v.join(', ') || '（空）';
-  if (typeof v === 'object') return JSON.stringify(v);
-  return String(v);
-}
 
 function sameValue(a: unknown, b: unknown): boolean {
   return showValue(a) === showValue(b);
@@ -49,29 +42,24 @@ interface DriftDialogProps {
 }
 
 export function DriftDialog({ row, onClose }: DriftDialogProps) {
-  const qc = useQueryClient();
   const [confirmOverwrite, setConfirmOverwrite] = useState(false);
   const id = row?.id ?? 0;
-  const detail = useQuery({ queryKey: ['drift', id], queryFn: () => api.drift(id), enabled: row !== null });
+  const detail = useChannelDrift(row === null ? null : id);
 
-  const refresh = () => {
-    void qc.invalidateQueries({ queryKey: CHANNELS_KEY });
-    void qc.invalidateQueries({ queryKey: ['drift', id] });
-  };
-  const accept = useMutation({
+  const accept = useActionMutation({
     mutationFn: () => api.acceptDrift(id),
-    onSuccess: () => { toast.success('已采纳 NewAPI 的值'); refresh(); onClose(); },
-    onError: (e: Error) => toast.error(errorText(e)),
+    success: '已采纳 NewAPI 的值',
+    invalidate: invalidate.channels,
+    onSuccess: onClose,
   });
-  const overwrite = useMutation({
+  const overwrite = useActionMutation({
     mutationFn: () => api.overwriteDrift(id),
+    success: '已生成覆盖草稿，请到「应用变更」中确认写入 NewAPI',
+    invalidate: invalidate.channels,
     onSuccess: () => {
-      toast.success('已生成覆盖草稿，请到「应用变更」中确认写入 NewAPI');
-      refresh();
       setConfirmOverwrite(false);
       onClose();
     },
-    onError: (e: Error) => toast.error(errorText(e)),
   });
 
   return (

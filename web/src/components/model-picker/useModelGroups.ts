@@ -1,6 +1,5 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import { api } from '@/api/endpoints';
+import { useVendorMatch } from '@/api/queries';
 import type { VendorMatchBy, VendorMatchItem } from '@/api/types';
 
 export const UNOWNED_KEY = '';
@@ -51,12 +50,7 @@ export function groupModels(
 /** 查询后端厂商匹配结果，返回 model → 匹配项 的映射。 */
 export function useVendorMatches(models: readonly string[]) {
   const sorted = useMemo(() => [...new Set(models)].sort(), [models]);
-  const query = useQuery({
-    queryKey: ['vendor-match', sorted],
-    queryFn: () => api.matchVendors(sorted),
-    enabled: sorted.length > 0,
-    placeholderData: keepPreviousData,
-  });
+  const query = useVendorMatch(sorted);
   const matches = useMemo(() => {
     const map = new Map<string, VendorMatchItem>();
     for (const item of query.data?.items ?? []) map.set(item.model, item);

@@ -1,5 +1,5 @@
 import type { SeriesPoint, StatsBucket } from '@/api/types-stats';
-import { formatHour } from './fmt';
+import { formatHour } from '@/lib/format';
 
 export interface SeriesDatum {
   t: number;

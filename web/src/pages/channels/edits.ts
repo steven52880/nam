@@ -1,6 +1,6 @@
 import type { ChannelChange, ChannelExtFields, ChannelFields, ChannelRow } from '@/api/types';
+import { CHANNEL_STATUS, labelOf } from '@/lib/labels';
 import { splitList } from '@/lib/list';
-import { STATUS_LABELS } from './constants';
 
 export interface Patch {
   fields: ChannelFields;
@@ -68,7 +68,7 @@ export function toChange(channelId: number, patch: Patch): ChannelChange {
 export function copyText(row: ChannelRow, columnId: string): string {
   switch (columnId) {
     case 'status':
-      return STATUS_LABELS[row.status] ?? String(row.status);
+      return labelOf(CHANNEL_STATUS, row.status).label;
     case 'discount':
       return String(row.discount);
     case 'priority':
@@ -82,8 +82,4 @@ export function copyText(row: ChannelRow, columnId: string): string {
     default:
       return '';
   }
-}
-
-export function formatDiscount(value: number): string {
-  return String(Number(value.toFixed(4)));
 }

@@ -1,8 +1,8 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
 import type { Upstream, UpstreamInput, UpstreamType } from '@/api/types';
+import { Field } from '@/components/form/Field';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -18,17 +18,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger, Badge } from '@/components/ui
 import { formatNumber, formatTime } from '@/lib/format';
 import { CRED_LABELS } from './constants';
 import { CredNote, isCredInvalid } from './credStatus';
-import { errorText } from '@/api/errors';
+import { invalidate } from '@/api/invalidate';
+import { useActionMutation } from '@/hooks/useActionMutation';
 import { AdapterTab } from './tabs/AdapterTab';
 import { CredentialDialog, TestUpstreamDialog } from './tabs/CredentialDialogs';
 import { GroupsTab, ModelsTab } from './tabs/GroupsModelsTabs';
 import { TokensTab } from './tabs/TokensTab';
-import { Field, TypeSelect } from './UpstreamForm';
+import { TypeSelect } from './UpstreamForm';
 
 const PLACEHOLDER_TABS = ['公告', '同步日志'];
 
 function Overview({ u, onClose }: { u: Upstream; onClose: () => void }) {
-  const qc = useQueryClient();
   const [name, setName] = useState(u.name);
   const [baseUrl, setBaseUrl] = useState(u.base_url);
   const [type, setType] = useState<UpstreamType>(u.type);
@@ -42,31 +42,28 @@ function Overview({ u, onClose }: { u: Upstream; onClose: () => void }) {
   const rateNum = Number(rate);
   const valid = name.trim() !== '' && /^https?:\/\//i.test(baseUrl.trim()) && rateNum > 0;
 
-  const refresh = () => void qc.invalidateQueries({ queryKey: ['upstreams'] });
-  const save = useMutation({
+  const save = useActionMutation({
     mutationFn: () => {
       const body: UpstreamInput = { name: name.trim(), type, base_url: baseUrl.trim(), tags: tags.trim(), remark: remark.trim(), currency_rate: rateNum };
       return api.updateUpstream(u.id, body);
     },
-    onSuccess: () => { toast.success('已保存'); refresh(); },
-    onError: (e: Error) => toast.error(errorText(e)),
+    success: '已保存',
+    invalidate: (qc) => invalidate.upstream(qc),
   });
-  const syncNow = useMutation({
+  const syncNow = useActionMutation({
     mutationFn: () => api.syncUpstream(u.id, ['tokens', 'groups', 'balance']),
+    invalidate: (qc) => invalidate.upstream(qc),
     onSuccess: (results) => {
       const bad = results.filter((r) => !r.ok);
       if (bad.length > 0) toast.error(`同步有失败：${bad.map((r) => r.error ?? r.what).join('；')}`);
       else toast.success('已同步');
-      refresh();
-      void qc.invalidateQueries({ queryKey: ['upstream-tokens', u.id] });
-      void qc.invalidateQueries({ queryKey: ['upstream-groups', u.id] });
     },
-    onError: (e: Error) => toast.error(errorText(e)),
   });
-  const del = useMutation({
+  const del = useActionMutation({
     mutationFn: () => api.deleteUpstream(u.id),
-    onSuccess: () => { toast.success(`已删除上游「${u.name}」`); refresh(); onClose(); },
-    onError: (e: Error) => toast.error(e.message),
+    success: `已删除上游「${u.name}」`,
+    invalidate: (qc) => invalidate.upstream(qc),
+    onSuccess: () => onClose(),
   });
 
   return (

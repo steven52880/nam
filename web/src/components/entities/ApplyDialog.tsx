@@ -1,14 +1,15 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 import { api } from '@/api/endpoints';
 import { errorText, issuesOf, issueText } from '@/api/errors';
+import { invalidate } from '@/api/invalidate';
+import { useChannelPlan } from '@/api/queries';
 import type { ApplyResponse, PlanItem } from '@/api/types';
+import { useActionMutation } from '@/hooks/useActionMutation';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/misc';
-import { showValue } from './DriftDialog';
-import { CHANNELS_KEY } from './useChannels';
+import { showValue } from '@/lib/format';
 
 const OP_LABELS = { create: '新建', update: '修改', delete: '删除' } as const;
 const OP_TONES = { create: 'success', update: 'accent', delete: 'danger' } as const;
@@ -51,27 +52,20 @@ function PlanCard({ item, result }: { item: PlanItem; result?: ApplyResponse['re
 }
 
 export function ApplyDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
-  const qc = useQueryClient();
   const [outcome, setOutcome] = useState<ApplyResponse | null>(null);
   const [issueLines, setIssueLines] = useState<string[]>([]);
 
-  const plan = useQuery({
-    queryKey: ['channel-plan'],
-    queryFn: () => api.plan(),
-    enabled: open,
-    gcTime: 0,
-  });
+  const plan = useChannelPlan(open);
 
-  const apply = useMutation({
+  const apply = useActionMutation({
     mutationFn: () => api.apply(),
+    invalidate: invalidate.channels,
     onMutate: () => setIssueLines([]),
-    onSuccess: (data) => {
-      setOutcome(data);
-      void qc.invalidateQueries({ queryKey: CHANNELS_KEY });
-    },
-    onError: (e: Error) => {
+    onSuccess: (data) => setOutcome(data),
+    onError: (e) => {
       const issues = issuesOf(e);
       setIssueLines(issues.length > 0 ? issues.map(issueText) : [errorText(e)]);
+      return true;
     },
   });
 

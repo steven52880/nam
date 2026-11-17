@@ -1,13 +1,13 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
-import { errorText } from '@/api/errors';
+import { invalidate } from '@/api/invalidate';
+import { usePriceDetail } from '@/api/queries';
 import type { PriceOverride, PriceRow } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { PRICES_KEY } from './constants';
+import { useActionMutation } from '@/hooks/useActionMutation';
 
 type PriceField = 'input' | 'output' | 'cache_read' | 'cache_write_5m' | 'cache_write_1h' | 'per_request';
 
@@ -44,26 +44,21 @@ function parsePrice(text: string): number | null | undefined {
 }
 
 function OverrideForm({ row, override, onDone }: { row: PriceRow; override: PriceOverride | null; onDone: () => void }) {
-  const qc = useQueryClient();
   const [perRequest, setPerRequest] = useState(override?.per_request_mode ?? row.status === 'per_request');
   const [texts, setTexts] = useState<FieldTexts>(() => initialTexts(row, override));
   const [remark, setRemark] = useState(override?.remark ?? '');
 
-  const refresh = () => {
-    void qc.invalidateQueries({ queryKey: PRICES_KEY });
-    void qc.invalidateQueries({ queryKey: ['price-detail', row.model] });
-    void qc.invalidateQueries({ queryKey: ['channel-models'] });
-    onDone();
-  };
-  const save = useMutation({
+  const save = useActionMutation({
     mutationFn: (body: PriceOverride) => api.setPriceOverride(row.model, body),
-    onSuccess: () => { toast.success('已保存覆盖（只写 nam）'); refresh(); },
-    onError: (e: Error) => toast.error(errorText(e)),
+    success: '已保存覆盖（只写 nam）',
+    invalidate: invalidate.prices,
+    onSuccess: onDone,
   });
-  const clear = useMutation({
+  const clear = useActionMutation({
     mutationFn: () => api.clearPriceOverride(row.model),
-    onSuccess: () => { toast.success('已清除覆盖'); refresh(); },
-    onError: (e: Error) => toast.error(errorText(e)),
+    success: '已清除覆盖',
+    invalidate: invalidate.prices,
+    onSuccess: onDone,
   });
 
   const submit = () => {
@@ -125,7 +120,7 @@ function OverrideForm({ row, override, onDone }: { row: PriceRow; override: Pric
 }
 
 function OverrideBody({ row, onDone }: { row: PriceRow; onDone: () => void }) {
-  const query = useQuery({ queryKey: ['price-detail', row.model], queryFn: () => api.priceDetail(row.model) });
+  const query = usePriceDetail(row.model);
   if (query.isLoading) return <div className="py-6 text-center text-muted-foreground">加载中…</div>;
   return <OverrideForm row={row} override={query.data?.override ?? null} onDone={onDone} />;
 }

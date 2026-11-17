@@ -1,10 +1,11 @@
-import { useMutation } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { api } from '@/api/endpoints';
 import { errorText } from '@/api/errors';
 import type { UpstreamType } from '@/api/types';
+import { useActionMutation } from '@/hooks/useActionMutation';
 import { Input, Textarea } from '@/components/ui/input';
-import { CredentialPicker, Field, TypeSelect } from '../UpstreamForm';
+import { Field } from '@/components/form/Field';
+import { CredentialPicker, TypeSelect } from '../UpstreamForm';
 import { credPatchForType, type UpstreamDraft } from './state';
 
 interface StepProps {
@@ -27,12 +28,14 @@ export function StepBasics({ draft, onChange }: StepProps) {
 }
 
 export function StepDetect({ draft, onChange }: StepProps) {
-  const probe = useMutation({
+  const probe = useActionMutation({
     mutationFn: () => api.probeUpstream(draft.baseUrl.trim()),
     onSuccess: (res) => {
       const loginCaptcha = res.login_captcha === true;
       onChange({ type: res.type, loginCaptcha, ...credPatchForType(res.type, draft.credType, draft.credential, loginCaptcha) });
     },
+    // 原来没有错误提示，错误在页面内联显示
+    onError: () => true,
   });
 
   useEffect(() => {

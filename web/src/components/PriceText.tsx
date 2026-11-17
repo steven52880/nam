@@ -1,7 +1,5 @@
 import type { NewapiPrice, Price } from '@/api/types';
-import { formatSignificant } from '@/lib/format';
-
-const DASH = '—';
+import { DASH, formatSignificant } from '@/lib/format';
 
 interface PriceFields {
   input: number | null;

@@ -124,11 +124,3 @@ export interface SeriesQuery {
   bucket: StatsBucket;
 }
 
-export const FAIL_CLASS_LABELS: Record<FailClass, string> = {
-  '429': '429 限流',
-  '5xx': '5xx',
-  timeout: '超时',
-  '401': '401 / 403',
-  balance: '余额不足',
-  other: '其他',
-};

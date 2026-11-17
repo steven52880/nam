@@ -1,24 +1,22 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
-import { errorText } from '@/api/errors';
+import { invalidate } from '@/api/invalidate';
+import { useUpstreamGroups, useUpstreamModelPrices } from '@/api/queries';
 import { Button } from '@/components/ui/button';
+import { useActionMutation } from '@/hooks/useActionMutation';
 import { formatNumber, formatTime } from '@/lib/format';
 import { DeriveSection } from './DeriveSection';
 
 export function GroupsTab({ upstreamId }: { upstreamId: number }) {
-  const qc = useQueryClient();
-  const groups = useQuery({ queryKey: ['upstream-groups', upstreamId], queryFn: () => api.upstreamGroups(upstreamId) });
-  const sync = useMutation({
+  const groups = useUpstreamGroups(upstreamId);
+  const sync = useActionMutation({
     mutationFn: () => api.syncUpstream(upstreamId, ['groups']),
+    invalidate: (qc) => invalidate.upstream(qc),
     onSuccess: (results) => {
       const bad = results.find((r) => !r.ok);
       if (bad) toast.error(`同步倍率失败：${bad.error ?? ''}`);
       else toast.success('已同步分组倍率');
-      void qc.invalidateQueries({ queryKey: ['upstream-groups', upstreamId] });
-      void qc.invalidateQueries({ queryKey: ['upstreams'] });
     },
-    onError: (e: Error) => toast.error(errorText(e)),
   });
   const list = groups.data ?? [];
 
@@ -52,7 +50,7 @@ export function GroupsTab({ upstreamId }: { upstreamId: number }) {
 }
 
 export function ModelsTab({ upstreamId }: { upstreamId: number }) {
-  const models = useQuery({ queryKey: ['upstream-models', upstreamId], queryFn: () => api.upstreamModels(upstreamId) });
+  const models = useUpstreamModelPrices(upstreamId);
   const list = models.data ?? [];
   const num = (v: number | null) => (v === null ? '—' : formatNumber(v, 4));
 

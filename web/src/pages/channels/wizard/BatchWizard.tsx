@@ -1,12 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
-import { errorText } from '@/api/errors';
+import { invalidate } from '@/api/invalidate';
+import { useUpstreamTokens } from '@/api/queries';
+import { useActionMutation } from '@/hooks/useActionMutation';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { CHANNELS_KEY } from '../useChannels';
 import { StepDefaults } from './StepDefaults';
 import { StepPreview } from './StepPreview';
 import { StepTokenModels } from './StepTokenModels';
@@ -27,7 +26,6 @@ interface BatchWizardProps {
 
 export function BatchWizard({ open, onOpenChange, presetUpstreamId, presetTokenId, mode = 'batch' }: BatchWizardProps) {
   const single = mode === 'single';
-  const qc = useQueryClient();
   const [step, setStep] = useState(0);
   const [state, setState] = useState<WizardState>(INITIAL_WIZARD);
 
@@ -43,25 +41,18 @@ export function BatchWizard({ open, onOpenChange, presetUpstreamId, presetTokenI
   }, [open, presetUpstreamId, presetTokenId]);
 
   const patch = (next: Partial<WizardState>) => setState((cur) => ({ ...cur, ...next }));
-  const tokens = useQuery({
-    queryKey: ['upstream-tokens', state.upstreamId],
-    queryFn: () => api.upstreamTokens(state.upstreamId ?? 0),
-    enabled: state.upstreamId !== null,
-  });
+  const tokens = useUpstreamTokens(state.upstreamId);
   const tokenNames = useMemo(() => new Map((tokens.data ?? []).map((t) => [t.id, t.name])), [tokens.data]);
 
-  const preview = useMutation({ mutationFn: api.batchPreview, onError: (e: Error) => toast.error(errorText(e)) });
-  const create = useMutation({
+  const preview = useActionMutation({ mutationFn: api.batchPreview });
+  const create = useActionMutation({
     mutationFn: () => {
       const specs = (preview.data?.items ?? []).map((i) => ({ fields: i.fields, ext: i.ext }));
       return api.batchCreate(specs);
     },
-    onSuccess: ({ ids }) => {
-      toast.success(`已将 ${ids.length} 个新渠道加入草稿，请到「应用变更」确认`);
-      void qc.invalidateQueries({ queryKey: CHANNELS_KEY });
-      onOpenChange(false);
-    },
-    onError: (e: Error) => toast.error(errorText(e)),
+    success: ({ ids }) => `已将 ${ids.length} 个新渠道加入草稿，请到「应用变更」确认`,
+    invalidate: invalidate.channels,
+    onSuccess: () => onOpenChange(false),
   });
 
   const request = buildBatchRequest(state);

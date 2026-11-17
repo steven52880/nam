@@ -2,9 +2,13 @@ import type { StatsWindow } from '@/api/types';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { ALL_FILTER, GROUP_MODE_OPTIONS, STATUS_FILTER_OPTIONS, SYNC_FILTER_OPTIONS, type GroupMode } from './constants';
+import { ALL_FILTER, GROUP_MODE_OPTIONS, type GroupMode } from './constants';
 import { EMPTY_FILTERS, isFiltering, type ChannelFilters } from './filter';
-import { STATS_WINDOW_OPTIONS } from './useChannelStats';
+import { optionsOf, CHANNEL_STATUS, STATS_WINDOW, SYNC_STATE } from '@/lib/labels';
+
+const STATUS_FILTER_OPTIONS = optionsOf(CHANNEL_STATUS);
+const SYNC_FILTER_OPTIONS = optionsOf(SYNC_STATE, ['synced', 'draft', 'drift', 'error']);
+const STATS_WINDOW_OPTIONS = optionsOf(STATS_WINDOW, ['latest', '3d', '7d']);
 
 function FilterSelect({
   label,

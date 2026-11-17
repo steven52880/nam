@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { setAuthHandlers } from '@/api/client';
+import { keys } from '@/api/keys';
 import { TooltipProvider } from '@/components/ui/misc';
 import { routes } from '@/app/routes';
 import './index.css';
@@ -16,7 +17,7 @@ const router = createBrowserRouter(routes, { basename: '/nam' });
 
 setAuthHandlers({
   unauthorized: () => {
-    queryClient.removeQueries({ queryKey: ['session'] });
+    queryClient.removeQueries({ queryKey: keys.session() });
     void router.navigate('/login', { replace: true });
   },
   forbidden: () => {

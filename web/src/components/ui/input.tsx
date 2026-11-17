@@ -21,7 +21,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
     <textarea
       ref={ref}
       className={cn(
-        'flex min-h-[56px] w-full rounded border border-input bg-background px-2 py-1 text-base placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+        'flex min-h-14 w-full rounded border border-input bg-background px-2 py-1 text-base placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
         className,
       )}
       {...props}

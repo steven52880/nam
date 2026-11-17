@@ -1,19 +1,5 @@
 import type { PriceStatus } from '@/api/types';
 
-export const STATUS_LABELS: Record<PriceStatus, string> = {
-  normal: '正常',
-  deviation: '偏差',
-  no_price: '缺价',
-  per_request: '按次计费',
-};
-
-export const STATUS_TONES: Record<PriceStatus, 'success' | 'danger' | 'warning' | 'accent'> = {
-  normal: 'success',
-  deviation: 'danger',
-  no_price: 'warning',
-  per_request: 'accent',
-};
-
 export const STATUS_TABS: Array<{ value: 'all' | PriceStatus; label: string }> = [
   { value: 'all', label: '全部' },
   { value: 'normal', label: '正常' },
@@ -38,5 +24,4 @@ export function sourceLabel(source: string): string {
   return SOURCE_LABELS[source] ?? source;
 }
 
-export const PRICES_KEY = ['prices'] as const;
 export const ALL_VENDORS = '__all__';

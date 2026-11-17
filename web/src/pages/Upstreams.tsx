@@ -1,18 +1,21 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
 import { errorText } from '@/api/errors';
+import { invalidate } from '@/api/invalidate';
+import { useUpstreams } from '@/api/queries';
 import type { Upstream } from '@/api/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/misc';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useActionMutation } from '@/hooks/useActionMutation';
 import { formatNumber, formatTime } from '@/lib/format';
-import { allTags, CRED_LABELS, splitTags, TYPE_OPTIONS } from './upstreams/constants';
+import { optionsOf, UPSTREAM_TYPE } from '@/lib/labels';
+import { allTags, CRED_LABELS, splitTags } from './upstreams/constants';
 import { CredNote, isCredInvalid } from './upstreams/credStatus';
 import { CredentialDialog } from './upstreams/tabs/CredentialDialogs';
 import { UpstreamDrawer } from './upstreams/UpstreamDrawer';
@@ -78,10 +81,9 @@ export default function UpstreamsPage() {
   const [creating, setCreating] = useState(false);
   const [credTarget, setCredTarget] = useState<Upstream | null>(null);
   const [checked, setChecked] = useState<Set<number>>(new Set());
-  const qc = useQueryClient();
-  const query = useQuery({ queryKey: ['upstreams'], queryFn: api.upstreams });
+  const query = useUpstreams();
 
-  const sync = useMutation({
+  const sync = useActionMutation({
     mutationFn: async (ids: number[]) => {
       const failures: string[] = [];
       for (const id of ids) {
@@ -94,12 +96,10 @@ export default function UpstreamsPage() {
       }
       return failures;
     },
+    invalidate: (qc) => invalidate.upstream(qc),
     onSuccess: (failures) => {
       if (failures.length > 0) toast.error(`同步有失败：${failures.join('；')}`);
       else toast.success('同步完成');
-      void qc.invalidateQueries({ queryKey: ['upstreams'] });
-      void qc.invalidateQueries({ queryKey: ['upstream-tokens'] });
-      void qc.invalidateQueries({ queryKey: ['upstream-groups'] });
     },
   });
   const toggleChecked = (id: number) =>
@@ -145,7 +145,7 @@ export default function UpstreamsPage() {
           <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value={ALL}>全部类型</SelectItem>
-            {TYPE_OPTIONS.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+            {optionsOf(UPSTREAM_TYPE).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={tag} onValueChange={setTag}>

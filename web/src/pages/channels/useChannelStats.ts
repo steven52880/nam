@@ -1,24 +1,13 @@
-import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import { api } from '@/api/endpoints';
+import { useChannelStats as useChannelStatsQuery } from '@/api/queries';
 import type { ChannelRow, ChannelStatsItem, StatsWindow } from '@/api/types';
-import { formatRate } from './StatCells';
-
-export const STATS_WINDOW_OPTIONS: Array<[StatsWindow, string]> = [
-  ['latest', '最新'],
-  ['3d', '3 天'],
-  ['7d', '7 天'],
-];
+import { formatPercent } from '@/lib/format';
 
 const NO_STATS = new Map<number, ChannelStatsItem>();
 
 /** 渠道统计。接口出错或尚未实现时返回空表，界面显示「—」，不弹提示。 */
 export function useChannelStats(statsWindow: StatsWindow) {
-  const query = useQuery({
-    queryKey: ['stats', 'channels', statsWindow],
-    queryFn: () => api.statsChannels(statsWindow),
-    refetchInterval: 60_000,
-  });
+  const query = useChannelStatsQuery(statsWindow);
   const stats = useMemo(
     () => (query.data ? new Map(query.data.items.map((item) => [item.channel_id, item])) : NO_STATS),
     [query.data],
@@ -39,7 +28,7 @@ export function summarizeGroup(rows: ChannelRow[], stats: Map<number, ChannelSta
     cost += item.cost_cny;
   }
   const enabled = rows.filter((r) => r.status === 1).length;
-  const rate = requests > 0 ? formatRate(success / requests) : '—';
+  const rate = requests > 0 ? formatPercent(success / requests) : '—';
   const costText = stats.size > 0 ? `¥${cost.toFixed(2)}` : '—';
   return `${rows.length} 个渠道 · 启用 ${enabled} · 平均成功率 ${rate} · 成本 ${costText}`;
 }
