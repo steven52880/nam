@@ -1,0 +1,39 @@
+import type { ChannelRow } from '@/api/types';
+
+/** 测试用的渠道行。 */
+export function makeChannel(over: Partial<ChannelRow> = {}): ChannelRow {
+  return {
+    id: 1,
+    type: 1,
+    name: 'ch-1',
+    status: 1,
+    base_url: '',
+    models: ['gpt-4o'],
+    group: 'default',
+    priority: 0,
+    weight: 10,
+    tag: '',
+    test_model: '',
+    response_time: 0,
+    test_time: 0,
+    used_quota: 0,
+    managed: true,
+    upstream_id: 1,
+    upstream_name: '上游甲',
+    token_id: 1,
+    token_name: 'tk',
+    vendor: 'openai',
+    discount: 0.8,
+    discount_source: 'auto',
+    currency_rate: 7,
+    channel_cost: 5,
+    balance_usd: null,
+    balance_cny: null,
+    unit_cost: 1,
+    unit_cost_model: 'gpt-4o',
+    sync_state: 'synced',
+    dirty_fields: [],
+    drift_fields: [],
+    ...over,
+  };
+}

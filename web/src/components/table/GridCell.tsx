@@ -1,22 +1,24 @@
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
-import type { GridColumn } from './types';
+import type { TableColumn } from './types';
 
 interface GridCellProps<T> {
   row: T;
   rowId: string;
-  column: GridColumn<T>;
+  column: TableColumn<T>;
+  /** 框选模式：带上 data-sheet-cell，支持双击编辑。 */
+  sheet: boolean;
   selected: boolean;
   focused: boolean;
   dirty: boolean;
   className?: string;
   editing: boolean;
-  onCommit: (value: string) => void;
+  onCommit: (rowId: string, columnId: string, value: string) => void;
   onCancel: () => void;
-  onStartEdit: () => void;
+  onStartEdit: (rowId: string, columnId: string) => void;
 }
 
-export function cellText<T>(column: GridColumn<T>, row: T): string {
+export function cellText<T>(column: TableColumn<T>, row: T): string {
   if (column.toText) return column.toText(row);
   const v = column.accessor(row);
   return v === null || v === undefined ? '' : String(v);
@@ -26,6 +28,7 @@ export function GridCell<T>({
   row,
   rowId,
   column,
+  sheet,
   selected,
   focused,
   dirty,
@@ -38,27 +41,33 @@ export function GridCell<T>({
   const readOnly = !column.editable;
   return (
     <td
-      data-sheet-cell="true"
+      data-sheet-cell={sheet ? 'true' : undefined}
       data-row-id={rowId}
       data-col-id={column.id}
-      onDoubleClick={onStartEdit}
+      onDoubleClick={sheet ? () => onStartEdit(rowId, column.id) : undefined}
       className={cn(
-        'relative h-7 scroll-mt-7 truncate border-b border-r px-2 text-base',
-        column.align === 'right' && 'text-right tabular-nums',
-        readOnly && 'text-muted-foreground',
+        'relative h-7 scroll-mt-7 overflow-hidden border-b border-r px-2 text-base',
+        column.align === 'right' && 'text-right',
+        sheet && readOnly && 'text-muted-foreground',
         dirty && 'bg-warning/20',
         selected && 'bg-primary/15',
         focused && 'outline outline-2 -outline-offset-2 outline-primary',
         className,
       )}
     >
-      {dirty && <span className="absolute left-0 top-0 h-0 w-0 border-l-[0.375rem] border-t-[0.375rem] border-l-warning border-t-transparent" />}
-      {editing ? (
-        <CellEditor initial={cellText(column, row)} align={column.align} onCommit={onCommit} onCancel={onCancel} />
-      ) : column.cell ? (
-        column.cell(row)
-      ) : (
-        cellText(column, row)
+      {dirty && (
+        <span className="absolute left-0 top-0 h-0 w-0 border-l-[0.375rem] border-t-[0.375rem] border-l-warning border-t-transparent" />
+      )}
+      <div data-cell-content className={cn('truncate', column.className)}>
+        {column.cell ? column.cell(row) : cellText(column, row)}
+      </div>
+      {editing && (
+        <CellEditor
+          initial={cellText(column, row)}
+          align={column.align}
+          onCommit={(v) => onCommit(rowId, column.id, v)}
+          onCancel={onCancel}
+        />
       )}
     </td>
   );

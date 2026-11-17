@@ -1,5 +1,5 @@
 import type { ChannelRow } from '@/api/types';
-import { ALL_FILTER, type GroupMode } from './constants';
+import { ALL_FILTER } from './constants';
 
 export interface ChannelFilters {
   status: string;
@@ -43,19 +43,6 @@ export function filterChannels(rows: ChannelRow[], f: ChannelFilters): ChannelRo
       r.models.some((m) => m.toLowerCase().includes(search))
     );
   });
-}
-
-export function groupKeyOf(mode: GroupMode): ((row: ChannelRow) => string) | undefined {
-  switch (mode) {
-    case 'upstream':
-      return (r) => r.upstream_name || '未托管';
-    case 'vendor':
-      return (r) => r.vendor || '无厂商';
-    case 'tag':
-      return (r) => r.tag || '无标签';
-    case 'none':
-      return undefined;
-  }
 }
 
 export function distinct(rows: ChannelRow[], pick: (row: ChannelRow) => string): string[] {

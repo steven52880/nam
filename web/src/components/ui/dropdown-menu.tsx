@@ -64,6 +64,41 @@ export function DropdownMenuLabel({
   return <DropdownPrimitive.Label className={cn('px-2 py-1 text-sm text-muted-foreground', className)} {...props} />;
 }
 
+export const DropdownMenuSub = DropdownPrimitive.Sub;
+
+export function DropdownMenuSubTrigger({
+  className,
+  children,
+  ...props
+}: ComponentPropsWithoutRef<typeof DropdownPrimitive.SubTrigger>) {
+  return (
+    <DropdownPrimitive.SubTrigger
+      className={cn(
+        'flex h-7 cursor-default select-none items-center gap-2 rounded px-2 text-base outline-none data-[highlighted]:bg-accent data-[state=open]:bg-accent',
+        className,
+      )}
+      {...props}
+    >
+      {children}
+      <span className="ml-auto text-xs">›</span>
+    </DropdownPrimitive.SubTrigger>
+  );
+}
+
+export function DropdownMenuSubContent({
+  className,
+  ...props
+}: ComponentPropsWithoutRef<typeof DropdownPrimitive.SubContent>) {
+  return (
+    <DropdownPrimitive.Portal>
+      <DropdownPrimitive.SubContent
+        className={cn('z-[60] min-w-[10rem] rounded-md border bg-popover p-1 shadow-md', className)}
+        {...props}
+      />
+    </DropdownPrimitive.Portal>
+  );
+}
+
 export function DropdownMenuSeparator({
   className,
   ...props

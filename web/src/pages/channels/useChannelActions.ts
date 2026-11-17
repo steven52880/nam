@@ -5,18 +5,17 @@ import { api } from '@/api/endpoints';
 import { issueText } from '@/api/errors';
 import { invalidate } from '@/api/invalidate';
 import type { ChannelChange, ChannelRow } from '@/api/types';
-import type { GridRange } from '@/components/data-grid';
+import type { GridRange } from '@/components/table';
 import { useActionMutation } from '@/hooks/useActionMutation';
-import { COPYABLE_COLUMNS } from './constants';
-import { copyText, mergePatch, parseCell, toChange, type Patch } from './edits';
+import { copyColumnsOf, copyRowText, planPaste } from './clipboard';
+import { parseCell, toChange } from './edits';
 import { useDraftPatch } from './useChannels';
-
-const EMPTY_PATCH: Patch = { fields: {}, ext: {} };
 
 export function useChannelActions(rows: ChannelRow[]) {
   const qc = useQueryClient();
-  const patch = useDraftPatch();
-  const pasteMutation = useDraftPatch((count) => `已修改 ${count} 格`);
+  // 只依赖 mutate（引用稳定）；mutation 对象本身每次状态变化都是新的，依赖它会让列定义反复重建
+  const { mutate: patchMutate } = useDraftPatch();
+  const { mutate: pasteMutate } = useDraftPatch((count) => `已修改 ${count} 格`);
   const byId = useCallback((id: string) => rows.find((r) => String(r.id) === id), [rows]);
 
   const edit = useCallback(
@@ -28,14 +27,14 @@ export function useChannelActions(rows: ChannelRow[]) {
         toast.error(parsed.error);
         return;
       }
-      patch.mutate([toChange(row.id, parsed.patch)]);
+      patchMutate([toChange(row.id, parsed.patch)]);
     },
-    [byId, patch],
+    [byId, patchMutate],
   );
 
   const saveModels = useCallback(
-    (row: ChannelRow, models: string[]) => patch.mutate([toChange(row.id, { fields: { models }, ext: {} })]),
-    [patch],
+    (row: ChannelRow, models: string[]) => patchMutate([toChange(row.id, { fields: { models }, ext: {} })]),
+    [patchMutate],
   );
 
   const setStatus = useCallback(
@@ -45,9 +44,9 @@ export function useChannelActions(rows: ChannelRow[]) {
         toast.info('所选渠道已经是该状态');
         return;
       }
-      pasteMutation.mutate(changes);
+      pasteMutate(changes);
     },
-    [pasteMutation],
+    [pasteMutate],
   );
 
   /** Ctrl+C：只复制一行，仅限允许的列。 */
@@ -59,52 +58,31 @@ export function useChannelActions(rows: ChannelRow[]) {
       }
       const row = byId(range.rowIds[0]);
       if (!row) return;
-      const allowed = range.columnIds.filter((c) => COPYABLE_COLUMNS.includes(c));
+      const allowed = copyColumnsOf(range.columnIds);
       const skipped = range.columnIds.length - allowed.length;
       if (allowed.length === 0) {
         toast.info('所选列不能复制，可复制：状态、上游分组折扣、优先级、权重、标签、模型');
         return;
       }
       if (skipped > 0) toast.info(`已跳过 ${skipped} 个不能复制的列`);
-      return allowed.map((c) => copyText(row, c)).join('\t');
+      return copyRowText(row, range.columnIds);
     },
     [byId],
   );
 
-  /** Ctrl+V：单行文本粘贴到选区内每一行（按列对应），合并为一次 PATCH。 */
+  /** Ctrl+V：单行文本粘贴到选区内每一行（按可复制列依次对应），合并为一次 PATCH。 */
   const paste = useCallback(
     (range: GridRange, text: string) => {
-      const cells = text.replace(/\r?\n$/, '').split('\t');
-      const changes: ChannelChange[] = [];
-      const skipped: string[] = [];
-      for (const rowId of range.rowIds) {
-        const row = byId(rowId);
-        if (!row) continue;
-        let merged = EMPTY_PATCH;
-        range.columnIds.forEach((columnId, index) => {
-          if (!COPYABLE_COLUMNS.includes(columnId)) {
-            if (!skipped.includes(columnId)) skipped.push(columnId);
-            return;
-          }
-          const value = cells.length === 1 ? cells[0] : cells[index];
-          if (value === undefined) return;
-          const parsed = parseCell(columnId, value);
-          if ('error' in parsed) {
-            if (!skipped.includes(columnId)) skipped.push(columnId);
-            return;
-          }
-          merged = mergePatch(merged, parsed.patch);
-        });
-        if (Object.keys(merged.fields).length + Object.keys(merged.ext).length > 0) changes.push(toChange(row.id, merged));
-      }
+      const targets = range.rowIds.map(byId).filter((r): r is ChannelRow => r !== undefined);
+      const { changes, skipped } = planPaste(targets, range.columnIds, text);
       if (skipped.length > 0) toast.info(`有 ${skipped.length} 列因不可粘贴或内容无效被跳过`);
       if (changes.length === 0) {
         toast.info('没有可粘贴的内容');
         return;
       }
-      pasteMutation.mutate(changes);
+      pasteMutate(changes);
     },
-    [byId, pasteMutation],
+    [byId, pasteMutate],
   );
 
   /** 改上游：先匹配令牌，匹配到就一起写入草稿；需要手动时只写上游并提示选令牌。 */
@@ -137,13 +115,13 @@ export function useChannelActions(rows: ChannelRow[]) {
   });
 
   const setToken = useCallback(
-    (row: ChannelRow, tokenId: number) => patch.mutate([toChange(row.id, { fields: {}, ext: { token_id: tokenId } })]),
-    [patch],
+    (row: ChannelRow, tokenId: number) => patchMutate([toChange(row.id, { fields: {}, ext: { token_id: tokenId } })]),
+    [patchMutate],
   );
 
   const setVendor = useCallback(
-    (row: ChannelRow, vendor: string) => patch.mutate([toChange(row.id, { fields: {}, ext: { vendor } })]),
-    [patch],
+    (row: ChannelRow, vendor: string) => patchMutate([toChange(row.id, { fields: {}, ext: { vendor } })]),
+    [patchMutate],
   );
 
   const copyAsNew = useActionMutation({

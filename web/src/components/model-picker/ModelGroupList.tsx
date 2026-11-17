@@ -1,8 +1,8 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
+import { IndeterminateCheckbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/misc';
 import { cn } from '@/lib/utils';
-import { IndeterminateCheckbox } from './IndeterminateCheckbox';
 import { OTHER_KEY, UNOWNED_KEY, type ModelGroup } from './useModelGroups';
 
 const DEFAULT_OPEN_GROUPS = 3;

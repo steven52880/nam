@@ -218,7 +218,7 @@ const RULES = [
   {
     name: '旧表格',
     batch: 3,
-    enabled: false,
+    enabled: true,
     desc: '不能引用 components/data-grid、RowContextMenu',
     run: (file) => {
       if (file.ext === '.css' || file.relNoExt.startsWith('components/data-grid/')) return [];
