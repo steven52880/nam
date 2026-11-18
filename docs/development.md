@@ -46,9 +46,41 @@
 
 ### 测试
 
-- **nam 核心**：在 `nam/` 下 `go vet ./...`、`go test ./...`（约 10 秒）。
+- **nam 核心**：在 `nam/` 下 `go vet ./...`、`go test ./...`（约 10 秒）、`go build -o nam.exe ./cmd/nam`。
 - **嵌入适配器**：先跑 `newapi-bridge/sync.ps1`，再在 `temp/clansty-new-api` 下 `go test ./nambridge/`。
-- **前端**：在 `web/` 下 `npm run build`（同时做类型检查）。
+- **前端**：在 `web/` 下运行（PowerShell 里要写 `npm.cmd`）：
+    - `npm run build`：先跑 `scripts/check.mjs` 架构检查，再做类型检查和打包；任何一步失败都退出非 0。
+    - `npm test`：vitest 单元测试（约 480 个，主要是纯函数）。
+    - 只想快速看类型：`npm run typecheck`；只跑架构检查：`node scripts/check.mjs`。
+- 改完前端要重新 `go build`，再<u>关掉 nam 重开</u>才能看到新界面（前端被 `go:embed` 打进二进制）。
+
+### 前端分层规则
+
+- **七层，只能引用同层或更低层**，页面之间不能互相引用：
+    - L1 `lib/`：纯函数和通用 hook（格式化、名称表、网址参数、布局仓库）。
+    - L2 `api/`：接口函数、类型、查询键、查询 hook、提交后刷新规则。
+    - L3 `hooks/`：跨页面的 hook（会话、提交）。
+    - L4 `components/ui/`：基础控件（按钮、弹窗、下拉框 Combobox、区块 Section、提示条 Banner）。
+    - L5 `components/{table,cells,form,wizard,filters,dnd}/`：通用表格、单元格、表单、向导、筛选栏。
+    - L6 `components/{pickers,entities}/`：业务选择器（模型、分组、令牌）和共享列定义。
+    - L7 `components/layout/`、`pages/`、`app/`。
+- **L1–L5 对 `api/` 只能 `import type`**，数据由上层传入。
+- **`scripts/check.mjs` 的规则**（`npm run build` 会先跑）：
+    - 尺寸不写 `px`，用 rem 或 Tailwind 刻度。
+    - `useQuery` 只写在 `api/queries.ts`；查询键数组只写在 `api/keys.ts`；`useMutation` 只写在 `hooks/useActionMutation.ts`。
+    - `<table` 只能出现在 `components/table/`，其它地方用 `DataTable`。
+    - 不能用 `<datalist`；`ui/select` 只能在白名单文件里用，其余下拉一律用 Combobox。
+    - `useSearchParams` 只写在 `lib/url-state.ts`；提示条样式只写在 `ui/banner.tsx`；弹窗宽度用 `size`，不写 `max-w-`。
+- **引用稳定**：传给 `DataTable` 的 `columns`、`data`、`groupBy` 和回调都要 `useMemo` / `useCallback`，否则拖列宽时整表重新渲染。
+
+### 公共模块在哪
+
+- **通用表格**：`web/src/components/table/`（`DataTable`、列构造函数 `textCol` / `numberCol`、分组、排序、框选复制粘贴）。
+- **布局仓库**：`web/src/lib/layout/`（`LayoutProvider`、槽位定义 `slots.ts`）；顶栏按钮 `components/layout/LayoutSaveButton.tsx`；后端 `GET/PUT /api/nam/ui/layout`，存在 `nam.db` 的 `ui_layout.<用户 id>`，上限 256 KB。
+- **下拉**：`components/ui/combobox.tsx`；业务选择器在 `components/pickers/`。
+- **格式化**：`lib/format.ts`（含 `formatRatioPercent`）；美元参考汇率相关在 `lib/usdRate.ts`；统计时长解析在 `lib/statsWindow.ts`。
+- **渠道页**：`pages/Channels.tsx` 只做组装，逻辑在 `pages/channels/`（`useChannelsPage`、`viewModel`、`grouping`、`clipboard`、`columns`、`statColumns`）。
+- **架构和接口细节**：`.omo/plans/m4.5-ui-architecture.md`，每批末尾有"实际接口差异"。
 
 ### 嵌入模式手动试用
 
@@ -85,7 +117,7 @@
     - **M2 QA**：接口级测试覆盖计划 §11.1 M2 全流程；另用真实 NewAPI 二进制 + mock 上游跑了 12 项端到端检查（`temp/e2e/m2.ps1`），**全部通过**，包括 auto 令牌经 NewAPI 落到新建渠道。
 
 - **M3 价格与余额**
-    - **价格计算**（`internal/pricing`）：原厂价按"手动覆盖 → 别名 → 价格库"解析；上游分组折扣 = 上游价 ÷ 原厂价，取中位数，单个模型偏离超过 5% 标出；成本 = 原厂价 × 上游分组折扣 × 上游货币汇率，缓存价默认按原厂比例，可按渠道覆盖。
+    - **价格计算**（`internal/pricing`）：原厂价按"手动覆盖 → 别名 → 价格库"解析；上游分组倍率（当时叫折扣）= 上游价 ÷ 原厂价，取中位数，单个模型偏离超过 5% 标出；成本（元）= 原厂价 × 上游分组倍率 × 上游货币汇率，缓存价默认按原厂比例，可按渠道覆盖。
     - **自动推算**：倍率同步后重算所有"自动"来源的折扣，<u>手动折扣不动</u>；批量创建时直接带上推算值，测试模型默认选最便宜的。
     - **价格库**：从 LiteLLM 同步，只同步站内用到的模型；`NAM_PRICE_BOOK_URL` 可指向自己的镜像（服务器访问不了 GitHub 时用）。
     - **适配器**：新增 onehub 和 sub2api。sub2api 的余额、密钥、公告字段<u>部分未验证</u>（代码里标了 `UNVERIFIED`），等主人提供账号后实测。
@@ -114,7 +146,7 @@
 - **M4 统计**（计划 `.omo/plans/m4-stats.md`）
     - **后端**（`internal/stats`）：增量拉取 NewAPI 消费和错误日志，按渠道 × 模型 × 小时聚合到 `stats_hourly`。每批聚合和游标在同一个事务里提交，<u>重复执行不会重复计数</u>。
         - 成本按拉取时的折扣和价格计算；改了折扣想重算，用「清空并重新统计」。
-        - **实测成本价**（有效口径）= 实际成本 ÷ 不算缓存的原厂成本，缓存命中越高越低；定价口径（M5 用）另算。
+        - **实际负载成本**（当时叫实测成本价）= 实际成本 ÷ 不算缓存的原厂成本，缓存命中越高越低；第 24 轮起再除以美元参考汇率，变成原厂价的倍数。
         - 「最新」档每个渠道直接查 24 小时内最近 100 条日志，缓存 60 秒，按最久没刷新的渠道优先。
         - 清理 NewAPI 原始日志默认关闭；开启后只删游标时间 30 秒之前的日志。
         - 独立模式读日志改为从最旧一页开始、所有类型一次扫完。<u>NewAPI 先数总数再取数据，两步之间插入的日志仍可能漏读</u>（只影响独立模式）。
@@ -123,10 +155,26 @@
     - **测试**：单测和接口测试见 `internal/stats/*_test.go`、`core/m4_test.go`；端到端 `temp/e2e/m4.ps1`（`run.ps1` 已加 `ERROR_LOG_ENABLED=true`，mock 新增 `fail_key`）。
     - **已知缺口**：同一渠道、模型、小时内日志属于不同厂商分组时，聚合行只记第一个厂商；`m35.ps1` 的 9 项断言在 M3.7 之后就过时了，待更新。
 
+- **M4.5 界面重构**（计划 `.omo/plans/m4.5-ui-layout.md`，第 23 轮），分五批，每批主人试用后提交：
+    - **第一批**：界面放大 110%；格式化、名称表、单元格公共化；数据层（查询键、查询 hook、提交后刷新）；分层检查 `check.mjs`。
+    - **第二批**：弹窗、抽屉、向导、区块、提示条、筛选栏、网址参数改用公共组件。
+    - **第三批**：通用表格 `DataTable`（列宽、列顺序、隐藏列、分组、排序、框选复制粘贴），渠道页迁移。
+    - **第四批**：可搜索下拉 Combobox 和业务选择器；其余表格全部迁到 `DataTable`；新增令牌的分组下拉重做。
+    - **第五批**：布局按用户保存（`/ui/layout`）；渠道页默认按厂商分组、按上游 / 标签拖动组顺序；按模型显示统计和成本（`/stats/channels?model=`、`/channels/costs?model=`）。
+    - **第 24 轮改进**：
+        - 新设置项 `usd_cny_rate`（美元参考汇率，默认 7.2）；`channel_cost`、`effective_cost_price`、`measured_cost_price`、`std_cost_price` 在后端已除以它，变成原厂价的倍数，前端显示为百分比，并改名（见 `requirements.md` 参数说明）。
+        - 统计 `window` 支持 `<N>h` / `<N>d`，最长 186 天。
+        - 模型明细可折叠（`localStorage`）；余额按 ≈ 对齐；渠道分组默认展开。
+    - **测试**：前端 `npm test` 481 个通过；后端新增 `core/m45_test.go`、`internal/{stats,channels}/m45_test.go`、`internal/api/ui_layout_test.go`、`internal/stats/{window,usd_rate}_test.go`。
+    - **已知缺口**
+        - 嵌入模式下保存布局还没实测（用户 id 由 NewAPI 提供）。
+        - 拖列时没有"插在两列之间"的提示线；在窗口外松开鼠标后，下一次点击可能被吞掉。
+        - 切换模型时，错误日志提示条会闪一下。
+
 ### 下一步要处理的事
 
-- **M5 定价**：厂商售价、写分组倍率、变化保护、站点汇率。参考成本价用 `stats` 的 `measured_cost_price`。
-- **前端**：还没在浏览器里完整点过，<u>建议主人先试用渠道页、模型与价格页、批量创建和应用变更</u>；包体积约 650 kB，后续拆分。
+- **M5 定价**：厂商售价、写分组倍率、变化保护、站点汇率。参考成本价用 `stats` 的实际负载成本；<u>它现在是原厂价的倍数，而售价是"元 / 原厂 1 美元"，开工前要先定换算方式</u>（`requirements.md` §6 Q6）。
+- **前端**：包体积约 650 kB，后续拆分。
 - **已知问题**
     - 未带日期的 Claude 别名（如 `claude-sonnet-4-5`）在 NewAPI 里没有价格，请求会 400；nam 的别名只用于 nam 自己算成本，NewAPI 那边要在 M5 的"按建议执行"里处理。
     - NewAPI 选项表里没有的补全倍率、缓存倍率，在"模型与价格"页显示为"未知"，不参与偏差比较（NewAPI 代码里有内置默认值）。
