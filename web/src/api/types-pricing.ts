@@ -3,7 +3,7 @@ import type { DiscountSource } from './types-channels';
 
 /* ---------- M3：价格与模型明细 ---------- */
 
-/** 原厂价，单位美元 / 百万 token（按次为美元 / 次）。 */
+/** 原厂价，单位$/M token（按次为美元 / 次）。 */
 export interface Price {
   model: string;
   input: number | null;

@@ -104,7 +104,7 @@ function OverrideForm({ row, override, onDone }: { row: PriceRow; override: Pric
         ) : (
           <div className="grid grid-cols-2 gap-2">
             {TOKEN_FIELDS.map(([field, label]) => (
-              <Field key={field} label={`${label}（美元 / 百万）`}>
+              <Field key={field} label={`${label}（$/M）`}>
                 <Input inputMode="decimal" value={texts[field]} onChange={(e) => setText(field, e.target.value)} />
               </Field>
             ))}

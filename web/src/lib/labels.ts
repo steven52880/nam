@@ -1,4 +1,4 @@
-import type { CredType, FailClass, JobName, PriceStatus, StatsWindow, SyncState, UpstreamType } from '@/api/types';
+import type { CredType, FailClass, JobName, PriceStatus, StatsWindow, SyncState, UpstreamType, VendorPricingMode, VendorPricingState } from '@/api/types';
 import { parseCustomWindow } from './statsWindow';
 
 /** 徽标颜色，与 components/ui/misc.tsx 的 Badge tone 一一对应。 */
@@ -34,11 +34,34 @@ export const TOKEN_STATUS: Record<number, LabelDef> = {
   0: def('停用'),
 };
 
-export const PRICE_STATUS: Record<PriceStatus, LabelDef> = {
+/** 模型价格状态。后端仍会返回 deviation，界面上一律当作正常，不单独显示。 */
+export type VisiblePriceStatus = Exclude<PriceStatus, 'deviation'>;
+
+export const PRICE_STATUS: Record<VisiblePriceStatus, LabelDef> = {
   normal: def('正常', 'success'),
-  deviation: def('偏差', 'danger'),
   no_price: def('缺价', 'warning'),
   per_request: def('按次计费', 'accent'),
+};
+
+/** 把后端的价格状态换成界面显示用的状态：偏差 → 正常。 */
+export function visiblePriceStatus(status: PriceStatus): VisiblePriceStatus {
+  return status === 'deviation' ? 'normal' : status;
+}
+
+/** 厂商定价状态。 */
+export const VENDOR_PRICING_STATE: Record<VendorPricingState, LabelDef> = {
+  synced: def('已同步', 'success'),
+  to_write: def('待写入', 'accent', '目标倍率与 NewAPI 当前倍率不同，点「预览写入」后写入'),
+  pending: def('待确认', 'warning', '变化超过变化保护阈值，需要确认后才写入'),
+  drift: def('漂移', 'danger', 'NewAPI 里的倍率被人改过，与 nam 上次写入的不一致'),
+  no_channel: def('无可用渠道', 'neutral', '该分组下没有启用且有上游渠道售价的渠道'),
+  unset: def('未设置', 'neutral', '还没有填写售价'),
+};
+
+/** 厂商定价模式。 */
+export const PRICING_MODE: Record<VendorPricingMode, LabelDef> = {
+  fixed: def('固定'),
+  follow: def('跟随'),
 };
 
 export type JobStatusKey = 'running' | 'queued' | 'ok' | 'fail' | 'idle';

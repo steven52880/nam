@@ -3,13 +3,15 @@ import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '@/api/endpoints';
 import { invalidate } from '@/api/invalidate';
-import { useAuditRecent, useJobs } from '@/api/queries';
+import { useAuditRecent, useJobs, useVendorPricingAttention } from '@/api/queries';
 import { StatusBadge } from '@/components/cells/StatusBadge';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { DataTable, customCol, numberCol, textCol, type TableColumn } from '@/components/table';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/misc';
 import { Section } from '@/components/ui/section';
 import { useActionMutation } from '@/hooks/useActionMutation';
+import { cn } from '@/lib/utils';
 import { formatDuration, formatIntervalSeconds, formatTime } from '@/lib/format';
 import { JOB_STATUS, JOB_TITLES, labelOf, type JobStatusKey } from '@/lib/labels';
 import type { JobStatus } from '@/api/types';
@@ -125,13 +127,43 @@ function RecentAudit() {
   );
 }
 
-const PLACEHOLDER_CARDS = ['告警卡片', '今日指标', '余额汇总'];
+const PLACEHOLDER_CARDS = ['今日指标', '余额汇总'];
+
+/** 告警卡片：目前只有厂商定价的「待确认」和「漂移」。 */
+function AlertCard() {
+  const q = useVendorPricingAttention();
+  const s = q.data;
+  const hot = !!s && s.total > 0;
+  return (
+    <div className={cn('flex h-20 flex-col justify-center rounded border px-3', hot ? 'border-warning/50 bg-warning/10' : 'bg-card')}>
+      <div className="flex items-center gap-2 font-medium">
+        告警
+        {hot && <Badge tone="warning">{s.total}</Badge>}
+        {hot && <Link to="/pricing" className="ml-auto text-sm font-normal text-primary hover:underline">去处理</Link>}
+      </div>
+      <div className="text-sm text-muted-foreground">
+        {q.isError && <span className="text-destructive">{q.error.message}</span>}
+        {!q.isError && !s && '加载中…'}
+        {s && !hot && '厂商定价没有待处理的项'}
+        {hot && (
+          <>
+            厂商定价：
+            {s.pending > 0 && <span>待确认 {s.pending} 个</span>}
+            {s.pending > 0 && s.drift > 0 && '，'}
+            {s.drift > 0 && <span className="text-destructive">漂移 {s.drift} 个</span>}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function OverviewPage() {
   return (
     <div className="flex flex-col gap-3 p-4">
-      <PageHeader title="总览" description="后台任务与最近写入；告警、指标和余额汇总将在后续里程碑加入。" />
+      <PageHeader title="总览" description="后台任务与最近写入；定价告警已接入，指标和余额汇总将在后续里程碑加入。" />
       <div className="grid grid-cols-3 gap-3">
+        <AlertCard />
         {PLACEHOLDER_CARDS.map((t) => (
           <div key={t} className="flex h-20 flex-col justify-center rounded border border-dashed px-3">
             <div className="font-medium">{t}</div>

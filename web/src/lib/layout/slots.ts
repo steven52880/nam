@@ -5,7 +5,7 @@
 export const TABLE_LAYOUT_IDS = [
   'channels.main', 'channels.models', 'channels.cache-rounds', 'channels.drift',
   'upstreams.list', 'upstream.tokens', 'upstream.groups', 'upstream.prices', 'upstream.derive',
-  'pricing.list', 'pricing.channels', 'audit.list', 'overview.jobs',
+  'pricing.list', 'pricing.channels', 'pricing.vendors', 'audit.list', 'overview.jobs',
   'stats.leaderboard', 'stats.hourly', 'settings.vendors',
   'wizard.upstreams', 'wizard.tokens', 'wizard.preview', 'demo.grid',
 ] as const;

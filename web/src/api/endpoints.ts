@@ -47,6 +47,12 @@ import type {
   VendorInput,
   VendorUpdateResult,
   VendorMatchResponse,
+  VendorApplyResult,
+  VendorPreview,
+  VendorPricingItem,
+  VendorPricingOverview,
+  VendorPricingUpdate,
+  VendorWriteRequest,
   JobStatus,
   ChannelStatsList,
   ModelCostList,
@@ -153,6 +159,21 @@ export const api = {
 
   jobs: () => request<JobStatus[]>('/jobs'),
   runJob: (name: string) => request<null>(`/jobs/${encodeURIComponent(name)}`, { method: 'POST' }),
+  /** 触发任务并等它跑完再返回（?wait=1）。 */
+  runJobAndWait: (name: string) =>
+    request<null>(`/jobs/${encodeURIComponent(name)}`, { method: 'POST', query: { wait: 1 } }),
+
+  vendorPricing: () => request<VendorPricingOverview>('/vendor-pricing'),
+  updateVendorPricing: (id: number, body: VendorPricingUpdate) =>
+    request<VendorPricingItem>(`/vendor-pricing/${id}`, { method: 'PUT', body }),
+  previewVendorPricing: (body: VendorWriteRequest) =>
+    request<VendorPreview>('/vendor-pricing/preview', { method: 'POST', body }),
+  applyVendorPricing: (body: VendorWriteRequest) =>
+    request<VendorApplyResult>('/vendor-pricing/apply', { method: 'POST', body }),
+  confirmVendorPricing: (id: number) =>
+    request<VendorApplyResult>(`/vendor-pricing/${id}/confirm`, { method: 'POST' }),
+  adoptVendorPricing: (id: number) =>
+    request<VendorPricingItem>(`/vendor-pricing/${id}/adopt`, { method: 'POST' }),
 
   settings: () => request<Settings>('/settings'),
   saveSettings: (body: Settings) => request<Settings>('/settings', { method: 'PUT', body }),

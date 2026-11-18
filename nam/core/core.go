@@ -23,6 +23,7 @@ import (
 	"github.com/steven52880/nam/internal/stats"
 	"github.com/steven52880/nam/internal/store"
 	"github.com/steven52880/nam/internal/upstream"
+	"github.com/steven52880/nam/internal/vendorprice"
 	"github.com/steven52880/nam/internal/vendors"
 	"github.com/steven52880/nam/ports"
 	"github.com/steven52880/nam/webdist"
@@ -59,6 +60,8 @@ type Core struct {
 	channels *channels.Service
 	syncer   *upstream.Syncer
 	stats    *stats.Service
+
+	vendorPrice *vendorprice.Service
 }
 
 // New opens nam.db, wires services and returns a Core. Call Start to run jobs.
@@ -107,9 +110,10 @@ func New(cfg Config, p ports.Ports) (*Core, error) {
 	c.channels = &channels.Service{St: st, Box: box, Channels: wrapped.Channels}
 	c.stats = &stats.Service{St: st, Logs: wrapped.Logs, Channels: wrapped.Channels, Backend: wrapped.Backend, Sched: sch}
 	c.syncer = &upstream.Syncer{St: st, Box: box, HTTP: &http.Client{Timeout: 30 * time.Second}, Audit: rec}
+	c.vendorPrice = &vendorprice.Service{St: st, Options: wrapped.Options, Channels: c.channels, Audit: rec}
 	c.server = &api.Server{Deps: api.Deps{
 		Store: st, Box: box, Audit: rec, Sched: sch, Ports: wrapped, Version: Version,
-		Channels: c.channels, Syncer: c.syncer, Vendors: &vendors.Service{St: st}, Stats: c.stats,
+		Channels: c.channels, Syncer: c.syncer, Vendors: &vendors.Service{St: st}, Stats: c.stats, VendorPrice: c.vendorPrice,
 		CacheTest: &cachetest.Runner{St: st, Box: box, Channels: wrapped.Channels, Backend: wrapped.Backend, Audit: rec},
 	}}
 	c.registerJobs()
@@ -127,7 +131,7 @@ func (c *Core) registerJobs() {
 	c.sched.Register(scheduler.Job{Name: scheduler.JobPriceBook, Title: "价格库同步", Default: 24 * time.Hour, Fn: c.priceBookJob})
 	c.sched.Register(scheduler.Job{Name: scheduler.JobAnnouncements, Title: "公告检查", Default: 6 * time.Hour, Fn: noop("announcements")})
 	c.sched.Register(scheduler.Job{Name: scheduler.JobPullLogs, Title: "日志拉取", Default: 2 * time.Minute, Fn: c.stats.Pull})
-	c.sched.Register(scheduler.Job{Name: scheduler.JobPricing, Title: "定价计算", Default: 30 * time.Minute, Fn: noop("pricing")})
+	c.sched.Register(scheduler.Job{Name: scheduler.JobPricing, Title: "定价计算", Default: time.Hour, Fn: c.vendorPrice.Job})
 	c.sched.Register(scheduler.Job{Name: scheduler.JobConsistency, Title: "一致性检查", Default: 10 * time.Minute, Fn: c.consistencyJob})
 	c.sched.Register(scheduler.Job{Name: scheduler.JobCleanup, Title: "日志清理", Default: 24 * time.Hour, Fn: c.stats.Cleanup})
 	c.sched.Register(scheduler.Job{Name: scheduler.JobBackup, Title: "备份", Default: 24 * time.Hour, Fn: c.backupJob})

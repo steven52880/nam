@@ -157,22 +157,30 @@ const (
 	PricingFixed  = "fixed"
 	PricingFollow = "follow"
 
-	PricingOK      = "ok"
-	PricingPending = "pending"
-	PricingNoPrice = "no_price"
+	PricingSynced    = "synced"     // 已同步
+	PricingToWrite   = "to_write"   // 待写入
+	PricingPending   = "pending"    // 待确认（变化超过保护阈值）
+	PricingDrift     = "drift"      // 漂移（NewAPI 倍率被改过）
+	PricingNoChannel = "no_channel" // 无可用渠道
+	PricingUnset     = "unset"      // 未设置
 )
 
 // VendorPricing is a vendor's sell price and protection state.
+//
+// Prices are multiples of the official price (0.30 = 30%), not yuan. The vendor group ratio
+// written to NewAPI is SellPrice × 美元参考汇率 ÷ 站点汇率.
 type VendorPricing struct {
-	VendorID      uint     `gorm:"primaryKey;autoIncrement:false" json:"vendor_id"`
-	Mode          string   `gorm:"size:8;default:fixed" json:"mode"`
-	SellPrice     float64  `json:"sell_price"` // 售价：元 / 原厂 1 美元
-	Markup        float64  `json:"markup"`     // 加价比例
-	LastWritten   *float64 `json:"last_written"`
-	State         string   `gorm:"size:12;default:ok" json:"state"`
-	PendingPrice  *float64 `json:"pending_price"`
-	ReferenceCost *float64 `json:"reference_cost"`
-	UpdatedAt     int64    `json:"updated_at"`
+	VendorID         uint     `gorm:"primaryKey;autoIncrement:false" json:"vendor_id"`
+	Mode             string   `gorm:"size:8;default:fixed" json:"mode"`
+	SellPrice        *float64 `json:"sell_price"` // 售价：原厂价的倍数（固定模式）
+	Markup           *float64 `json:"markup"`     // 加价比例（跟随模式）：售价 = 参考成本 × 加价比例
+	LastWrittenPrice *float64 `json:"last_written_price"`
+	LastWrittenRatio *float64 `json:"last_written_ratio"` // 上次写入 NewAPI 的 GroupRatio，用来判定漂移
+	LastWrittenAt    int64    `json:"last_written_at"`
+	State            string   `gorm:"size:12;default:unset" json:"state"`
+	PendingPrice     *float64 `json:"pending_price"`
+	ReferenceCost    *float64 `json:"reference_cost"`
+	UpdatedAt        int64    `json:"updated_at"`
 }
 
 // OfficialPrice is the official price book. USD per 1M tokens, or USD per request.
@@ -244,10 +252,14 @@ type AuditLog struct {
 }
 
 // PriceHistory records every pricing write so it can be rolled back.
+//
+// Vendor pricing rows use Key "vendor:<id>" and VendorID; Before/After are JSON
+// {"mode","sell_price","group_ratio"}. Reason is manual / auto / confirm / force.
 type PriceHistory struct {
 	ID         uint   `gorm:"primaryKey" json:"id"`
 	At         int64  `gorm:"index" json:"at"`
-	Key        string `gorm:"size:64" json:"key"` // option key
+	Key        string `gorm:"size:64" json:"key"`
+	VendorID   *uint  `gorm:"index" json:"vendor_id"`
 	Before     string `json:"before"`
 	After      string `json:"after"`
 	Reason     string `json:"reason"`

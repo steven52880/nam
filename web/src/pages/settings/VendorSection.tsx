@@ -214,7 +214,7 @@ export function VendorSection() {
         onRowReorder={onRowReorder}
         rowReorderDisabled={reorder.isPending}
       />
-      <p className="text-sm text-muted-foreground">写入 NewAPI 的分组倍率在 M5 实现；nam 不开启默认 auto 分组，用户令牌需选 auto。</p>
+      <p className="text-sm text-muted-foreground">厂商的售价与分组倍率在「模型与价格」页设置和写入；nam 不开启默认 auto 分组，用户令牌需选 auto。</p>
       <VendorDialog form={editing} onClose={() => setEditing(null)} />
       <ConfirmDialog
         open={removing !== null}

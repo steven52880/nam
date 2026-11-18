@@ -47,6 +47,12 @@ func Open(path string) (*Store, error) {
 	if err := db.AutoMigrate(AllModels()...); err != nil {
 		return nil, fmt.Errorf("migrate nam.db: %w", err)
 	}
+	// Pre-M5 vendor_pricing rows used a different meaning (元 / 美元) and state set; M5 re-takes
+	// over every vendor from NewAPI, so drop them.
+	if err := db.Where("state IN ? OR (state = ? AND last_written_ratio IS NULL)",
+		[]string{"ok", "no_price"}, PricingPending).Delete(&VendorPricing{}).Error; err != nil {
+		return nil, fmt.Errorf("migrate vendor_pricing: %w", err)
+	}
 	return &Store{DB: db, path: path}, nil
 }
 
@@ -135,7 +141,8 @@ func (s *Store) GetDuration(ctx context.Context, key string, def time.Duration) 
 const (
 	KeySiteRate           = "site_rate"            // 站点汇率，默认 7
 	KeyProtectThreshold   = "protect_threshold"    // 变化保护阈值，默认 0.5
-	KeyAutoWrite          = "auto_write"           // 自动写入开关
+	KeyPricingAutoWrite   = "pricing_auto_write"   // 定价任务自动写入跟随模式厂商，默认 false
+	KeyPricingMinChange   = "pricing_min_change"   // 最小变动，默认 0.02：低于它定时任务不写
 	KeyLogRetentionDays   = "log_retention_days"   // NewAPI 原始日志保留天数，默认 30
 	KeyStatsRetentionDays = "stats_retention_days" // 聚合保留天数，默认 180
 	KeyJobIntervalPrefix  = "job_interval."        // + job name
@@ -163,7 +170,8 @@ func UILayoutKey(userID int) string { return KeyUILayoutPrefix + strconv.Itoa(us
 var Defaults = map[string]string{
 	KeySiteRate:           "7",
 	KeyProtectThreshold:   "0.5",
-	KeyAutoWrite:          "true",
+	KeyPricingAutoWrite:   "false",
+	KeyPricingMinChange:   "0.02",
 	KeyLogRetentionDays:   "30",
 	KeyStatsRetentionDays: "180",
 	KeyStatsBackfillDays:  "7",
@@ -171,8 +179,14 @@ var Defaults = map[string]string{
 	KeyNewAPILogCleanup:   "false",
 }
 
-// EnsureDefaults inserts default settings that are missing.
+// legacyKeys are settings that no longer exist and are removed on start.
+var legacyKeys = []string{"auto_write"}
+
+// EnsureDefaults inserts default settings that are missing and drops retired keys.
 func (s *Store) EnsureDefaults(ctx context.Context) error {
+	if err := s.DB.WithContext(ctx).Where("key IN ?", legacyKeys).Delete(&Setting{}).Error; err != nil {
+		return err
+	}
 	for k, v := range Defaults {
 		if _, ok, err := s.GetKV(ctx, k); err != nil {
 			return err

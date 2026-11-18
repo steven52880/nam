@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { useChannels, usePriceCounts, useUpstreams } from '@/api/queries';
+import { useChannels, useUpstreams, useVendorPricingAttention } from '@/api/queries';
 import { Badge } from '@/components/ui/misc';
 import { cn } from '@/lib/utils';
 import { NAV_GROUPS } from './nav';
@@ -7,12 +7,14 @@ import { NAV_GROUPS } from './nav';
 export function Sidebar() {
   const upstreams = useUpstreams();
   const channels = useChannels();
-  const priceCounts = usePriceCounts();
-  const attention = priceCounts.data ? priceCounts.data.no_price + priceCounts.data.deviation : undefined;
+  const attention = useVendorPricingAttention();
+  const pending = attention.data?.pending ?? 0;
+  const drift = attention.data?.drift ?? 0;
   const counts: Record<string, number | undefined> = {
     upstreams: upstreams.data?.length,
     channels: channels.data?.items.length,
-    pricing: attention,
+    // 为 0 时不显示徽标
+    pricing: pending + drift > 0 ? pending + drift : undefined,
   };
   const draftCount = channels.data?.draft_count ?? 0;
 
@@ -46,7 +48,10 @@ export function Sidebar() {
                   {item.reserved && <Badge>预留</Badge>}
                   {item.badge === 'channels' && draftCount > 0 && <Badge tone="warning" title="待应用草稿">{draftCount}</Badge>}
                   {count !== undefined && (
-                    <Badge tone={item.badge === 'pricing' ? (count > 0 ? 'warning' : 'neutral') : 'accent'} title={item.badge === 'pricing' ? '缺价 + 偏差的模型数' : undefined}>
+                    <Badge
+                      tone={item.badge === 'pricing' ? 'warning' : 'accent'}
+                      title={item.badge === 'pricing' ? `待确认 ${pending} + 漂移 ${drift} 个厂商` : undefined}
+                    >
                       {count}
                     </Badge>
                   )}

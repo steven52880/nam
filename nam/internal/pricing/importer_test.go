@@ -59,8 +59,8 @@ func samplePrices(t *testing.T) map[string]store.OfficialPrice {
 
 func TestParseLiteLLMMapping(t *testing.T) {
 	prices := samplePrices(t)
-	if len(prices) != 10 {
-		t.Fatalf("parsed %d entries, want 10", len(prices))
+	if len(prices) != 8 {
+		t.Fatalf("parsed %d entries, want 8", len(prices))
 	}
 
 	claude := prices["claude-sonnet-4-5"]
@@ -73,31 +73,17 @@ func TestParseLiteLLMMapping(t *testing.T) {
 		t.Fatalf("claude vendor/source = %q/%q", claude.Vendor, claude.Source)
 	}
 
-	// Unprefixed original wins over a regional copy.
+	// Keys stay as published: no provider-stripped aliases are invented.
 	ptrNear(t, "gpt-4o input", prices["gpt-4o"].Input, f(2.5))
 	ptrNear(t, "azure/gpt-4o input", prices["azure/gpt-4o"].Input, f(5))
-
-	// Provider-prefixed-only entries register the unprefixed alias, and gemini
-	// wins over vertex_ai for the same model.
-	gemini, ok := prices["gemini-2.5-pro"]
-	if !ok {
-		t.Fatal("gemini-2.5-pro alias missing")
-	}
-	ptrNear(t, "gemini alias input", gemini.Input, f(1.25))
-	if gemini.Vendor != "gemini" {
-		t.Fatalf("gemini alias vendor = %q", gemini.Vendor)
-	}
+	ptrNear(t, "gemini/ input", prices["gemini/gemini-2.5-pro"].Input, f(1.25))
 	ptrNear(t, "vertex_ai exact input", prices["vertex_ai/gemini-2.5-pro"].Input, f(2.5))
-
-	deepseek, ok := prices["deepseek-chat"]
-	if !ok {
-		t.Fatal("deepseek-chat alias missing")
-	}
-	ptrNear(t, "deepseek alias input", deepseek.Input, f(0.28))
-	if deepseek.Vendor != "deepseek" {
-		t.Fatalf("deepseek alias vendor = %q", deepseek.Vendor)
-	}
 	ptrNear(t, "openrouter/deepseek/deepseek-chat input", prices["openrouter/deepseek/deepseek-chat"].Input, f(1))
+	for _, alias := range []string{"gemini-2.5-pro", "deepseek-chat"} {
+		if _, exists := prices[alias]; exists {
+			t.Fatalf("%s alias should not be registered", alias)
+		}
+	}
 
 	img := prices["dall-e-3"]
 	ptrNear(t, "dall-e-3 per request", img.PerRequest, f(0.04))
@@ -112,26 +98,61 @@ func TestParseLiteLLMMapping(t *testing.T) {
 	}
 }
 
-func TestParseLiteLLMProviderPreference(t *testing.T) {
+func TestLookupOfficial(t *testing.T) {
 	const doc = `{
+	  "claude-x": {"input_cost_per_token": 1e-06, "mode": "chat", "litellm_provider": "anthropic"},
+	  "anthropic/claude-x": {"input_cost_per_token": 7e-06, "mode": "chat", "litellm_provider": "anthropic"},
 	  "openai/claude-x": {"input_cost_per_token": 9e-06, "mode": "chat", "litellm_provider": "openai"},
-	  "anthropic/claude-x": {"input_cost_per_token": 3e-06, "mode": "chat", "litellm_provider": "anthropic"},
-	  "bedrock/claude-y": {"input_cost_per_token": 9e-06, "mode": "chat", "litellm_provider": "bedrock"},
-	  "openai/claude-y": {"input_cost_per_token": 2e-06, "mode": "chat", "litellm_provider": "openai"},
-	  "azure/claude-z": {"input_cost_per_token": 4e-06, "mode": "chat", "litellm_provider": "azure"},
-	  "claude-w": {"input_cost_per_token": 1e-06, "mode": "chat", "litellm_provider": "anthropic"},
-	  "anthropic/claude-w": {"input_cost_per_token": 7e-06, "mode": "chat", "litellm_provider": "anthropic"}
+	  "openai/m-order": {"input_cost_per_token": 2e-06, "mode": "chat", "litellm_provider": "openai"},
+	  "anthropic/m-order": {"input_cost_per_token": 3e-06, "mode": "chat", "litellm_provider": "anthropic"},
+	  "moonshot/kimi-a": {"input_cost_per_token": 4e-06, "mode": "chat", "litellm_provider": "moonshot"},
+	  "dashscope/qwen-a": {"input_cost_per_token": 5e-06, "mode": "chat", "litellm_provider": "dashscope"},
+	  "Mixed-Case": {"input_cost_per_token": 6e-06, "mode": "chat", "litellm_provider": "openai"},
+	  "aihubmix/kimi-b": {"input_cost_per_token": 1e-06, "mode": "chat", "litellm_provider": "aihubmix"},
+	  "fal_ai/img-b": {"output_cost_per_image": 0.1, "mode": "image_generation", "litellm_provider": "fal_ai"},
+	  "github_copilot/m-b": {"input_cost_per_token": 1e-06, "mode": "chat", "litellm_provider": "github_copilot"},
+	  "azure_ai/m-c": {"input_cost_per_token": 1e-06, "mode": "chat", "litellm_provider": "azure_ai"},
+	  "openrouter/m-d": {"input_cost_per_token": 1e-06, "mode": "chat", "litellm_provider": "openrouter"},
+	  "bedrock/m-e": {"input_cost_per_token": 1e-06, "mode": "chat", "litellm_provider": "bedrock"},
+	  "vertex_ai/m-f": {"input_cost_per_token": 1e-06, "mode": "chat", "litellm_provider": "vertex_ai"}
 	}`
 	prices, err := ParseLiteLLM(strings.NewReader(doc))
 	if err != nil {
 		t.Fatal(err)
 	}
-	ptrNear(t, "anthropic beats openai", prices["claude-x"].Input, f(3))
-	ptrNear(t, "openai beats bedrock", prices["claude-y"].Input, f(2))
-	ptrNear(t, "azure fallback", prices["claude-z"].Input, f(4))
-	ptrNear(t, "unprefixed wins", prices["claude-w"].Input, f(1))
+	for _, tc := range []struct {
+		model string
+		want  float64 // USD/1M input; 0 means "must not match"
+	}{
+		{"claude-x", 1},       // identical key beats official prefixes
+		{"m-order", 3},        // anthropic precedes openai in the whitelist
+		{"kimi-a", 4},         // moonshot prefix
+		{"qwen-a", 5},         // dashscope prefix
+		{"Mixed-Case", 6},     // exact, case-sensitive
+		{"mixed-case", 0},     // different case does not match
+		{"kimi-b", 0},         // aihubmix is a reseller
+		{"img-b", 0},          // fal_ai is a reseller
+		{"m-b", 0},            // github_copilot
+		{"m-c", 0},            // azure_ai
+		{"m-d", 0},            // openrouter
+		{"m-e", 0},            // bedrock
+		{"m-f", 0},            // vertex_ai
+		{"openai/m-order", 2}, // full key is still an exact match
+	} {
+		p, ok := lookupOfficial(prices, tc.model)
+		if tc.want == 0 {
+			if ok {
+				t.Errorf("%s matched (vendor %q), want no match", tc.model, p.Vendor)
+			}
+			continue
+		}
+		if !ok {
+			t.Errorf("%s: no match, want input %v", tc.model, tc.want)
+			continue
+		}
+		ptrNear(t, tc.model+" input", p.Input, f(tc.want))
+	}
 }
-
 func TestImportFilePlanFixture(t *testing.T) {
 	st := openStore(t)
 	const doc = `{
@@ -185,19 +206,25 @@ func TestSyncFromLiteLLMServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Fetched != 10 || res.Updated != 4 {
+	if res.Fetched != 8 || res.Updated != 3 {
 		t.Fatalf("result = %+v", res)
 	}
-	if len(res.Missing) != 2 || res.Missing[0] != "aaa-missing" || res.Missing[1] != "zzz-missing" {
-		t.Fatalf("missing = %v", res.Missing)
+	want := []string{"GPT-4O", "aaa-missing", "zzz-missing"}
+	if len(res.Missing) != len(want) {
+		t.Fatalf("missing = %v, want %v", res.Missing, want)
+	}
+	for i := range want {
+		if res.Missing[i] != want[i] {
+			t.Fatalf("missing = %v, want %v", res.Missing, want)
+		}
 	}
 
 	var count int64
 	if err := st.DB.Model(&store.OfficialPrice{}).Count(&count).Error; err != nil {
 		t.Fatal(err)
 	}
-	if count != 4 {
-		t.Fatalf("stored %d rows, want 4", count)
+	if count != 3 {
+		t.Fatalf("stored %d rows, want 3", count)
 	}
 	var gm store.OfficialPrice
 	if err := st.DB.First(&gm, "model = ?", "gemini-2.5-pro").Error; err != nil {
@@ -207,13 +234,50 @@ func TestSyncFromLiteLLMServer(t *testing.T) {
 	if gm.Vendor != "gemini" || gm.Source != "litellm" {
 		t.Fatalf("gemini vendor/source = %q/%q", gm.Vendor, gm.Source)
 	}
-	var upper store.OfficialPrice
-	if err := st.DB.First(&upper, "model = ?", "GPT-4O").Error; err != nil {
+	if n := countModel(t, st, "GPT-4O"); n != 0 {
+		t.Fatalf("case-different model stored %d rows, want 0", n)
+	}
+}
+
+func TestSyncDropsStaleMismatchedRows(t *testing.T) {
+	st := openStore(t)
+	// Rows left behind by the old fuzzy/reseller matching, plus a manual row.
+	for _, row := range []store.OfficialPrice{
+		{Model: "kimi-k3", Vendor: "aihubmix", Source: "litellm", Input: f(1)},
+		{Model: "gpt-4o", Vendor: "azure", Source: "litellm", Input: f(5)},
+		{Model: "manual-keep", Source: "manual", Input: f(7)},
+	} {
+		row := row
+		if err := st.DB.Create(&row).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	const doc = `{
+	  "gpt-4o": {"input_cost_per_token": 2.5e-06, "mode": "chat", "litellm_provider": "openai"},
+	  "aihubmix/kimi-k3": {"input_cost_per_token": 1e-06, "mode": "chat", "litellm_provider": "aihubmix"}
+	}`
+	im := &Importer{St: st}
+	res, err := im.ImportFile(context.Background(), strings.NewReader(doc),
+		[]string{"kimi-k3", "gpt-4o", "manual-keep"})
+	if err != nil {
 		t.Fatal(err)
 	}
-	ptrNear(t, "lowercase-matched input", upper.Input, f(2.5))
-	if upper.Vendor != "openai" {
-		t.Fatalf("GPT-4O vendor = %q", upper.Vendor)
+	if len(res.Missing) != 2 || res.Missing[0] != "kimi-k3" || res.Missing[1] != "manual-keep" {
+		t.Fatalf("missing = %v", res.Missing)
+	}
+	if n := countModel(t, st, "kimi-k3"); n != 0 {
+		t.Fatalf("stale kimi-k3 rows = %d, want 0", n)
+	}
+	if n := countModel(t, st, "manual-keep"); n != 1 {
+		t.Fatalf("manual row count = %d, want 1", n)
+	}
+	var gpt store.OfficialPrice
+	if err := st.DB.First(&gpt, "model = ?", "gpt-4o").Error; err != nil {
+		t.Fatal(err)
+	}
+	ptrNear(t, "gpt-4o corrected input", gpt.Input, f(2.5))
+	if gpt.Vendor != "openai" {
+		t.Fatalf("gpt-4o vendor = %q", gpt.Vendor)
 	}
 }
 

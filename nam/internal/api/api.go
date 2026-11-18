@@ -12,6 +12,7 @@ import (
 	"github.com/steven52880/nam/internal/stats"
 	"github.com/steven52880/nam/internal/store"
 	"github.com/steven52880/nam/internal/upstream"
+	"github.com/steven52880/nam/internal/vendorprice"
 	"github.com/steven52880/nam/internal/vendors"
 	"github.com/steven52880/nam/ports"
 )
@@ -27,6 +28,8 @@ type Deps struct {
 	Syncer   *upstream.Syncer
 	Vendors  *vendors.Service
 	Stats    *stats.Service
+	// VendorPrice computes vendor prices and writes group ratios to NewAPI.
+	VendorPrice *vendorprice.Service
 	// CacheTest runs manual cache-rate tests; nil disables the endpoints.
 	CacheTest *cachetest.Runner
 	Version   string
@@ -61,6 +64,7 @@ func (s *Server) Register(g *gin.RouterGroup) {
 	p.GET("/upstreams/:id/credential", auth.SecureMiddleware(), s.revealCredential)
 	s.registerUpstreamRoutes(p)
 	s.registerVendorRoutes(p)
+	s.registerVendorPricingRoutes(p)
 	s.registerChannelRoutes(p)
 	s.registerChannelPricingRoutes(p)
 	s.registerPriceRoutes(p)

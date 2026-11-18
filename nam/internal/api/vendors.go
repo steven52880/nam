@@ -92,7 +92,9 @@ func (s *Server) deleteVendor(c *gin.Context) {
 	resp.OK(c, nil)
 }
 
-// PUT /vendors/order {ids:[...]}: position in the list = position in AutoGroups (written in M5).
+// PUT /vendors/order {ids:[...]}: position in the list = position in AutoGroups. NewAPI is
+// written through POST /vendor-pricing/apply, where the order change shows up as an
+// AutoGroups change.
 func (s *Server) reorderVendors(c *gin.Context) {
 	var in struct {
 		IDs []uint `json:"ids"`
@@ -105,6 +107,5 @@ func (s *Server) reorderVendors(c *gin.Context) {
 		return
 	}
 	s.recordVendor(c, "vendor_reorder", "调整厂商顺序")
-	// TODO(M5): write GroupRatio/AutoGroups/UserUsableGroups to NewAPI from the vendor list.
 	resp.OK(c, nil)
 }

@@ -72,6 +72,21 @@ export function formatRatioPercent(v: number | null | undefined, digits = 3): st
   return `${formatSignificant(v * 100, digits)}%`;
 }
 
+/** 厂商分组倍率统一保留的小数位数。 */
+export const GROUP_RATIO_DIGITS = 3;
+
+/** 厂商分组倍率四舍五入到 3 位小数：0.30857 → 0.309。 */
+export function roundGroupRatio(v: number): number {
+  const f = 10 ** GROUP_RATIO_DIGITS;
+  return Math.round(v * f) / f;
+}
+
+/** 厂商分组倍率显示：最多 3 位小数（四舍五入），去掉多余的 0；空值显示「—」。 */
+export function formatGroupRatio(v: number | null | undefined): string {
+  if (v === null || v === undefined) return DASH;
+  return formatNumber(roundGroupRatio(v), GROUP_RATIO_DIGITS, { trim: true });
+}
+
 /** 毫秒：默认「850 ms」；unit:false 只返回数字。 */
 export function formatMs(v: number | null | undefined, opts?: { unit?: boolean }): string {
   if (v === null || v === undefined) return DASH;

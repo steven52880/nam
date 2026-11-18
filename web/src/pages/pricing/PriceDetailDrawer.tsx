@@ -7,7 +7,7 @@ import { DrawerShell } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/misc';
 import { Section } from '@/components/ui/section';
 import { formatNumber, formatSignificant } from '@/lib/format';
-import { PRICE_STATUS } from '@/lib/labels';
+import { PRICE_STATUS, visiblePriceStatus } from '@/lib/labels';
 import { sourceLabel } from './constants';
 
 const CHANNEL_COLUMNS: TableColumn<PriceChannelUse>[] = [
@@ -39,15 +39,21 @@ function DetailBody({ row }: { row: PriceRow }) {
   return (
     <div className="grid gap-4 p-4">
       <div className="flex flex-wrap items-center gap-2">
-        <StatusBadge dict={PRICE_STATUS} value={row.status} />
+        <StatusBadge dict={PRICE_STATUS} value={visiblePriceStatus(row.status)} />
         {row.vendor && <Badge>{row.vendor}</Badge>}
         <span className="text-sm text-muted-foreground">价格来源：{sourceLabel(row.source)}</span>
         {override && <Badge tone="warning">有手动覆盖</Badge>}
       </div>
-      <Section variant="plain" title="价格对比（美元 / 百万）">
-        <div className="grid gap-1 rounded border p-2">
-          <div><span className="mr-2 text-sm text-muted-foreground">原厂价</span><OfficialPriceText price={row.official} /></div>
-          <div><span className="mr-2 text-sm text-muted-foreground">NewAPI</span><NewapiPriceText price={row.newapi} /></div>
+      <Section variant="plain" title="价格对比（$/M）">
+        <div className="grid gap-3 rounded border p-2">
+          <div className="grid gap-1">
+            <span className="text-sm text-muted-foreground">价格库价格</span>
+            <OfficialPriceText price={row.official} full />
+          </div>
+          <div className="grid gap-1">
+            <span className="text-sm text-muted-foreground">NewAPI 当前价</span>
+            <NewapiPriceText price={row.newapi} full />
+          </div>
         </div>
       </Section>
       {aliases.length > 0 && (

@@ -7,9 +7,20 @@ const all = async (...tasks: Array<Promise<void>>): Promise<void> => {
 };
 
 export const invalidate = {
+  /** 厂商定价：编辑、计算、写入、确认、采纳。写入会产生审计，一并刷新。 */
+  vendorPricing: (qc: QueryClient) =>
+    all(
+      qc.invalidateQueries({ queryKey: keys.vendorPricing.all() }),
+      qc.invalidateQueries({ queryKey: keys.audit.all() }),
+      qc.invalidateQueries({ queryKey: keys.jobs() }),
+    ),
   /** 上游：新增、编辑、删除、同步、换凭证、改汇率。 */
   upstream: (qc: QueryClient) =>
-    all(qc.invalidateQueries({ queryKey: keys.upstreams.all() }), qc.invalidateQueries({ queryKey: keys.channels.all() })),
+    all(
+      qc.invalidateQueries({ queryKey: keys.upstreams.all() }),
+      qc.invalidateQueries({ queryKey: keys.channels.all() }),
+      qc.invalidateQueries({ queryKey: keys.vendorPricing.all() }),
+    ),
   /** 令牌：新增、删除、改模型。 */
   tokens: (qc: QueryClient, upstreamId: number) =>
     all(
@@ -23,11 +34,13 @@ export const invalidate = {
       qc.invalidateQueries({ queryKey: keys.vendors.all() }),
       qc.invalidateQueries({ queryKey: keys.channels.all() }),
       qc.invalidateQueries({ queryKey: keys.prices.all() }),
+      qc.invalidateQueries({ queryKey: keys.vendorPricing.all() }),
     ),
   /** 渠道草稿、应用、漂移处理、接管。 */
   channels: (qc: QueryClient) =>
     all(
       qc.invalidateQueries({ queryKey: keys.channels.all() }),
+      qc.invalidateQueries({ queryKey: keys.vendorPricing.all() }),
       qc.invalidateQueries({ queryKey: keys.stats.all(), predicate: (q) => q.queryKey[1] === 'channels' }),
     ),
   /** 缓存测试开始、结束、取消。 */
@@ -42,6 +55,7 @@ export const invalidate = {
       qc.invalidateQueries({ queryKey: keys.jobs() }),
       qc.invalidateQueries({ queryKey: keys.channels.all() }),
       qc.invalidateQueries({ queryKey: keys.stats.all() }),
+      qc.invalidateQueries({ queryKey: keys.vendorPricing.all() }),
     ),
   /** 手动触发任务。 */
   jobs: (qc: QueryClient) => qc.invalidateQueries({ queryKey: keys.jobs() }),

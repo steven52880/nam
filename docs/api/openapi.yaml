@@ -132,16 +132,95 @@ components:
         next_at: { type: integer }
     Settings:
       type: object
-      description: 字符串键值。job_interval.<job> 为 Go duration（如 30m、6h）。site_rate 只读，修改走定价流程（M5）。usd_cny_rate 是美元参考汇率（元 / 1 美元，默认 7.2，须为大于 0 且不超过 100 的数字，否则 400）；成本类数值 channel_cost、effective_cost_price、measured_cost_price、std_cost_price 都除以它，得到原厂价的倍数（无单位）。cost_cny、revenue_cny、unit_cost（元）、discount、currency_rate、margin 不受影响。
+      description: 字符串键值。job_interval.<job> 为 Go duration（如 30m、6h；定价任务默认 1h）。site_rate 只读，修改走定价流程（第二批）。protect_threshold 变化保护阈值（大于 0，默认 0.5）。pricing_auto_write（true/false，默认 false）：定价任务自动写入跟随模式厂商；旧键 auto_write 已废弃（返回 400）。pricing_min_change 最小变动（0 ≤ x < 1，默认 0.02）：变化低于它时定时任务不写，手动写入不受限。修改 usd_cny_rate 后各厂商分组倍率需要重新写入。usd_cny_rate 是美元参考汇率（元 / 1 美元，默认 7.2，须为大于 0 且不超过 100 的数字，否则 400）；成本类数值 channel_cost、effective_cost_price、measured_cost_price、std_cost_price 都除以它，得到原厂价的倍数（无单位）。cost_cny、revenue_cny、unit_cost（元）、discount、currency_rate、margin 不受影响。
       additionalProperties: { type: string }
       example:
         site_rate: '7'
         usd_cny_rate: '7.2'
         protect_threshold: '0.5'
-        auto_write: 'true'
+        pricing_auto_write: 'false'
+        pricing_min_change: '0.02'
         log_retention_days: '30'
         stats_retention_days: '180'
         job_interval.balance: 30m0s
+    VendorPricingItem:
+      type: object
+      description: |
+        一个厂商的定价。价格都是<u>原厂价的倍数</u>（0.3 = 30%）。厂商分组倍率 = 售价 × 美元参考汇率 ÷ 站点汇率（四舍五入到 3 位小数；舍入后为 0 的售价不能写入）。
+        sell_price 只在固定模式有意义；markup 只在跟随模式有意义。数值字段可为 null。
+      properties:
+        vendor_id: { type: integer }
+        vendor: { type: string }
+        group: { type: string }
+        order: { type: integer }
+        mode: { type: string, enum: [fixed, follow] }
+        markup: { type: number, nullable: true, description: 加价比例：跟随模式售价 = 参考成本 × 加价比例（4 位小数） }
+        sell_price: { type: number, nullable: true }
+        reference:
+          type: object
+          nullable: true
+          description: 参考成本：该分组下 NewAPI 已生效、启用、有上游渠道售价的渠道中，priority 最大的一层按 weight 加权平均（权重全 0 取简单平均）。null = 无可用渠道
+          properties:
+            cost: { type: number }
+            priority: { type: integer }
+            channels:
+              type: array
+              items: { type: object, properties: { id: { type: integer }, name: { type: string }, weight: { type: integer }, channel_cost: { type: number } } }
+        target_price: { type: number, nullable: true }
+        target_ratio: { type: number, nullable: true, description: 目标厂商分组倍率（3 位小数）。NewAPI 里的倍率与它相差不到半个写入步长（5e-4）即视为已同步，所以接管时不是 3 位小数的现有倍率（如 0.2857）也是已同步 }
+        newapi_ratio: { type: number, nullable: true, description: NewAPI 里该分组当前的倍率 }
+        last_written_price: { type: number, nullable: true }
+        last_written_ratio: { type: number, nullable: true }
+        last_written_at: { type: integer, nullable: true }
+        pending_price: { type: number, nullable: true, description: 仅待确认状态有值 }
+        change: { type: number, nullable: true, description: '|目标售价 − 上次写入售价| ÷ 上次写入售价' }
+        small_change: { type: boolean, description: change 小于最小变动；定时任务不写，手动写入仍包含 }
+        state:
+          type: string
+          enum: [synced, to_write, pending, drift, no_channel, unset]
+          description: 优先级：unset 未设置 → no_channel 无可用渠道 → drift 漂移（NewAPI 倍率与上次写入值相差 > 1e-6）→ pending 待确认（跟随模式变化 > 变化保护阈值）→ to_write 待写入 → synced 已同步
+        revenue_7d: { type: number }
+        cost_7d: { type: number }
+        margin_7d: { type: number, nullable: true, description: (收入 − 成本) ÷ 收入；没有收入时为 null }
+    VendorPricingOverview:
+      type: object
+      properties:
+        site_rate: { type: number }
+        usd_rate: { type: number }
+        auto_write: { type: boolean }
+        protect_threshold: { type: number }
+        min_change: { type: number }
+        items: { type: array, items: { $ref: '#/components/schemas/VendorPricingItem' } }
+        groups:
+          type: object
+          description: AutoGroups（厂商分组在前，其它项保持原顺序）和 UserUsableGroups（补厂商分组和 auto，已有项不动）与目标的差异
+          properties:
+            auto_groups: { type: object, properties: { current: { type: array, items: { type: string } }, target: { type: array, items: { type: string } } } }
+            user_usable_groups: { type: object, properties: { current: { type: object, additionalProperties: { type: string } }, target: { type: object, additionalProperties: { type: string } } } }
+            changed: { type: boolean }
+        error: { type: string, description: 非空 = NewAPI 选项读取或解析失败（或站点汇率无效），此时不能写入，也不会接管厂商 }
+    VendorPricingApplyInput:
+      type: object
+      description: 服务端重新计算，不信任客户端的数值
+      properties:
+        vendor_ids: { type: array, items: { type: integer }, description: 省略 = 所有待写入厂商（含 small_change）；给出（含空数组）= 恰好这些厂商。待确认、未设置、无可用渠道一律跳过；漂移只有 force 且明确列出时才写 }
+        include_groups: { type: boolean, default: true, description: 同时写 UserUsableGroups 和 AutoGroups（只写有变化的） }
+        force: { type: boolean, default: false, description: 以 nam 为准覆盖列出的漂移厂商 }
+    VendorPricingPlan:
+      type: object
+      description: preview 与 apply 的响应。preview 含 options；apply 含 written。
+      properties:
+        written: { type: array, items: { type: string, enum: [GroupRatio, UserUsableGroups, AutoGroups] }, description: 仅 apply：实际写入的选项（写入顺序） }
+        vendors:
+          type: array
+          items: { type: object, properties: { vendor_id: { type: integer }, vendor: { type: string }, group: { type: string }, before_price: { type: number, nullable: true }, after_price: { type: number, nullable: true }, before_ratio: { type: number, nullable: true }, after_ratio: { type: number, nullable: true } } }
+        skipped:
+          type: array
+          items: { type: object, properties: { vendor_id: { type: integer }, vendor: { type: string }, state: { type: string }, reason: { type: string } } }
+        options:
+          type: array
+          description: 仅 preview：会变化的选项，JSON 字符串
+          items: { type: object, properties: { key: { type: string }, before: { type: string }, after: { type: string } } }
     AuditLog:
       type: object
       properties:
@@ -726,7 +805,7 @@ paths:
       summary: 厂商列表（按 AutoGroups 顺序）
       responses: { '200': { description: 'data = Vendor[]' } }
     post:
-      summary: 新增厂商。M2 只写 nam，不写 NewAPI 的 GroupRatio / AutoGroups（M5）
+      summary: 新增厂商。只写 nam；NewAPI 的 GroupRatio / AutoGroups / UserUsableGroups 由 POST /vendor-pricing/apply 写入
       requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/VendorInput' } } } }
       responses: { '200': { description: data = Vendor }, '400': { description: 校验失败 }, '409': { description: 名称或分组重复，或模型已属于另一个厂商（message 同时写出两个厂商名） } }
   /vendors/order:
@@ -743,6 +822,40 @@ paths:
     delete:
       summary: 删除厂商；仍有渠道使用时拒绝
       responses: { '200': { description: ok }, '404': { description: 不存在 }, '409': { description: 仍有渠道使用 } }
+  /vendor-pricing:
+    get:
+      summary: 厂商定价总览。厂商还没有定价行时在这里自动接管：NewAPI 已有该分组倍率 → 固定模式，售价按现有倍率反算（不改价）；没有 → 未设置
+      responses: { '200': { description: data = VendorPricingOverview } }
+  /vendor-pricing/preview:
+    post:
+      summary: 预览写入：只计算，不写 NewAPI
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/VendorPricingApplyInput' } } } }
+      responses: { '200': { description: data = VendorPricingPlan（vendors、skipped、options） }, '409': { description: NewAPI 选项解析失败或站点汇率无效，不能写入 } }
+  /vendor-pricing/apply:
+    post:
+      summary: |
+        写入 NewAPI。流程：读三个选项并解析（任一非法 JSON 则报错且不写）→ 计算并校验倍率有限且 > 0 → 只写有变化的选项（GroupRatio → UserUsableGroups → AutoGroups，只改厂商分组键）→ 读回按解析值核对 → 每个改了倍率的厂商记一条 price_history，更新 vendor_pricing。写入串行化（与定价任务互斥）。
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/VendorPricingApplyInput' } } } }
+      responses: { '200': { description: data = VendorPricingPlan（written、vendors、skipped） }, '409': { description: NewAPI 选项解析失败或站点汇率无效，不能写入 }, '502': { description: 写入或读回核对失败；message 说明在哪一步 } }
+  /vendor-pricing/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    put:
+      summary: |
+        修改模式、售价、加价比例，或直接修改厂商分组倍率（缺省字段不改）。只写 nam；清空 pending_price。
+        group_ratio 只在固定模式下允许（请求里 mode 为 fixed，或厂商当前是固定模式且请求没改 mode），不能和 sell_price 同时给。
+        服务端先把它四舍五入到 3 位小数，再换算 sell_price = group_ratio × 站点汇率 ÷ 美元参考汇率（不再舍入，目标倍率恰好等于输入），换算后的售价仍要满足 0 < x ≤ 10。
+      requestBody: { content: { application/json: { schema: { type: object, properties: { mode: { type: string, enum: [fixed, follow] }, sell_price: { type: number, description: 0 < x ≤ 10 }, markup: { type: number, description: 0 < x ≤ 100 }, group_ratio: { type: number, description: 厂商分组倍率；舍入到 3 位后必须 > 0；只在固定模式下可用，不能和 sell_price 同时给 } } } } } }
+      responses: { '200': { description: data = VendorPricingItem }, '400': { description: 校验失败（含：跟随模式给了 group_ratio、同时给了 group_ratio 和 sell_price、倍率舍入后 ≤ 0、售价舍入出的倍率为 0） }, '404': { description: 厂商不存在 }, '409': { description: NewAPI 选项异常，厂商尚未接管 } }
+  /vendor-pricing/{id}/confirm:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    post:
+      summary: 确认写入待确认厂商的目标售价（只对 pending 状态）
+      responses: { '200': { description: data = VendorPricingPlan（written、vendors、skipped） }, '404': { description: 厂商不存在 }, '409': { description: 不是待确认状态，或 NewAPI 选项异常 }, '502': { description: 写入或读回核对失败 } }
+  /vendor-pricing/{id}/adopt:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    post:
+      summary: 采纳 NewAPI 的倍率（只对 drift 状态）：转固定模式，售价按 NewAPI 倍率反算，只写 nam
+      responses: { '200': { description: data = VendorPricingItem }, '404': { description: 厂商不存在 }, '409': { description: 不是漂移状态，或 NewAPI 里没有该分组倍率 } }
   /channels:
     get:
       summary: 渠道表（NewAPI 渠道 + 待创建草稿，叠加未应用的草稿值）
@@ -920,7 +1033,7 @@ paths:
       - { name: name, in: path, required: true, schema: { type: string } }
       - { name: wait, in: query, schema: { type: boolean }, description: 为 1 时等待任务完成 }
     post:
-      summary: 立即运行（加入串行队列）
+      summary: 立即运行（加入串行队列）。name=pricing 执行定价任务：重新计算全部厂商（含首次接管），pricing_auto_write 为 true 时自动写入跟随模式、待写入且非小变动的厂商；摘要形如“N 个厂商；写入 x；待确认 y；漂移 z；无可用渠道 w”
       responses: { '200': { description: ok }, '404': { description: 未知任务 } }
   /settings:
     get:

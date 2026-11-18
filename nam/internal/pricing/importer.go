@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
 	"github.com/steven52880/nam/internal/store"
 )
@@ -91,22 +90,37 @@ func priced(p store.OfficialPrice) bool {
 	return false
 }
 
-type priceCandidate struct {
-	name  string
-	rank  int
-	price store.OfficialPrice
+// officialPrefixes lists the LiteLLM key prefixes that belong to the model's
+// original vendor, in priority order. Resale/gateway/regional providers
+// (aihubmix, openrouter, bedrock, azure, ...) are deliberately absent.
+var officialPrefixes = []string{
+	"anthropic", "openai", "gemini", "deepseek", "xai",
+	"moonshot", "zai", "dashscope", "minimax", "mistral",
 }
 
-// ParseLiteLLM parses a model_prices_and_context_window.json document. It keeps
-// full LiteLLM keys and also registers provider-stripped aliases ("gemini/x" →
-// "x"), preferring direct keys and canonical providers over regional ones.
+// lookupOfficial finds the original vendor's price for model: a key identical
+// to the model name, else "<official prefix>/<model>". Matching is exact and
+// case-sensitive; anything else is reported as not found.
+func lookupOfficial(prices map[string]store.OfficialPrice, model string) (store.OfficialPrice, bool) {
+	if p, ok := prices[model]; ok {
+		return p, true
+	}
+	for _, prefix := range officialPrefixes {
+		if p, ok := prices[prefix+"/"+model]; ok {
+			return p, true
+		}
+	}
+	return store.OfficialPrice{}, false
+}
+
+// ParseLiteLLM parses a model_prices_and_context_window.json document into a
+// map keyed by the full LiteLLM key. Entries without a usable price are skipped.
 func ParseLiteLLM(r io.Reader) (map[string]store.OfficialPrice, error) {
 	var raw map[string]json.RawMessage
 	if err := json.NewDecoder(r).Decode(&raw); err != nil {
 		return nil, fmt.Errorf("parse litellm json: %w", err)
 	}
-	exact := make(map[string]store.OfficialPrice, len(raw))
-	aliases := make(map[string]priceCandidate)
+	out := make(map[string]store.OfficialPrice, len(raw))
 	for key, body := range raw {
 		if key == "" || key == "sample_spec" {
 			continue
@@ -115,66 +129,9 @@ func ParseLiteLLM(r io.Reader) (map[string]store.OfficialPrice, error) {
 		if err := json.Unmarshal(body, &e); err != nil {
 			continue
 		}
-		p, ok := e.price()
-		if !ok {
-			continue
-		}
-		exact[key] = p
-		prefix, rest := splitPrefix(key)
-		if prefix == "" {
-			continue
-		}
-		c := priceCandidate{name: key, rank: providerRank(prefix), price: p}
-		if cur, found := aliases[rest]; !found || aliasBetter(c, cur) {
-			aliases[rest] = c
-		}
-	}
-	out := make(map[string]store.OfficialPrice, len(exact)+len(aliases))
-	for k, v := range exact {
-		out[k] = v
-	}
-	for name, c := range aliases {
-		if _, exists := out[name]; !exists {
-			out[name] = c.price
+		if p, ok := e.price(); ok {
+			out[key] = p
 		}
 	}
 	return out, nil
-}
-
-func splitPrefix(key string) (string, string) {
-	i := strings.IndexByte(key, '/')
-	if i <= 0 || i == len(key)-1 {
-		return "", key
-	}
-	return key[:i], key[i+1:]
-}
-
-func providerRank(prefix string) int {
-	switch {
-	case prefix == "anthropic":
-		return 0
-	case prefix == "openai":
-		return 1
-	case prefix == "gemini":
-		return 2
-	case strings.HasPrefix(prefix, "vertex_ai"):
-		return 3
-	case prefix == "deepseek":
-		return 4
-	case prefix == "xai":
-		return 5
-	case strings.HasPrefix(prefix, "bedrock"),
-		strings.HasPrefix(prefix, "azure"),
-		strings.HasPrefix(prefix, "openrouter"):
-		return 100
-	default:
-		return 50
-	}
-}
-
-func aliasBetter(a, b priceCandidate) bool {
-	if a.rank != b.rank {
-		return a.rank < b.rank
-	}
-	return a.name < b.name
 }

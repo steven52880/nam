@@ -7,7 +7,6 @@ package pricing
 
 import (
 	"context"
-	"strings"
 
 	"github.com/steven52880/nam/internal/store"
 )
@@ -134,6 +133,3 @@ func (b *Book) CheapestModel(models []string) string {
 	}
 	return best
 }
-
-// normalizeName lowercases and trims; used by the price-book importer for matching.
-func normalizeName(s string) string { return strings.ToLower(strings.TrimSpace(s)) }

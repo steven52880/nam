@@ -83,20 +83,16 @@ func (im *Importer) apply(ctx context.Context, prices map[string]store.OfficialP
 		return res, errors.New("pricing: importer requires a store")
 	}
 	requested := dedupeModels(models)
-	lower := lowerNames(prices)
 	rows := make([]namedPrice, 0, len(requested))
+	matched := make([]string, 0, len(requested))
 	for _, m := range requested {
-		p, ok := prices[m]
-		if !ok {
-			if k, found := lower[normalizeName(m)]; found {
-				p, ok = prices[k], true
-			}
-		}
+		p, ok := lookupOfficial(prices, m)
 		if !ok {
 			res.Missing = append(res.Missing, m)
 			continue
 		}
 		rows = append(rows, namedPrice{model: m, price: p})
+		matched = append(matched, m)
 	}
 	sort.Strings(res.Missing)
 	err := im.St.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -126,9 +122,12 @@ func (im *Importer) apply(ctx context.Context, prices map[string]store.OfficialP
 			}
 			res.Updated++
 		}
+		// Drop synced rows that are not matched this round (no longer
+		// requested, or no longer matching under the current rules); manual
+		// rows are kept.
 		q := tx.Where("source <> ?", "manual")
-		if len(requested) > 0 {
-			q = q.Where("model NOT IN ?", requested)
+		if len(matched) > 0 {
+			q = q.Where("model NOT IN ?", matched)
 		}
 		return q.Delete(&store.OfficialPrice{}).Error
 	})
@@ -148,22 +147,6 @@ func dedupeModels(models []string) []string {
 		}
 		seen[m] = true
 		out = append(out, m)
-	}
-	return out
-}
-
-func lowerNames(prices map[string]store.OfficialPrice) map[string]string {
-	keys := make([]string, 0, len(prices))
-	for k := range prices {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	out := make(map[string]string, len(keys))
-	for _, k := range keys {
-		lk := normalizeName(k)
-		if _, exists := out[lk]; !exists {
-			out[lk] = k
-		}
 	}
 	return out
 }

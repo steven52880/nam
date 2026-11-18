@@ -44,9 +44,9 @@ export function useModelDetailColumns(
 ): TableColumn<ModelRow>[] {
   return useMemo<TableColumn<ModelRow>[]>(() => [
     textCol('model', '模型名', (m) => m.model, { width: 14 }),
-    customCol<ModelRow>('official_price', '原厂价（美元 / 百万）', {
-      width: 13,
-      align: 'right',
+    customCol<ModelRow>('official_price', '原厂价（$/M）', {
+      width: 19.5,
+      align: 'left',
       sortType: 'number',
       accessor: (m) => m.price?.input ?? null,
       cell: (m) => <OfficialPriceText price={m.price} />,

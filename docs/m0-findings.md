@@ -245,7 +245,7 @@ claude-sonnet-4-5 / claude-opus-4-1（无日期别名）  -> HTTP 400 "价格未
 - **共有模型数值完全一致**：claude-sonnet-4-5 / opus-4-5 / haiku-4-5、gpt-4o、gpt-4o-mini、gpt-4.1 系列、gpt-5、gpt-5-mini、o3、o4-mini、gemini-2.5 三款，共 14 个，输入/输出/缓存读/缓存写四项全部相同。
 - **LiteLLM 缺**：claude-opus-4-1、claude-sonnet-4（无日期和带日期的 key 都没有）、claude-3-5-haiku。
 - **models.dev 缺**：同样没有 opus-4-1、sonnet-4、3-5-haiku；`deepseek-chat` / `deepseek-reasoner` 也没有（现在是 `deepseek-v4-*` 等新名字）。
-- LiteLLM 的 key 有厂商前缀（4090 个含 `/`），Gemini、DeepSeek 要用 `gemini/gemini-2.5-pro`、`deepseek/deepseek-chat`，需要别名映射表。
+- LiteLLM 的 key 有厂商前缀（4090 个含 `/`），Gemini、DeepSeek 要用 `gemini/gemini-2.5-pro`、`deepseek/deepseek-chat`，需要别名映射表。（第 26 轮修订：只接受原厂前缀，转售商前缀的条目不用。）
 - models.dev 按厂商分层、单位是 USD / 百万 token，结构更干净，但字段少。
 - LiteLLM 的缓存写只有 5 分钟档和"1 小时以上"档，OpenAI / Gemini 没有缓存写价（NewAPI 也不需要）。
 - 按请求计费（图片、搜索）的字段没有逐个核对，留到 M3。

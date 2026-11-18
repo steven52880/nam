@@ -70,7 +70,7 @@ func (s *Server) triggerJob(c *gin.Context) {
 
 // settingKeys are the nam settings exposed through /settings. Values are strings.
 var settingKeys = []string{
-	store.KeySiteRate, store.KeyProtectThreshold, store.KeyAutoWrite,
+	store.KeySiteRate, store.KeyProtectThreshold, store.KeyPricingAutoWrite, store.KeyPricingMinChange,
 	store.KeyLogRetentionDays, store.KeyStatsRetentionDays, store.KeyNewAPIURL,
 	store.KeyStatsBackfillDays, store.KeyNewAPILogCleanup, store.KeyUSDCNYRate,
 }
@@ -170,9 +170,14 @@ func validateSetting(k, v string) error {
 		if err != nil || !(f > 0) || f > 100 {
 			return resp.Invalid("美元参考汇率必须是大于 0 且不超过 100 的数字")
 		}
-	case k == store.KeyAutoWrite:
-		if _, err := strconv.ParseBool(v); err != nil {
-			return resp.Invalid("自动写入开关必须是 true/false")
+	case k == store.KeyPricingAutoWrite:
+		if v != "true" && v != "false" {
+			return resp.Invalid("自动写入开关必须是 true 或 false")
+		}
+	case k == store.KeyPricingMinChange:
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil || math.IsNaN(f) || f < 0 || f >= 1 {
+			return resp.Invalid("最小变动必须是 0（含）到 1（不含）之间的小数")
 		}
 	case k == store.KeyLogRetentionDays || k == store.KeyStatsRetentionDays:
 		n, err := strconv.Atoi(v)

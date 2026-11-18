@@ -36,6 +36,11 @@ export const keys = {
     counts: () => ['prices', 'counts'] as const,
     detail: (model: string) => ['prices', 'detail', model] as const,
   },
+  vendorPricing: {
+    all: () => ['vendor-pricing'] as const,
+    overview: () => ['vendor-pricing', 'overview'] as const,
+    preview: (includeGroups: boolean) => ['vendor-pricing', 'preview', includeGroups] as const,
+  },
   stats: {
     all: () => ['stats'] as const,
     channels: (window: StatsWindow, model: string | null) => ['stats', 'channels', window, model ?? ''] as const,

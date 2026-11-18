@@ -88,7 +88,7 @@ export function ModelsTab({ upstreamId }: { upstreamId: number }) {
   return (
     <div className="grid gap-2 p-4">
       <DeriveSection upstreamId={upstreamId} />
-      <span className="text-sm text-muted-foreground">共 {list.length} 条上游模型价格（美元 / 百万，按上游额度计，已换算到各分组）</span>
+      <span className="text-sm text-muted-foreground">共 {list.length} 条上游模型价格（$/M，按上游额度计，已换算到各分组）</span>
       <DataTable<UpstreamModel>
         layoutId="upstream.prices"
         className="max-h-[60vh]"

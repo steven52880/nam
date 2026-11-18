@@ -1,47 +1,77 @@
+import type { CSSProperties } from 'react';
 import type { NewapiPrice, Price } from '@/api/types';
+import { WidthTiers } from '@/components/cells/WidthTiers';
 import { DASH, formatSignificant } from '@/lib/format';
+import {
+  isEmptyPrice,
+  priceSlots,
+  priceTiers,
+  priceTitle,
+  SLOT_GAP_CH,
+  SLOT_SPACE_CH,
+  type PriceFieldsLike,
+  type PriceSlot,
+} from '@/lib/priceSlots';
+import { cn } from '@/lib/utils';
 
-interface PriceFields {
-  input: number | null;
-  output: number | null;
-  cache_read: number | null;
-  per_request: number | null;
-  cache_write_5m?: number | null;
-}
+const chStyle = (n: number): CSSProperties => ({ width: `${n}ch` });
 
-function Part({ label, value }: { label: string; value: number | null | undefined }) {
+/** 一个槽位：「数值 + 空格 + 标签」。数值在固定宽度里右对齐，缺值显示「—」，所以同一槽位的数值右边缘和标签上下对齐。 */
+function Slot({ slot }: { slot: PriceSlot }) {
   return (
-    <span className="whitespace-nowrap">
-      <span className="text-xs text-muted-foreground">{label}</span> {formatSignificant(value ?? null)}
+    <span className="flex shrink-0 items-baseline" style={chStyle(slot.ch)}>
+      {/* justify-end：数值超宽时向左溢出，不压到标签 */}
+      <span className="flex shrink-0 justify-end" style={chStyle(slot.valueCh)}>
+        <span className={cn('shrink-0', slot.value === null && 'text-muted-foreground')}>{formatSignificant(slot.value)}</span>
+      </span>
+      <span className="shrink-0" style={{ ...chStyle(slot.labelCh + SLOT_SPACE_CH), paddingLeft: `${SLOT_SPACE_CH}ch` }}>
+        <span className="text-xs text-muted-foreground">{slot.label}</span>
+      </span>
     </span>
   );
 }
 
-function PriceFieldsText({ price }: { price: PriceFields }) {
-  if (price.per_request !== null && price.input === null && price.output === null) {
-    return <Part label="按次" value={price.per_request} />;
-  }
-  if (price.input === null && price.output === null && price.cache_read === null) {
-    return <span className="text-muted-foreground">{DASH}</span>;
-  }
+function SlotRow({ slots }: { slots: ReadonlyArray<PriceSlot> }) {
   return (
-    <span className="inline-flex flex-wrap gap-x-2 tabular-nums">
-      <Part label="入" value={price.input} />
-      <Part label="出" value={price.output} />
-      <Part label="读" value={price.cache_read} />
-      {price.cache_write_5m !== undefined && <Part label="写" value={price.cache_write_5m} />}
-    </span>
+    <div className="flex" style={{ columnGap: `${SLOT_GAP_CH}ch` }}>
+      {slots.map((s) => (
+        <Slot key={s.key} slot={s} />
+      ))}
+    </div>
   );
 }
 
-/** 原厂价：输入 / 输出 / 缓存读 / 缓存写（美元 / 百万），或按次价（美元 / 次）。 */
-export function OfficialPriceText({ price }: { price: Price | null }) {
-  if (!price) return <span className="text-muted-foreground">{DASH}</span>;
-  return <PriceFieldsText price={price} />;
+/**
+ * 价格：固定槽位（入 / 出 / 读 / 写 / 写1h），按次价只显示「按次」。
+ * 默认按列宽降级：全部槽位 → 入 / 出 → 只显示出（所有行同时切换）；full 时不降级（抽屉等宽度充足的地方）。
+ */
+function PriceFieldsText({ price, full }: { price: PriceFieldsLike; full?: boolean }) {
+  if (isEmptyPrice(price)) return <span className="text-muted-foreground">{DASH}</span>;
+  const slots = priceSlots(price);
+  if (full) {
+    return (
+      <div className="whitespace-nowrap tabular-nums">
+        <SlotRow slots={slots} />
+      </div>
+    );
+  }
+  const tiers = priceTiers(slots);
+  return (
+    <WidthTiers
+      title={priceTitle(slots, (v) => formatSignificant(v))}
+      tiers={tiers.map((t) => ({ min: `${t.ch}ch`, node: <SlotRow slots={t.slots} /> }))}
+    />
+  );
 }
 
-/** NewAPI 当前价：输入 / 输出 / 缓存读，或按次价。 */
-export function NewapiPriceText({ price }: { price: NewapiPrice | null }) {
+/** 价格库价格（原厂价）：入 / 出 / 读 / 写 / 写1h（$/M），或按次价（美元 / 次）。 */
+export function OfficialPriceText({ price, full }: { price: Price | null; full?: boolean }) {
   if (!price) return <span className="text-muted-foreground">{DASH}</span>;
-  return <PriceFieldsText price={{ ...price, cache_write_5m: price.cache_write }} />;
+  return <PriceFieldsText price={price} full={full} />;
+}
+
+/** NewAPI 当前价：入 / 出 / 读 / 写（没有写1h），或按次价，排版与价格库价格一致。 */
+export function NewapiPriceText({ price, full }: { price: NewapiPrice | null; full?: boolean }) {
+  if (!price) return <span className="text-muted-foreground">{DASH}</span>;
+  return <PriceFieldsText price={{ ...price, cache_write_5m: price.cache_write }} full={full} />;
 }

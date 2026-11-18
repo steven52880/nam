@@ -1,5 +1,6 @@
 import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query';
 import { parseUsdCnyRate, USD_CNY_RATE_KEY } from '@/lib/usdRate';
+import { attentionSummary } from '@/lib/vendorPricing';
 import { api } from './endpoints';
 import { keys } from './keys';
 import type {
@@ -194,6 +195,31 @@ export function usePriceDetail(model: string | null) {
     queryKey: keys.prices.detail(model ?? ''),
     queryFn: () => api.priceDetail(model ?? ''),
     enabled: model !== null,
+  });
+}
+
+// ───────── 厂商定价 ─────────
+export function useVendorPricing() {
+  return useQuery({ queryKey: keys.vendorPricing.overview(), queryFn: api.vendorPricing, refetchInterval: 60_000 });
+}
+
+/** 导航徽标和总览告警：待确认 + 漂移的厂商。与 useVendorPricing 共用同一份缓存。 */
+export function useVendorPricingAttention() {
+  return useQuery({
+    queryKey: keys.vendorPricing.overview(),
+    queryFn: api.vendorPricing,
+    refetchInterval: 60_000,
+    select: (data) => attentionSummary(data.items),
+  });
+}
+
+/** 预览写入：弹窗打开时才请求，每次都重新算。 */
+export function useVendorPricingPreview(open: boolean, includeGroups: boolean) {
+  return useQuery({
+    queryKey: keys.vendorPricing.preview(includeGroups),
+    queryFn: () => api.previewVendorPricing({ include_groups: includeGroups }),
+    enabled: open,
+    gcTime: 0,
   });
 }
 
