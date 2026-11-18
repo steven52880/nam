@@ -13,6 +13,7 @@ import { Switch } from '@/components/ui/misc';
 import { useActionMutation } from '@/hooks/useActionMutation';
 import { useSession } from '@/hooks/useSession';
 import { formatNumber, formatTime, parseGoDuration, toGoDuration, type ParsedInterval } from '@/lib/format';
+import { DEFAULT_USD_CNY_RATE, MAX_USD_CNY_RATE, USD_CNY_RATE_KEY, isUsdCnyRateValid } from '@/lib/usdRate';
 import { CacheTestSection } from './settings/CacheTestSection';
 import { IntervalRow, JOB_ORDER } from './settings/IntervalRow';
 import { isBackfillDaysValid, RetentionFields, StatsStatusBlock } from './settings/StatsSection';
@@ -37,6 +38,7 @@ export default function SettingsPage() {
 
   const [threshold, setThreshold] = useState('50');
   const [autoWrite, setAutoWrite] = useState(false);
+  const [usdRate, setUsdRate] = useState(DEFAULT_USD_CNY_RATE);
   const [logDays, setLogDays] = useState('30');
   const [statsDays, setStatsDays] = useState('180');
   const [backfillDays, setBackfillDays] = useState('7');
@@ -52,6 +54,7 @@ export default function SettingsPage() {
     loaded.current = sig;
     setThreshold(String(Math.round(Number(s.protect_threshold ?? '0.5') * 10000) / 100));
     setAutoWrite(s.auto_write === 'true');
+    setUsdRate(s[USD_CNY_RATE_KEY] || DEFAULT_USD_CNY_RATE);
     setLogDays(s.log_retention_days ?? '30');
     setStatsDays(s.stats_retention_days ?? '180');
     setBackfillDays(s.stats_backfill_days ?? '7');
@@ -66,6 +69,7 @@ export default function SettingsPage() {
       const body: Settings = {
         protect_threshold: String(Number(threshold) / 100),
         auto_write: String(autoWrite),
+        [USD_CNY_RATE_KEY]: usdRate.trim(),
         log_retention_days: logDays,
         stats_retention_days: statsDays,
         stats_backfill_days: backfillDays,
@@ -85,9 +89,10 @@ export default function SettingsPage() {
   });
 
   const thresholdOk = Number(threshold) >= 0 && threshold !== '';
+  const usdRateOk = isUsdCnyRateValid(usdRate);
   const daysOk = /^\d+$/.test(logDays) && /^\d+$/.test(statsDays) && isBackfillDaysValid(backfillDays);
   const intervalsOk = JOB_ORDER.every((j) => (intervals[j]?.value ?? 1) > 0);
-  const valid = thresholdOk && daysOk && intervalsOk;
+  const valid = thresholdOk && usdRateOk && daysOk && intervalsOk;
   const b = backend.data;
 
   return (
@@ -120,6 +125,19 @@ export default function SettingsPage() {
         <Section id="pricing" title="定价参数">
           <DescRow label="变化保护阈值">
             <span className="flex items-center gap-1"><Input className="w-20 text-right" inputMode="decimal" value={threshold} onChange={(e) => setThreshold(e.target.value)} />%</span>
+          </DescRow>
+          <DescRow label="美元参考汇率（元/$）">
+            <span className="flex items-center gap-2">
+              <Input
+                className="w-24 text-right tabular-nums"
+                inputMode="decimal"
+                value={usdRate}
+                aria-invalid={usdRateOk ? undefined : true}
+                onChange={(e) => setUsdRate(e.target.value)}
+              />
+              <span className="text-sm text-muted-foreground">用于把成本换算成原厂价的百分比</span>
+              {!usdRateOk && <span className="text-sm text-destructive">需为大于 0 且不超过 {MAX_USD_CNY_RATE} 的数</span>}
+            </span>
           </DescRow>
           <DescRow label="自动写入"><Switch checked={autoWrite} onCheckedChange={setAutoWrite} /> <span className="ml-2 text-sm text-muted-foreground">关闭后只计算，不自动写入</span></DescRow>
         </Section>

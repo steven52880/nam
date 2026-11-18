@@ -13,7 +13,7 @@ import { useDraftPatch } from './useChannels';
 
 const COPY_LABELS: Record<string, string> = {
   status: '状态',
-  discount: '上游分组折扣',
+  discount: '上游分组倍率',
   priority: '优先级',
   weight: '权重',
   tag: '标签',

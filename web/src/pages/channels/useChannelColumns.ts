@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useLatestCacheTests, useVendors } from '@/api/queries';
+import { balanceWidths, type BalanceWidths } from '@/lib/balance';
 import { buildChannelColumns } from './columns';
 import type { ChannelsPageState } from './useChannelsPage';
 
@@ -11,6 +12,10 @@ export function useChannelColumns(page: ChannelsPageState) {
   const setUpstream = page.actions.setUpstream.mutate;
   const ranges = page.view.ranges;
   const { model } = page;
+
+  // 余额两段的最大字符数：只取数字做依赖，行数据变了但宽度没变时列定义保持不变
+  const { usdCh, cnyCh } = useMemo(() => balanceWidths(page.view.rows), [page.view.rows]);
+  const balanceCh = useMemo<BalanceWidths>(() => ({ usdCh, cnyCh }), [usdCh, cnyCh]);
 
   const vendors = useVendors();
   const vendorGroups = useMemo(
@@ -35,7 +40,8 @@ export function useChannelColumns(page: ChannelsPageState) {
         vendorGroups,
         cacheTests,
         ranges,
+        balanceWidths: balanceCh,
       }),
-    [model, setModelRow, setDriftRow, setUpstream, setToken, setVendor, vendorGroups, cacheTests, ranges],
+    [model, setModelRow, setDriftRow, setUpstream, setToken, setVendor, vendorGroups, cacheTests, ranges, balanceCh],
   );
 }

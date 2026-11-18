@@ -64,6 +64,23 @@ describe('buildItems', () => {
     expect(brief(items)).toEqual(['g:b-(13)', 'g:a-(25)', 'g:-(4)']);
   });
 
+  it('defaultExpanded：默认全部展开，只有 collapsedGroups 里的组折叠，不看 expandedGroups', () => {
+    const all = buildItems(rows, opts({ defaultExpanded: true }));
+    expect(brief(all)).toEqual(['g:b+(13)', 'r:1', 'r:3', 'g:a+(25)', 'r:2', 'r:5', 'g:+(4)', 'r:4']);
+    const some = buildItems(
+      rows,
+      opts({ defaultExpanded: true, collapsedGroups: new Set(['a']), expandedGroups: new Set(['b']) }),
+    );
+    expect(brief(some)).toEqual(['g:b+(13)', 'r:1', 'r:3', 'g:a-(25)', 'g:+(4)', 'r:4']);
+  });
+
+  it('defaultExpanded 下 collapseAll 仍优先，expandAll 仍全部展开', () => {
+    const dragging = buildItems(rows, opts({ defaultExpanded: true, collapseAll: true }));
+    expect(brief(dragging)).toEqual(['g:b-(13)', 'g:a-(25)', 'g:-(4)']);
+    const searching = buildItems(rows, opts({ defaultExpanded: true, expandAll: true, collapsedGroups: new Set(['a']) }));
+    expect(brief(searching)).toEqual(['g:b+(13)', 'r:1', 'r:3', 'g:a+(25)', 'r:2', 'r:5', 'g:+(4)', 'r:4']);
+  });
+
   it('展开行：row 后紧跟 detail，只对集合里的行', () => {
     const items = buildItems(rows, opts({ groupBy: undefined, expandedRows: new Set(['2', '5']) }));
     expect(brief(items)).toEqual(['r:1', 'r:2', 'd:2', 'r:3', 'r:4', 'r:5', 'd:5']);

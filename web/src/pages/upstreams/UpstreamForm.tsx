@@ -127,7 +127,7 @@ export function CredentialFields({
   }
   if (credType === 'sk_key') {
     return (
-      <Field label="sk-key" hint="仅 sk-key 没有令牌列表和分组倍率，上游分组折扣需要手填。">
+      <Field label="sk-key" hint="仅 sk-key 没有令牌列表和分组倍率，上游分组倍率需要手填。">
         <Input type="password" autoComplete="off" value={value.key ?? ''} onChange={(e) => onChange({ ...value, key: e.target.value })} />
       </Field>
     );

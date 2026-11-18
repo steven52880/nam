@@ -43,7 +43,7 @@ func TestModelCostsDraftCreate(t *testing.T) {
 	}
 	c := got[0]
 	if c.ChannelID != ids[0] || !c.HasModel || c.Discount == nil || *c.Discount != 1 ||
-		c.ChannelCost == nil || !near(*c.ChannelCost, 0.5) || c.UnitCost == nil || !near(*c.UnitCost, 0.00996*0.5) {
+		c.ChannelCost == nil || !near(*c.ChannelCost, 0.5/store.DefaultUSDCNYRate) || c.UnitCost == nil || !near(*c.UnitCost, 0.00996*0.5) {
 		t.Fatalf("draft cost: %+v", c)
 	}
 	// a model the channel carries but the price book lacks: discount and channel cost, no unit cost
@@ -75,9 +75,26 @@ func TestModelCostsOverridesAndMissingModel(t *testing.T) {
 	got, err := e.svc.ModelCosts(e.ctx, "test-model")
 	must(t, err)
 	c := costByID(t, got, id)
-	if !c.HasModel || *c.Discount != 0.35 || !near(*c.ChannelCost, 0.175) || !near(*c.UnitCost, 0.00996*0.35*0.5) {
+	if !c.HasModel || *c.Discount != 0.35 || !near(*c.ChannelCost, 0.175/store.DefaultUSDCNYRate) || !near(*c.UnitCost, 0.00996*0.35*0.5) {
 		t.Fatalf("test-model: %+v", c)
 	}
+	// 美元参考汇率 is read from settings: channel_cost follows it, unit_cost (元) does not
+	must(t, e.svc.St.SetKV(e.ctx, store.KeyUSDCNYRate, "1"))
+	got, err = e.svc.ModelCosts(e.ctx, "test-model")
+	must(t, err)
+	c1 := costByID(t, got, id)
+	if !near(*c1.ChannelCost, 0.175) || !near(*c1.UnitCost, *c.UnitCost) {
+		t.Fatalf("rate 1: %+v", c1)
+	}
+	must(t, e.svc.St.SetKV(e.ctx, store.KeyUSDCNYRate, "0")) // invalid → 7.2
+	if rows := mustRows(t, e); rows[0].ChannelCost == nil || !near(*rows[0].ChannelCost, 0.175/store.DefaultUSDCNYRate) {
+		t.Fatalf("invalid rate falls back: %+v", rows[0].ChannelCost)
+	}
+	must(t, e.svc.St.SetKV(e.ctx, store.KeyUSDCNYRate, "3.6"))
+	if rows := mustRows(t, e); rows[0].ChannelCost == nil || !near(*rows[0].ChannelCost, 0.175/3.6) {
+		t.Fatalf("rate 3.6 row: %+v", rows[0].ChannelCost)
+	}
+	must(t, e.svc.St.SetKV(e.ctx, store.KeyUSDCNYRate, "7.2"))
 	// per-model discount override wins over the channel discount
 	book, err := pricing.LoadBook(e.ctx, e.svc.St)
 	must(t, err)
@@ -89,7 +106,7 @@ func TestModelCostsOverridesAndMissingModel(t *testing.T) {
 	must(t, err)
 	c = costByID(t, got, id)
 	want := pricing.OfficialUSD(p2, pricing.StandardRequest, pricing.CacheRatio{}) * 0.2 * 0.5
-	if !c.HasModel || *c.Discount != 0.2 || !near(*c.ChannelCost, 0.1) || !near(*c.UnitCost, want) {
+	if !c.HasModel || *c.Discount != 0.2 || !near(*c.ChannelCost, 0.1/store.DefaultUSDCNYRate) || !near(*c.UnitCost, want) {
 		t.Fatalf("test-model-2: %+v want unit %v", c, want)
 	}
 	// a channel without the model: HasModel=false and no numbers

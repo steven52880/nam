@@ -36,7 +36,7 @@ const PREVIEW_COLUMNS: TableColumn<BatchPreviewItem>[] = [
       <span title={it.fields.models?.join('，')}><ModelCountCell models={it.fields.models} variant="count" /></span>
     ),
   }),
-  numberCol('discount', '上游分组折扣', (it) => it.ext.discount, {
+  numberCol('discount', '上游分组倍率', (it) => it.ext.discount, {
     width: 9,
     cell: (it) => (
       <>

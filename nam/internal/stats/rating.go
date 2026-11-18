@@ -103,7 +103,8 @@ func (s *Service) vendorMix(ctx context.Context) (map[string]pricing.Usage, erro
 	return out, rows.Err()
 }
 
-// stdPrice is the channel's cost per official USD under the vendor's token mix, on the
+// stdPrice is the channel's cost as a multiple of the official price (unitless, already
+// divided by the 美元参考汇率) under the vendor's token mix, on the
 // channel's test model (or the cheapest priced one). nil when unmanaged or unpriced.
 // A non-empty model overrides that choice: the price is taken on exactly that model.
 func stdPrice(pr *Pricer, ch ports.Channel, mix map[string]pricing.Usage, model string) *float64 {
@@ -130,7 +131,7 @@ func stdPrice(pr *Pricer, ch ports.Channel, mix map[string]pricing.Usage, model 
 		return nil
 	}
 	disc := pricing.EffectiveDiscount(cp.ext.Discount, cp.disc, model)
-	v := pricing.ChannelCNY(pricing.OfficialUSD(p, u, cp.cache), disc, cp.rate) / base
+	v := pricing.ChannelCNY(pricing.OfficialUSD(p, u, cp.cache), disc, cp.rate) / base / pr.usdRate
 	return &v
 }
 

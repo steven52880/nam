@@ -80,7 +80,7 @@ function Overview({ u, onClose }: { u: Upstream; onClose: () => void }) {
       <Field label="站点地址"><Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} /></Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="类型"><TypeSelect value={type} onChange={setType} /></Field>
-        <Field label="上游货币汇率" hint="修改后会影响该上游所有渠道的上游渠道成本价。">
+        <Field label="上游货币汇率（元/$）" hint="在上游充值 1 美元额度需要多少人民币。修改后会影响该上游所有渠道的上游渠道售价。">
           <Input inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)} />
         </Field>
       </div>

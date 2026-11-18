@@ -88,7 +88,7 @@ type ModelCost struct {
 	ChannelID   int      `json:"channel_id"`
 	HasModel    bool     `json:"has_model"`
 	Discount    *float64 `json:"discount"`
-	ChannelCost *float64 `json:"channel_cost"`
+	ChannelCost *float64 `json:"channel_cost"` // 原厂价的倍数，无单位（见 Row.ChannelCost）
 	UnitCost    *float64 `json:"unit_cost"`
 }
 
@@ -116,7 +116,7 @@ func (s *Service) ModelCosts(ctx context.Context, model string) ([]ModelCost, er
 		disc := pricing.EffectiveDiscount(r.Discount, overrides, model)
 		mc.Discount = &disc
 		if r.CurrencyRate != nil {
-			cc := disc * *r.CurrencyRate
+			cc := st.channelCost(disc, *r.CurrencyRate)
 			mc.ChannelCost = &cc
 			mc.UnitCost = unitCostCNY(book, model, disc, *r.CurrencyRate, cache)
 		}

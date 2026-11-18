@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -139,7 +140,21 @@ const (
 	KeyStatsRetentionDays = "stats_retention_days" // 聚合保留天数，默认 180
 	KeyJobIntervalPrefix  = "job_interval."        // + job name
 	KeyUILayoutPrefix     = "ui_layout."           // + user id: 前端布局文档
+	KeyUSDCNYRate         = "usd_cny_rate"         // 美元参考汇率：元 / 1 美元，用于把成本换算成原厂价的倍数
 )
+
+// DefaultUSDCNYRate is the fallback 美元参考汇率 (元 / 1 美元).
+const DefaultUSDCNYRate = 7.2
+
+// USDRate returns the 美元参考汇率. Cost prices (元 / 原厂 1 美元) are divided by it to get a
+// unitless multiple of the official price. Unreadable or non-positive values fall back to 7.2.
+func (s *Store) USDRate(ctx context.Context) float64 {
+	r := s.GetFloat(ctx, KeyUSDCNYRate, DefaultUSDCNYRate)
+	if !(r > 0) || math.IsInf(r, 0) {
+		return DefaultUSDCNYRate
+	}
+	return r
+}
 
 // UILayoutKey is the settings key holding one user's UI layout document.
 func UILayoutKey(userID int) string { return KeyUILayoutPrefix + strconv.Itoa(userID) }
@@ -152,6 +167,7 @@ var Defaults = map[string]string{
 	KeyLogRetentionDays:   "30",
 	KeyStatsRetentionDays: "180",
 	KeyStatsBackfillDays:  "7",
+	KeyUSDCNYRate:         "7.2",
 	KeyNewAPILogCleanup:   "false",
 }
 

@@ -1,3 +1,4 @@
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import {
   useCallback,
   useEffect,
@@ -7,6 +8,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
+import { Button } from '@/components/ui/button';
 import { remToPx } from '@/lib/size';
 import { cn } from '@/lib/utils';
 
@@ -23,6 +25,15 @@ export interface SplitPaneProps {
   minBottomRem?: number;
   /** 布局加载完成前为 true：不能拖、不能按键调整。 */
   disabled?: boolean;
+  /**
+   * 提供后，下栏上方多一条标题栏（含折叠 / 展开按钮）。
+   * collapsed 为 true 时下栏只剩这一条，上栏占满其余高度，分隔条不可拖。不传则行为不变。
+   */
+  collapse?: {
+    title: string;
+    collapsed: boolean;
+    onCollapsedChange: (collapsed: boolean) => void;
+  };
 }
 
 const MIN_RATIO = 0.1;
@@ -40,8 +51,12 @@ export function SplitPane({
   onRatioChange,
   minTopRem = 6,
   minBottomRem = 5.5,
-  disabled = false,
+  disabled: disabledProp = false,
+  collapse,
 }: SplitPaneProps) {
+  const collapsed = collapse?.collapsed ?? false;
+  // 折叠时和"布局未加载"一样不能拖
+  const disabled = disabledProp || collapsed;
   const containerRef = useRef<HTMLDivElement>(null);
   const [local, setLocal] = useState(() => clampRatio(ratio));
   const localRef = useRef(local);
@@ -121,8 +136,8 @@ export function SplitPane({
         aria-valuemin={Math.round(MIN_RATIO * 100)}
         aria-valuemax={Math.round(MAX_RATIO * 100)}
         aria-disabled={disabled || undefined}
-        tabIndex={0}
-        title={disabled ? '布局未加载，暂时不能调整' : '拖动调整高度'}
+        tabIndex={collapsed ? -1 : 0}
+        title={collapsed ? undefined : disabled ? '布局未加载，暂时不能调整' : '拖动调整高度'}
         onPointerDown={onPointerDown}
         onKeyDown={onKeyDown}
         className={cn(
@@ -137,9 +152,37 @@ export function SplitPane({
           )}
         />
       </div>
-      <div style={{ height: `${local * 100}%`, minHeight: `${minBottomRem}rem` }} className="shrink-0">
-        {bottom}
-      </div>
+      {collapse ? (
+        <div
+          style={collapsed ? undefined : { height: `${local * 100}%`, minHeight: `${minBottomRem}rem` }}
+          className="flex shrink-0 flex-col"
+        >
+          <div
+            className={cn(
+              'flex h-7 shrink-0 items-center justify-between gap-2 border bg-muted/50 pl-3 pr-1',
+              collapsed ? 'rounded' : 'rounded-t',
+            )}
+          >
+            <span className="text-sm font-medium">{collapse.title}</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              aria-expanded={!collapsed}
+              onClick={() => collapse.onCollapsedChange(!collapsed)}
+            >
+              {collapsed ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              {collapsed ? '展开' : '折叠'}
+            </Button>
+          </div>
+          {!collapsed && (
+            <div className="min-h-0 flex-1 [&>*]:rounded-t-none [&>*]:border-t-0">{bottom}</div>
+          )}
+        </div>
+      ) : (
+        <div style={{ height: `${local * 100}%`, minHeight: `${minBottomRem}rem` }} className="shrink-0">
+          {bottom}
+        </div>
+      )}
     </div>
   );
 }

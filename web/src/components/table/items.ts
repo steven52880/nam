@@ -5,6 +5,10 @@ export interface BuildItemsOptions<T> {
   groupBy?: (row: T) => string;
   sortGroups?: (keys: string[]) => string[];
   expandedGroups: ReadonlySet<string>;
+  /** 为 true 时组默认展开，collapsedGroups 里的组才折叠；此时不看 expandedGroups。默认 false。 */
+  defaultExpanded?: boolean;
+  /** 仅 defaultExpanded 为 true 时使用：被收起的组。 */
+  collapsedGroups?: ReadonlySet<string>;
   expandAll: boolean;
   /** 拖动分组时为 true；优先于 expandAll。 */
   collapseAll: boolean;
@@ -18,10 +22,11 @@ export interface BuildItemsOptions<T> {
  * - 有 groupBy：每组一个 group 条目（rows 含该组全部行），只有展开的组才输出它的行。
  *   组内保持传入行的顺序；组的顺序默认是组键第一次出现的顺序，提供 sortGroups 时以它为准
  *   （它漏掉的键按出现顺序追加在末尾，多出来的键忽略）。兜底组（键为空字符串）不做特殊处理。
- * - 组是否展开：collapseAll 为 true 时一律折叠；否则 expandAll 或在 expandedGroups 里则展开。
+ * - 组是否展开：collapseAll 为 true 时一律折叠；否则 expandAll 展开；否则默认折叠时看 expandedGroups，
+ *   默认展开（defaultExpanded）时看 collapsedGroups。
  */
 export function buildItems<T>(rows: T[], opts: BuildItemsOptions<T>): TableItem<T>[] {
-  const { getRowId, groupBy, sortGroups, expandedGroups, expandAll, collapseAll, expandedRows } = opts;
+  const { getRowId, groupBy, sortGroups, expandedGroups, defaultExpanded, collapsedGroups, expandAll, collapseAll, expandedRows } = opts;
   const items: TableItem<T>[] = [];
 
   const pushRow = (row: T) => {
@@ -60,7 +65,8 @@ export function buildItems<T>(rows: T[], opts: BuildItemsOptions<T>): TableItem<
 
   for (const key of keys) {
     const groupRows = groups.get(key) ?? [];
-    const expanded = !collapseAll && (expandAll || expandedGroups.has(key));
+    const open = defaultExpanded ? !collapsedGroups?.has(key) : expandedGroups.has(key);
+    const expanded = !collapseAll && (expandAll || open);
     items.push({ kind: 'group', key, rows: groupRows, expanded });
     if (expanded) for (const row of groupRows) pushRow(row);
   }

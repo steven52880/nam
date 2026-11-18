@@ -98,7 +98,7 @@ export function StepFinish({ draft, onChange }: StepProps) {
   const example = rate > 0 ? `上游 1 美元额度 = ${rate} 元` : '上游 1 美元额度 = X 元';
   return (
     <div className="grid gap-3">
-      <Field label="上游货币汇率" hint={`元 / 上游 1 美元额度。例如：${example}，上游余额 10 美元折合 ${rate > 0 ? rate * 10 : 'X × 10'} 元。`}>
+      <Field label="上游货币汇率（元/$）" hint={`元 / 上游 1 美元额度。例如：${example}，上游余额 10 美元折合 ${rate > 0 ? rate * 10 : 'X × 10'} 元。`}>
         <Input inputMode="decimal" value={draft.rate} onChange={(e) => onChange({ rate: e.target.value })} />
       </Field>
       <Field label="标签" hint="多个标签用英文逗号分隔">

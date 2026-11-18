@@ -6,6 +6,7 @@ import { Banner } from '@/components/ui/banner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/misc';
 import { useLayoutEditable } from '@/lib/layout/LayoutProvider';
+import { isBoolean, useLocalStorageState } from '@/lib/useLocalStorageState';
 import { ChannelDialogs } from './channels/ChannelDialogs';
 import { ChannelToolbar } from './channels/ChannelToolbar';
 import { rowClass } from './channels/columns';
@@ -18,12 +19,15 @@ import { useChannelTable } from './channels/useChannelTable';
 import type { ChannelViewRow } from './channels/viewModel';
 
 const rowMenuHeader = (row: ChannelViewRow) => row.name;
+const MODEL_DETAIL_COLLAPSED_KEY = 'nam.channels.modelDetailCollapsed';
 
 export default function ChannelsPage() {
   const page = useChannelsPage();
   const { rows, actions, dialogs, wizard, view, groupMode, filters, grouping } = page;
   const table = useChannelTable(page);
   const editable = useLayoutEditable();
+  // 下栏折叠状态只记在本机浏览器里，不进布局仓库
+  const [detailCollapsed, setDetailCollapsed] = useLocalStorageState(MODEL_DETAIL_COLLAPSED_KEY, false, isBoolean);
 
   const selected = page.selectedRows;
   const toolbar = (
@@ -81,6 +85,7 @@ export default function ChannelsPage() {
         ratio={page.splitRatio}
         onRatioChange={page.setSplitRatio}
         disabled={!editable}
+        collapse={{ title: '模型明细', collapsed: detailCollapsed, onCollapsedChange: setDetailCollapsed }}
         top={
           <DataTable<ChannelViewRow>
             layoutId="channels.main"
@@ -96,6 +101,7 @@ export default function ChannelsPage() {
             onGroupReorder={grouping.onGroupReorder}
             groupSummary={table.groupSummary}
             groupResetKey={groupMode}
+            groupsDefaultExpanded
             expandAll={filters.search.trim() !== ''}
             isDirty={table.isDirty}
             rowClassName={rowClass}

@@ -104,6 +104,10 @@ export interface JobStatus {
   next_at: number;
 }
 
+/**
+ * 设置项：键值都是字符串。本项目用到的键见各设置分区；
+ * usd_cny_rate：美元参考汇率（元/$），正数且 ≤ 100，默认 7.2，用于把成本换算成原厂价的百分比。
+ */
 export type Settings = Record<string, string>;
 
 export type AuditKind = 'channel' | 'price' | 'setting' | 'upstream' | 'cache_test';

@@ -11,20 +11,41 @@ import (
 	"gorm.io/gorm"
 )
 
-// windowSeconds maps a stored-window name to its length.
-var windowSeconds = map[string]int64{Window3d: 72 * 3600, Window7d: 168 * 3600}
-
 func hourStart(t int64) int64 { return t - t%3600 }
 
-// validWindow rejects unknown window names.
+const errWindow = "window 必须是 latest，或 1h–4464h / 1d–186d 这样的时长"
+
+// windowSpan parses "<N>h" or "<N>d" (N a positive integer without leading zeros,
+// total length ≤ MaxSpanSeconds) into seconds. "latest" and anything else is an error.
+func windowSpan(w string) (int64, error) {
+	n := len(w)
+	if n < 2 || (w[n-1] != 'h' && w[n-1] != 'd') || w[0] < '1' || w[0] > '9' || n > 6 {
+		return 0, resp.Invalid(errWindow)
+	}
+	var num int64
+	for _, c := range w[:n-1] {
+		if c < '0' || c > '9' {
+			return 0, resp.Invalid(errWindow)
+		}
+		num = num*10 + int64(c-'0')
+	}
+	unit := int64(3600)
+	if w[n-1] == 'd' {
+		unit = 86400
+	}
+	if num*unit > MaxSpanSeconds {
+		return 0, resp.Invalid(errWindow)
+	}
+	return num * unit, nil
+}
+
+// validWindow accepts "latest" or a duration accepted by windowSpan.
 func validWindow(w string) error {
 	if w == WindowLatest {
 		return nil
 	}
-	if _, ok := windowSeconds[w]; ok {
-		return nil
-	}
-	return resp.Invalid("window 必须是 latest、3d 或 7d")
+	_, err := windowSpan(w)
+	return err
 }
 
 // hourRange selects stats_hourly rows with from <= hour < to.
@@ -54,19 +75,20 @@ func scanRows(q *gorm.DB, fn func(store.StatsHourly)) error {
 // windowAggs returns per-channel and per-channel-model aggregates for a window, plus
 // the generation time. channelID > 0 restricts stored windows to that channel in SQL.
 func (s *Service) windowAggs(ctx context.Context, window string, channelID int) (windowData, int64, error) {
-	if err := validWindow(window); err != nil {
-		return windowData{}, 0, err
-	}
 	if window == WindowLatest {
 		return s.latestWindow(ctx)
 	}
+	span, err := windowSpan(window)
+	if err != nil {
+		return windowData{}, 0, err
+	}
 	now := time.Now().Unix()
-	q := s.hourRange(ctx, hourStart(now)-windowSeconds[window], hourStart(now)+3600)
+	q := s.hourRange(ctx, hourStart(now)-span, hourStart(now)+3600)
 	if channelID > 0 {
 		q = q.Where("channel_id = ?", channelID)
 	}
 	wd := newWindowData()
-	err := scanRows(q, func(r store.StatsHourly) {
+	err = scanRows(q, func(r store.StatsHourly) {
 		a := FromRow(r)
 		total, ok := wd.ch[r.ChannelID]
 		if !ok {
@@ -119,7 +141,7 @@ func (s *Service) ChannelStats(ctx context.Context, window, model string) (Chann
 			}
 			a = ma
 		}
-		m := a.Metrics()
+		m := a.Metrics(pr.usdRate)
 		out.Items = append(out.Items, ChannelStatsItem{
 			Metrics: m, ChannelID: id, StdCostPrice: rt.std[id], PriceTier: rt.tierPtr(id),
 			QualityTier: qualityTier(m.Requests, m.Wilson),
@@ -141,8 +163,9 @@ func (s *Service) ChannelModels(ctx context.Context, id int, window string) (Mod
 	if err != nil {
 		return out, err
 	}
+	usd := s.St.USDRate(ctx)
 	for model, a := range wd.models[id] {
-		out.Items = append(out.Items, ModelStatsItem{Metrics: a.Metrics(), Model: model})
+		out.Items = append(out.Items, ModelStatsItem{Metrics: a.Metrics(usd), Model: model})
 	}
 	sort.Slice(out.Items, func(i, j int) bool {
 		if out.Items[i].Requests != out.Items[j].Requests {

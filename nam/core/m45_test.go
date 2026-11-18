@@ -185,7 +185,7 @@ func TestM45StatsByModelAndCosts(t *testing.T) {
 			t.Fatalf("channel %d: %+v vs row %+v", c.ChannelID, c, row)
 		}
 		if c.ChannelID == a || c.ChannelID == b {
-			if !near(*c.ChannelCost, 0.175, 1e-9) { // discount 0.35 × upstream rate 0.5
+			if !near(*c.ChannelCost, 0.175/7.2, 1e-9) { // discount 0.35 × upstream rate 0.5 ÷ 美元参考汇率 7.2
 				t.Fatalf("channel %d cost: %v", c.ChannelID, *c.ChannelCost)
 			}
 		}

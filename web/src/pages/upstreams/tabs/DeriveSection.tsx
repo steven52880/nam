@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/misc';
 import { useActionMutation } from '@/hooks/useActionMutation';
 import { formatNumber, formatPercent } from '@/lib/format';
 
-/** 推算折扣：按各渠道的上游价推算上游分组折扣，并标出偏离超过 5% 的模型。 */
+/** 推算倍率：按各渠道的上游价推算上游分组倍率，并标出偏离超过 5% 的模型。 */
 export function DeriveSection({ upstreamId }: { upstreamId: number }) {
   const derive = useActionMutation({ mutationFn: () => api.deriveUpstream(upstreamId) });
   const channels = derive.data ?? [];
@@ -17,10 +17,10 @@ export function DeriveSection({ upstreamId }: { upstreamId: number }) {
     <div className="grid gap-2">
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm text-muted-foreground">
-          偏离渠道折扣超过 5% 的模型会被标出；单个模型的折扣覆盖请在渠道页的模型明细中设置。
+          偏离渠道倍率超过 5% 的模型会被标出；单个模型的倍率覆盖请在渠道页的模型明细中设置。
         </span>
         <Button size="sm" variant="outline" disabled={derive.isPending} onClick={() => derive.mutate()}>
-          {derive.isPending ? '推算中…' : '推算折扣'}
+          {derive.isPending ? '推算中…' : '推算倍率'}
         </Button>
       </div>
       {derive.isSuccess && channels.length === 0 && (
@@ -39,7 +39,7 @@ const getModelKey = (m: DeriveModel) => m.model;
 function deriveColumns(): TableColumn<DeriveModel>[] {
   return [
     textCol<DeriveModel>('model', '模型', (m) => m.model, { width: 14 }),
-    numberCol<DeriveModel>('discount', '推算折扣', (m) => m.discount, {
+    numberCol<DeriveModel>('discount', '推算倍率', (m) => m.discount, {
       width: 6.5,
       cell: (m) => formatNumber(m.discount, 3),
     }),
@@ -60,7 +60,7 @@ function ChannelDerivation({ channel }: { channel: DeriveChannel }) {
     <div className="rounded border">
       <div className="flex items-center gap-3 border-b bg-muted/50 px-2 py-1 text-sm">
         <span className="font-medium">{channel.name}</span>
-        <span className="text-muted-foreground">推算折扣中位数：{formatNumber(derivation.median, 3)}</span>
+        <span className="text-muted-foreground">推算倍率中位数：{formatNumber(derivation.median, 3)}</span>
         <Badge tone={flagged.length > 0 ? 'warning' : 'success'}>
           {flagged.length > 0 ? <ModelCountCell count={flagged.length} variant="deviated" /> : '无偏离'}
         </Badge>

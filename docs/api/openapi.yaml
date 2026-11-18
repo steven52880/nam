@@ -132,10 +132,11 @@ components:
         next_at: { type: integer }
     Settings:
       type: object
-      description: 字符串键值。job_interval.<job> 为 Go duration（如 30m、6h）。site_rate 只读，修改走定价流程（M5）。
+      description: 字符串键值。job_interval.<job> 为 Go duration（如 30m、6h）。site_rate 只读，修改走定价流程（M5）。usd_cny_rate 是美元参考汇率（元 / 1 美元，默认 7.2，须为大于 0 且不超过 100 的数字，否则 400）；成本类数值 channel_cost、effective_cost_price、measured_cost_price、std_cost_price 都除以它，得到原厂价的倍数（无单位）。cost_cny、revenue_cny、unit_cost（元）、discount、currency_rate、margin 不受影响。
       additionalProperties: { type: string }
       example:
         site_rate: '7'
+        usd_cny_rate: '7.2'
         protect_threshold: '0.5'
         auto_write: 'true'
         log_retention_days: '30'
@@ -305,7 +306,7 @@ components:
         discount: { type: number }
         discount_source: { type: string, enum: [auto, manual] }
         currency_rate: { type: number, nullable: true }
-        channel_cost: { type: number, nullable: true, description: 折扣 × 上游货币汇率 }
+        channel_cost: { type: number, nullable: true, description: 上游渠道售价 = 分组倍率 × 上游货币汇率 ÷ usd_cny_rate，原厂价的倍数，无单位；渠道没有上游时为 null }
         balance_usd: { type: number, nullable: true, description: 上游余额（美元） }
         balance_cny: { type: number, nullable: true, description: 上游余额折合人民币（× 上游货币汇率） }
         unit_cost: { type: number, nullable: true, description: '单次成本（元）：标准请求 1000 输入（200 缓存）+ 500 输出；缺价时为空' }
@@ -494,8 +495,8 @@ components:
         cost_cny: { type: number }
         revenue_cny: { type: number }
         priced_requests: { type: integer }
-        effective_cost_price: { type: number, nullable: true, description: 实测成本价（有效口径）= 成本 ÷ 不算缓存的原厂成本 }
-        measured_cost_price: { type: number, nullable: true, description: 定价口径 = 成本 ÷ 按原厂缓存价算的原厂成本 }
+        effective_cost_price: { type: number, nullable: true, description: 实际花费是原厂价（不算缓存）的多少倍，无单位（前端显示为百分比）= 成本 ÷ 不算缓存的原厂成本 ÷ usd_cny_rate }
+        measured_cost_price: { type: number, nullable: true, description: 实际花费是原厂价（按原厂缓存价）的多少倍，无单位 = 成本 ÷ 按原厂缓存价算的原厂成本 ÷ usd_cny_rate }
         margin: { type: number, nullable: true }
     StatsChannelItem:
       allOf:
@@ -503,13 +504,13 @@ components:
         - type: object
           properties:
             channel_id: { type: integer }
-            std_cost_price: { type: number, nullable: true }
+            std_cost_price: { type: number, nullable: true, description: 标准用量下渠道成本是原厂价的多少倍（无单位）÷ usd_cny_rate；价格档按它排序（除以同一个正数不改变排序） }
             price_tier: { type: string, nullable: true, enum: [cheap, mid, expensive] }
             quality_tier: { type: string, enum: [good, mid, bad, insufficient], description: 请求数 < 20 为 insufficient }
     StatsChannelList:
       type: object
       properties:
-        window: { type: string, enum: [latest, 3d, 7d] }
+        window: { type: string, description: 'latest，或 <N>h / <N>d 形式的时长（如 12h、3d、30d）' }
         model: { type: string, description: 请求的模型（去掉首尾空白）；为空 = 渠道总计 }
         generated_at: { type: integer }
         patch_p1: { type: boolean }
@@ -521,7 +522,7 @@ components:
         channel_id: { type: integer }
         has_model: { type: boolean, description: 渠道的模型列表是否含该模型；false 时下面三项都为 null }
         discount: { type: number, nullable: true, description: 该模型的有效折扣（模型级折扣优先于渠道折扣） }
-        channel_cost: { type: number, nullable: true, description: 折扣 × 上游货币汇率；渠道没有上游时为 null }
+        channel_cost: { type: number, nullable: true, description: 上游渠道售价 = 分组倍率 × 上游货币汇率 ÷ usd_cny_rate，原厂价的倍数，无单位 }
         unit_cost: { type: number, nullable: true, description: 该模型一次标准请求的成本（元）；没有汇率或价格库没有该模型时为 null }
     ModelCostList:
       type: object
@@ -552,7 +553,7 @@ components:
         channel_id: { type: integer }
         name: { type: string }
         vendor: { type: string }
-        std_cost_price: { type: number, nullable: true }
+        std_cost_price: { type: number, nullable: true, description: 同 StatsChannelItem.std_cost_price（原厂价的倍数，无单位） }
         wilson: { type: number, nullable: true }
         requests: { type: integer }
     StatsOverview:
@@ -966,9 +967,14 @@ paths:
       responses: { '200': { description: data = AuditLog } }
   /stats/channels:
     get:
-      summary: 渠道统计（latest = 每渠道最近 100 条日志，缓存 60 秒；3d / 7d 读小时聚合）
+      summary: 渠道统计（latest = 每渠道最近 100 条日志，缓存 60 秒；Nh / Nd 读小时聚合）
       parameters:
-        - { name: window, in: query, schema: { type: string, enum: [latest, 3d, 7d], default: latest } }
+        - name: window
+          in: query
+          schema: { type: string, default: latest, pattern: '^(latest|[1-9][0-9]{0,3}[hd])$' }
+          description: >-
+            latest，或 N 小时 / N 天形式的时长（Nh、Nd，N 为不含前导零的正整数，如 12h、3d、30d）；
+            总时长不超过 186 天（1h–4464h / 1d–186d），否则 400。
         - name: model
           in: query
           schema: { type: string, maxLength: 200 }
@@ -981,7 +987,12 @@ paths:
     get:
       summary: 渠道的模型明细
       parameters:
-        - { name: window, in: query, schema: { type: string, enum: [latest, 3d, 7d], default: latest } }
+        - name: window
+          in: query
+          schema: { type: string, default: latest, pattern: '^(latest|[1-9][0-9]{0,3}[hd])$' }
+          description: >-
+            latest，或 N 小时 / N 天形式的时长（Nh、Nd，N 为不含前导零的正整数，如 12h、3d、30d）；
+            总时长不超过 186 天（1h–4464h / 1d–186d），否则 400。
       responses: { '200': { description: 'data = {items: StatsModelItem[]}' }, '400': { description: window 或 id 不合法 } }
   /stats/overview:
     get:

@@ -72,7 +72,7 @@ func (s *Server) triggerJob(c *gin.Context) {
 var settingKeys = []string{
 	store.KeySiteRate, store.KeyProtectThreshold, store.KeyAutoWrite,
 	store.KeyLogRetentionDays, store.KeyStatsRetentionDays, store.KeyNewAPIURL,
-	store.KeyStatsBackfillDays, store.KeyNewAPILogCleanup,
+	store.KeyStatsBackfillDays, store.KeyNewAPILogCleanup, store.KeyUSDCNYRate,
 }
 
 // Write-only token setting and its read-only hint (the token itself is never returned).
@@ -164,6 +164,11 @@ func validateSetting(k, v string) error {
 		f, err := strconv.ParseFloat(v, 64)
 		if err != nil || f <= 0 || math.IsNaN(f) {
 			return resp.Invalid("变化保护阈值必须大于 0")
+		}
+	case k == store.KeyUSDCNYRate:
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil || !(f > 0) || f > 100 {
+			return resp.Invalid("美元参考汇率必须是大于 0 且不超过 100 的数字")
 		}
 	case k == store.KeyAutoWrite:
 		if _, err := strconv.ParseBool(v); err != nil {

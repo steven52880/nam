@@ -1,4 +1,5 @@
 import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query';
+import { parseUsdCnyRate, USD_CNY_RATE_KEY } from '@/lib/usdRate';
 import { api } from './endpoints';
 import { keys } from './keys';
 import type {
@@ -30,6 +31,12 @@ export function useBackend() {
 
 export function useSettings() {
   return useQuery({ queryKey: keys.settings(), queryFn: api.settings });
+}
+
+/** 美元参考汇率（元/$）：设置项 usd_cny_rate；还没取到或不合法时用默认 7.2。返回数字，引用稳定。 */
+export function useUsdCnyRate(): number {
+  const settings = useSettings();
+  return parseUsdCnyRate(settings.data?.[USD_CNY_RATE_KEY]);
 }
 
 export function useJobs() {

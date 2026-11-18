@@ -28,6 +28,7 @@ type Pricer struct {
 	vendorByGrp  map[string]string
 	quotaPerUnit float64
 	siteRate     float64
+	usdRate      float64 // 美元参考汇率 (元 / 1 美元); divides every cost price
 }
 
 // NewPricer loads the price book, channel_ext, upstreams and vendors.
@@ -56,7 +57,7 @@ func NewPricer(ctx context.Context, st *store.Store, backend ports.Backend) (*Pr
 	p := &Pricer{
 		book: book, channels: map[int]channelPrice{}, exts: map[int]store.ChannelExt{},
 		vendorByGrp: map[string]string{}, quotaPerUnit: defaultQuotaPerUnit,
-		siteRate: st.GetFloat(ctx, store.KeySiteRate, 7),
+		siteRate: st.GetFloat(ctx, store.KeySiteRate, 7), usdRate: st.USDRate(ctx),
 	}
 	for _, e := range exts {
 		p.exts[e.ChannelID] = e

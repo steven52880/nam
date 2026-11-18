@@ -81,9 +81,15 @@ func TestMetrics_standard_request_fixed_numbers(t *testing.T) {
 	}
 	a := NewAgg()
 	a.Add(s, p)
-	m := a.Metrics()
+	m := a.Metrics(1)
 	if !near(*m.MeasuredCostPrice, 0.175, 1e-9) || !near(*m.EffectiveCostPrice, 0.001743/0.0105, 1e-9) {
 		t.Fatalf("cost prices %v %v", *m.MeasuredCostPrice, *m.EffectiveCostPrice)
+	}
+	// the 美元参考汇率 divides both cost prices and nothing in 元
+	m72 := a.Metrics(7.2)
+	if !near(*m72.MeasuredCostPrice, 0.175/7.2, 1e-9) || !near(*m72.EffectiveCostPrice, 0.001743/0.0105/7.2, 1e-9) ||
+		m72.CostCNY != m.CostCNY || m72.RevenueCNY != m.RevenueCNY || *m72.Margin != *m.Margin {
+		t.Fatalf("rate 7.2: %v %v cost=%v rev=%v", *m72.MeasuredCostPrice, *m72.EffectiveCostPrice, m72.CostCNY, m72.RevenueCNY)
 	}
 	if !near(*m.CacheHit, 0.2, 1e-12) || m.SpeedEstimated || m.PricedRequests != 1 || m.Requests != 1 {
 		t.Fatalf("metrics %+v", m)
@@ -94,7 +100,7 @@ func TestMetrics_standard_request_fixed_numbers(t *testing.T) {
 }
 
 func TestMetrics_empty_is_null(t *testing.T) {
-	m := NewAgg().Metrics()
+	m := NewAgg().Metrics(1)
 	if m.SuccessRate != nil || m.Wilson != nil || m.CacheHit != nil || m.FRTP50 != nil || m.SpeedP50 != nil ||
 		m.EffectiveCostPrice != nil || m.MeasuredCostPrice != nil || m.Margin != nil {
 		t.Fatalf("expected nulls: %+v", m)
@@ -104,11 +110,11 @@ func TestMetrics_empty_is_null(t *testing.T) {
 func TestMetrics_estimated_speed_only_without_exact_samples(t *testing.T) {
 	a := NewAgg()
 	a.Add(Sample{OK: true, Speed: 100, SpeedEst: true}, Priced{})
-	if m := a.Metrics(); !m.SpeedEstimated || m.SpeedP50 == nil {
+	if m := a.Metrics(1); !m.SpeedEstimated || m.SpeedP50 == nil {
 		t.Fatalf("estimated only: %+v", m)
 	}
 	a.Add(Sample{OK: true, Speed: 250}, Priced{})
-	if m := a.Metrics(); m.SpeedEstimated || math.Abs(*m.SpeedP50-250)/250 > 0.05 {
+	if m := a.Metrics(1); m.SpeedEstimated || math.Abs(*m.SpeedP50-250)/250 > 0.05 {
 		t.Fatalf("exact wins: %+v", m)
 	}
 }
@@ -119,7 +125,7 @@ func TestAgg_failures_and_margin(t *testing.T) {
 	a.Add(Sample{OK: true, Quota: 1}, Priced{OK: true, Cost: 1, Revenue: 4, Official: 2, OfficialNoCache: 4})
 	b := NewAgg()
 	b.Merge(a)
-	m := b.Metrics()
+	m := b.Metrics(1)
 	if m.Requests != 2 || m.Fail != 1 || m.FailByClass[Class5xx] != 1 || *m.SuccessRate != 0.5 || *m.Margin != 0.75 {
 		t.Fatalf("metrics %+v", m)
 	}

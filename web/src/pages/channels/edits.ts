@@ -30,7 +30,7 @@ export function parseCell(columnId: string, value: string): ParseResult {
     }
     case 'discount': {
       const discount = Number(text);
-      if (text === '' || !Number.isFinite(discount) || discount <= 0) return { error: '上游分组折扣必须大于 0' };
+      if (text === '' || !Number.isFinite(discount) || discount <= 0) return { error: '上游分组倍率必须大于 0' };
       return { patch: { fields: {}, ext: { discount, discount_source: 'manual' } } };
     }
     case 'priority':

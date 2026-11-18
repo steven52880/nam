@@ -8,7 +8,9 @@ import { StatusBadge } from '@/components/cells/StatusBadge';
 import { numberCol, textCol, type TableColumn } from '@/components/table';
 import { Badge } from '@/components/ui/misc';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/misc';
+import type { BalanceWidths } from '@/lib/balance';
 import { formatDiscount, formatNumber, formatTime } from '@/lib/format';
+import { CHANNEL_PRICE_HINT } from '@/lib/usdRate';
 import { CHANNEL_STATUS, labelOf, SYNC_STATE } from '@/lib/labels';
 import { cn } from '@/lib/utils';
 import { TokenCell, UpstreamCell, VendorCell } from './EditableCells';
@@ -20,7 +22,8 @@ import { buildStatColumns } from './statColumns';
 function noEditor(): void {
   return undefined;
 }
-const COST_REASON = '上游渠道成本价 = 上游分组折扣 × 上游货币汇率，不能直接编辑';
+const DISCOUNT_HINT = '上游对这个分组请求的实际扣费，是上游模型美元标价的多少倍（假设标价 = 原厂价）。例：0.35 表示按标价的 35% 扣费';
+const CURRENCY_RATE_HINT = '在上游充值 1 美元额度需要多少人民币，单位 元/$。例：0.5 表示 0.5 元充 1 美元额度';
 
 type Row = ChannelViewRow;
 type Col = TableColumn<Row>;
@@ -39,6 +42,8 @@ interface ColumnOptions {
   cacheTests: Map<number, CacheTest>;
   /** 当前可见行的成本范围，用于颜色梯度。 */
   ranges: ChannelRanges;
+  /** 余额列：当前可见行里美元、人民币文字的最大字符数，用于对齐 ≈。引用必须稳定。 */
+  balanceWidths: BalanceWidths;
 }
 
 function SyncBadge({ row, onOpenDrift }: { row: ChannelRow; onOpenDrift: (row: ChannelRow) => void }) {
@@ -103,6 +108,7 @@ export function buildChannelColumns({
   vendorGroups,
   cacheTests,
   ranges,
+  balanceWidths,
 }: ColumnOptions): Col[] {
   const stat = buildStatColumns({ model, effectiveCostRange: ranges.effectiveCost, stdCostRange: ranges.stdCost });
   return [
@@ -152,16 +158,17 @@ export function buildChannelColumns({
       validate: (v) => validateCell('models', v),
       cell: (r) => <ModelCountCell models={r.models} />,
     }),
-    numberCol<Row>('discount', '上游分组折扣', (r) => r.view.discount, {
+    numberCol<Row>('discount', '上游分组倍率', (r) => r.view.discount, {
       width: 7.5,
-      // 选了模型时显示的是模型级生效折扣，和渠道折扣不是同一个值，不允许在这里改
+      headerTitle: DISCOUNT_HINT,
+      // 选了模型时显示的是模型级生效倍率，和渠道倍率不是同一个值，不允许在这里改
       editable: model === null,
-      readOnlyReason: model === null ? undefined : '选了模型时这里显示该模型的生效折扣；改渠道折扣请先清除模型，改模型级折扣请在下方模型明细里改',
+      readOnlyReason: model === null ? undefined : '选了模型时这里显示该模型的生效倍率；改渠道倍率请先清除模型，改模型级倍率请在下方模型明细里改',
       toText: (r) => formatDiscount(r.discount),
       validate: (v) => validateCell('discount', v),
       cell: (r) => {
         if (r.view.discount === null) return <Dash />;
-        // 选了模型：显示模型级生效折扣，来源徽标说的是渠道折扣，不再显示
+        // 选了模型：显示模型级生效倍率，来源徽标说的是渠道倍率，不再显示
         return (
           <span className="inline-flex items-center justify-end gap-1">
             {model === null && (
@@ -174,19 +181,21 @@ export function buildChannelColumns({
         );
       },
     }),
-    numberCol<Row>('currency_rate', '上游货币汇率', (r) => r.currency_rate, {
-      width: 7,
+    numberCol<Row>('currency_rate', '上游货币汇率（元/$）', (r) => r.currency_rate, {
+      width: 9,
+      headerTitle: CURRENCY_RATE_HINT,
       readOnlyReason: '上游货币汇率在上游详情中修改',
       cell: (r) => formatNumber(r.currency_rate),
     }),
-    numberCol<Row>('channel_cost', '上游渠道成本价', (r) => r.view.channelCost, {
+    numberCol<Row>('channel_cost', '上游渠道售价', (r) => r.view.channelCost, {
       width: 7.5,
-      readOnlyReason: COST_REASON,
-      cell: (r) => <CostCell value={r.view.channelCost} range={ranges.channelCost} />,
+      headerTitle: CHANNEL_PRICE_HINT,
+      readOnlyReason: `${CHANNEL_PRICE_HINT}（不能直接编辑）`,
+      cell: (r) => <CostCell percent value={r.view.channelCost} range={ranges.channelCost} />,
     }),
     numberCol<Row>('unit_cost', '单次成本（元）', (r) => r.view.unitCost, {
       width: 7.5,
-      readOnlyReason: '单次成本由价格与折扣计算，不能编辑',
+      readOnlyReason: '单次成本由价格与倍率计算，不能编辑',
       cell: (r) => (
         <CostCell
           value={r.view.unitCost}
@@ -200,7 +209,7 @@ export function buildChannelColumns({
     numberCol<Row>('balance', '余额', (r) => r.balance_usd, {
       width: 9.5,
       readOnlyReason: '余额来自上游同步，不能编辑',
-      cell: (r) => <BalanceCell usd={r.balance_usd} cny={r.balance_cny} />,
+      cell: (r) => <BalanceCell usd={r.balance_usd} cny={r.balance_cny} widths={balanceWidths} />,
     }),
     numberCol<Row>('priority', '优先级', (r) => r.priority, {
       width: 5,

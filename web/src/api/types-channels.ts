@@ -54,9 +54,12 @@ export interface ChannelRow {
   token_id: number | null;
   token_name: string;
   vendor: string;
+  /** 上游分组倍率：上游对该分组请求的实际扣费是上游美元标价的多少倍（无单位，显示小数）。 */
   discount: number;
   discount_source: DiscountSource;
+  /** 上游货币汇率（元/$）：在上游充值 1 美元额度需要的人民币。 */
   currency_rate: number | null;
+  /** 上游渠道售价 = 分组倍率 × 上游货币汇率 ÷ 美元参考汇率（后端已除），值是原厂价的倍数，前端显示成百分比。 */
   channel_cost: number | null;
   balance_usd: number | null;
   balance_cny: number | null;
@@ -76,9 +79,9 @@ export interface ModelCost {
   channel_id: number;
   /** 渠道是否包含该模型；为 false 时其余字段都是 null。 */
   has_model: boolean;
-  /** 该模型的生效折扣（含模型级折扣覆盖）。 */
+  /** 该模型的生效上游分组倍率（含模型级倍率覆盖）。 */
   discount: number | null;
-  /** 折扣 × 上游货币汇率；没有上游时为 null。 */
+  /** 上游渠道售价（原厂价的倍数，后端已除以美元参考汇率）；没有上游时为 null。 */
   channel_cost: number | null;
   /** 该模型的单次成本（元），标准请求同 ChannelRow.unit_cost。 */
   unit_cost: number | null;

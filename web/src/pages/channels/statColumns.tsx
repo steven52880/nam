@@ -14,7 +14,12 @@ type Row = ChannelViewRow;
 type Col = TableColumn<Row>;
 
 const STATS_REASON = '统计列由系统计算，不能编辑';
-const EFFECTIVE_COST_HINT = '每消耗原厂 1 美元（不算缓存）实际花多少元，缓存命中越高越低';
+const EFFECTIVE_COST_HINT =
+  '= 渠道真实请求的实际花费 ÷ 同样请求不算缓存、按原厂价计的费用（统一成人民币后相除），缓存命中越高越低。例：实际花 0.4 元，不算缓存的原厂价 20 元 → 2%';
+const MEASURED_COST_HINT =
+  '= 实际花费 ÷ 算上缓存优惠的原厂价。正常应约等于上游渠道售价，明显偏高说明上游多扣了。例：实际花 0.5 元，带缓存优惠的原厂价 20 元 → 2.5%';
+const STD_COST_HINT =
+  '= 用同厂商所有渠道近 7 天的平均 token 比例（输入 / 缓存 / 输出），按本渠道的倍率、汇率、缓存价理论计算的 实际花费 ÷ 不算缓存的原厂价。各渠道用同一份负载公平比价，没流量也能算，价格档按它划分。例：2.1%';
 const NEEDS_MODEL_HINT = '选择模型后显示';
 
 type BadgeTone = NonNullable<ComponentProps<typeof Badge>['tone']>;
@@ -35,9 +40,9 @@ const QUALITY_TIERS: Record<QualityTier, { label: string; tone: BadgeTone; rank:
 export interface StatColumnOptions {
   /** 当前选中的模型；null = 渠道汇总（首字延迟、吐字速度这两列只在选了模型后显示）。 */
   model: string | null;
-  /** 当前可见行的实测成本范围，用于颜色梯度。 */
+  /** 当前可见行的实际负载成本范围，用于颜色梯度。 */
   effectiveCostRange: CostRange | null;
-  /** 当前可见行的标准负载成本价范围。 */
+  /** 当前可见行的标准负载成本范围。 */
   stdCostRange: CostRange | null;
 }
 
@@ -88,19 +93,19 @@ export function buildStatColumns({ model, effectiveCostRange, stdCostRange }: St
       statColumn('cache_hit', '缓存命中率', (r) => statOf(r)?.cache_hit ?? null, (r) => <PercentCell value={statOf(r)?.cache_hit} />, { width: 6.25 }),
       statColumn(
         'effective_cost',
-        '实测成本',
+        '实际负载成本',
         (r) => statOf(r)?.effective_cost_price ?? null,
-        (r) => <CostCell value={statOf(r)?.effective_cost_price} range={effectiveCostRange} hint={EFFECTIVE_COST_HINT} />,
-        { headerTitle: EFFECTIVE_COST_HINT },
+        (r) => <CostCell percent value={statOf(r)?.effective_cost_price} range={effectiveCostRange} />,
+        { headerTitle: EFFECTIVE_COST_HINT, width: 7 },
       ),
     ],
     extra: [
-      statColumn('measured_cost', '定价口径成本价', (r) => statOf(r)?.measured_cost_price ?? null, (r) => (
-        <CostCell value={statOf(r)?.measured_cost_price} range={null} />
-      ), { width: 7.5, hidden: true }),
-      statColumn('std_cost', '标准负载成本价', (r) => statOf(r)?.std_cost_price ?? null, (r) => (
-        <CostCell value={statOf(r)?.std_cost_price} range={stdCostRange} />
-      ), { width: 7.5, hidden: true }),
+      statColumn('measured_cost', '实际计费倍率', (r) => statOf(r)?.measured_cost_price ?? null, (r) => (
+        <CostCell percent value={statOf(r)?.measured_cost_price} range={null} />
+      ), { width: 7.5, hidden: true, headerTitle: MEASURED_COST_HINT }),
+      statColumn('std_cost', '标准负载成本', (r) => statOf(r)?.std_cost_price ?? null, (r) => (
+        <CostCell percent value={statOf(r)?.std_cost_price} range={stdCostRange} />
+      ), { width: 7.5, hidden: true, headerTitle: STD_COST_HINT }),
       statColumn('price_tier', '价格档', (r) => {
         const tier = statOf(r)?.price_tier;
         return tier ? PRICE_TIERS[tier].rank : null;

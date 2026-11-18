@@ -123,12 +123,13 @@ func (s *Service) Overview(ctx context.Context, from, to int64, dim string) (Ove
 	if err != nil {
 		return out, err
 	}
-	out.Totals = totals.Metrics()
+	usd := s.St.USDRate(ctx)
+	out.Totals = totals.Metrics(usd)
 	for k, n := range out.Totals.FailByClass {
 		out.ErrorClasses[k] = n
 	}
 	for key, g := range groups {
-		out.Rows = append(out.Rows, StatsRow{Metrics: g.agg.Metrics(), Key: key, Name: g.name})
+		out.Rows = append(out.Rows, StatsRow{Metrics: g.agg.Metrics(usd), Key: key, Name: g.name})
 	}
 	sort.Slice(out.Rows, func(i, j int) bool {
 		if out.Rows[i].Requests != out.Rows[j].Requests {
@@ -159,7 +160,7 @@ func (s *Service) scatter(ctx context.Context, nm names, perChannel map[int]Agg,
 		return out, err
 	}
 	for id, a := range perChannel {
-		m := a.Metrics()
+		m := a.Metrics(pr.usdRate)
 		out = append(out, ScatterPoint{
 			ChannelID: id, Name: nm.channelName(id), Vendor: vendorOf[id],
 			StdCostPrice: rt.std[id], Wilson: m.Wilson, Requests: m.Requests,

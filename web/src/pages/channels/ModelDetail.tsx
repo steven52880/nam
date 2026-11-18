@@ -15,17 +15,17 @@ function Header({ detail }: { detail: ChannelModels }) {
       <span className="font-medium">{detail.name}</span>
       <span className="text-muted-foreground">厂商：{detail.vendor || '—'}</span>
       <span className="inline-flex items-center gap-1 text-muted-foreground">
-        上游分组折扣：{formatNumber(detail.discount, 3)}
+        上游分组倍率：{formatNumber(detail.discount, 3)}
         <Badge tone={detail.discount_source === 'manual' ? 'warning' : 'neutral'}>
           {detail.discount_source === 'manual' ? '手动' : '自动'}
         </Badge>
       </span>
       {detail.derived_median !== null && (
         <span className="text-muted-foreground">
-          按当前上游价推算为 {formatNumber(detail.derived_median, 3)}，自动来源会在倍率同步后采用
+          按当前上游价推算倍率为 {formatNumber(detail.derived_median, 3)}，自动来源会在倍率同步后采用
         </span>
       )}
-      <span className="text-muted-foreground">上游货币汇率：{formatNumber(detail.currency_rate)}</span>
+      <span className="text-muted-foreground">上游货币汇率（元/$）：{formatNumber(detail.currency_rate)}</span>
       <span className="text-muted-foreground">测试模型：{detail.test_model || '—'}</span>
       <span className="ml-auto"><CacheOverridePopover channelId={detail.channel_id} /></span>
     </div>

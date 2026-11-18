@@ -11,7 +11,7 @@ export type ModelCountVariant =
   | 'preview'
   /** 「已选 N 个模型」（令牌模型步骤）。 */
   | 'selected'
-  /** 「N 个模型偏离」（推算折扣）。 */
+  /** 「N 个模型偏离」（推算倍率）。 */
   | 'deviated';
 
 interface ModelCountCellProps {

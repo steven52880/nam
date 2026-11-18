@@ -96,6 +96,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
     groupLabel,
     sortGroups,
     groupResetKey,
+    groupsDefaultExpanded,
     expandAll,
     onGroupReorder,
     groupSummary,
@@ -168,19 +169,22 @@ export function DataTable<T>(props: DataTableProps<T>) {
   });
 
   // ───────── 展开状态 ─────────
+  // set 的含义随 groupsDefaultExpanded 变：默认折叠时是"被展开的组"，默认展开时是"被收起的组"。
   const [groupState, setGroupState] = useState<{ resetKey: string | undefined; set: ReadonlySet<string> }>({
     resetKey: groupResetKey,
     set: EMPTY_SET,
   });
   // groupResetKey 变化时真正清空（渲染期调整状态）；只在返回值里忽略旧集合的话，切回原 key 时旧展开状态会复活
   if (groupState.resetKey !== groupResetKey) setGroupState({ resetKey: groupResetKey, set: EMPTY_SET });
-  const expandedGroups = groupState.resetKey === groupResetKey ? groupState.set : EMPTY_SET;
+  const toggledGroups = groupState.resetKey === groupResetKey ? groupState.set : EMPTY_SET;
+  const expandedGroups = groupsDefaultExpanded ? EMPTY_SET : toggledGroups;
+  const collapsedGroups = groupsDefaultExpanded ? toggledGroups : EMPTY_SET;
   const [expandedRows, setExpandedRows] = useState<ReadonlySet<string>>(EMPTY_SET);
 
   const onToggleGroup = useEvent((key: string) => {
     // 拖完分组后的那次 click 不切换展开
     if (dnd.justDragged.current) return;
-    const next = new Set(expandedGroups);
+    const next = new Set(toggledGroups);
     if (next.has(key)) next.delete(key);
     else next.add(key);
     setGroupState({ resetKey: groupResetKey, set: next });
@@ -204,11 +208,13 @@ export function DataTable<T>(props: DataTableProps<T>) {
         groupBy,
         sortGroups,
         expandedGroups,
+        defaultExpanded: !!groupsDefaultExpanded,
+        collapsedGroups,
         expandAll: !!expandAll,
         collapseAll: dnd.collapseAll,
         expandedRows: renderExpanded ? expandedRows : EMPTY_SET,
       }),
-    [sortedRows, getRowId, groupBy, sortGroups, expandedGroups, expandAll, dnd.collapseAll, expandedRows, renderExpanded],
+    [sortedRows, getRowId, groupBy, sortGroups, expandedGroups, groupsDefaultExpanded, collapsedGroups, expandAll, dnd.collapseAll, expandedRows, renderExpanded],
   );
   const groupKeys = useMemo(() => items.flatMap((i) => (i.kind === 'group' ? [i.key] : [])), [items]);
   const rowIds = useMemo(() => items.flatMap((i) => (i.kind === 'row' ? [i.id] : [])), [items]);

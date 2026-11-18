@@ -2,8 +2,11 @@ import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Scatter, Scatt
 import type { FailClass, ScatterPoint, StatsOverview } from '@/api/types-stats';
 import { AXIS_TICK, BAR_CURSOR, COLORS, ChartCard, GRID_STROKE, TOOLTIP_PROPS } from './chartTheme';
 import { remToPx } from '@/lib/size';
-import { formatPercent, formatSignificant } from '@/lib/format';
+import { formatPercent, formatRatioPercent } from '@/lib/format';
 import { FAIL_CLASS, FAIL_CLASS_ORDER } from '@/lib/labels';
+
+/** 横轴刻度：原厂价倍数 → 百分比；刻度值精度不高，取 2 位有效数字。 */
+const formatCostTick = (v: number) => formatRatioPercent(v, 2);
 
 interface ScatterDatum {
   name: string;
@@ -25,7 +28,7 @@ function ScatterTip({ active, payload }: { active?: boolean; payload?: Array<{ p
     <div style={TOOLTIP_PROPS.contentStyle}>
       <div className="font-medium">{d.name}</div>
       <div className="text-muted-foreground">厂商：{d.vendor || '未归属'}</div>
-      <div>标准负载成本价：{formatSignificant(d.x)}</div>
+      <div>标准负载成本：{formatRatioPercent(d.x)}</div>
       <div>成功率下界：{formatPercent(d.y / 100)}</div>
       <div>请求数：{d.z}</div>
     </div>
@@ -35,11 +38,11 @@ function ScatterTip({ active, payload }: { active?: boolean; payload?: Array<{ p
 export function PriceQualityChart({ points }: { points: StatsOverview['scatter'] }) {
   const data = points.map(toDatum).filter((d): d is ScatterDatum => d !== null);
   return (
-    <ChartCard title="价格-质量（横：标准负载成本价，纵：成功率下界 %）" empty={data.length === 0}>
+    <ChartCard title="价格-质量（横：标准负载成本，纵：成功率下界 %）" empty={data.length === 0}>
       <ResponsiveContainer width="100%" height="100%">
         <ScatterChart margin={{ top: 6, right: 12, bottom: 0, left: -8 }}>
           <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" />
-          <XAxis type="number" dataKey="x" name="成本价" tick={AXIS_TICK} domain={['auto', 'auto']} />
+          <XAxis type="number" dataKey="x" name="标准负载成本" tick={AXIS_TICK} tickFormatter={formatCostTick} domain={['auto', 'auto']} />
           <YAxis type="number" dataKey="y" name="成功率下界" tick={AXIS_TICK} domain={[0, 100]} unit="%" />
           <ZAxis type="number" dataKey="z" range={[0.15625 * remToPx(1) ** 2, 1.40625 * remToPx(1) ** 2]} />
           <Tooltip content={<ScatterTip />} cursor={{ strokeDasharray: '3 3' }} />

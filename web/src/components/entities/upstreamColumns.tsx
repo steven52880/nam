@@ -20,8 +20,9 @@ export function upstreamColumns({ wizard = false }: UpstreamColumnOptions = {}):
       width: 6,
       cell: wizard ? undefined : (u) => <Badge>{u.type}</Badge>,
     }),
-    numberCol<Upstream>('currency_rate', '上游货币汇率', (u) => u.currency_rate, {
-      width: 7.5,
+    numberCol<Upstream>('currency_rate', '上游货币汇率（元/$）', (u) => u.currency_rate, {
+      width: 9,
+      headerTitle: '在上游充值 1 美元额度需要多少人民币，单位 元/$',
       cell: (u) => formatNumber(u.currency_rate),
     }),
     numberCol<Upstream>('balance_usd', '余额（美元）', (u) => u.balance_usd, {

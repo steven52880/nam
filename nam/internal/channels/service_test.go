@@ -102,7 +102,7 @@ func TestBatchSplitsByVendorAndApplies(t *testing.T) {
 		if r.SyncState != StateSynced || !r.Managed || r.UpstreamName != "mock-a" || r.TokenName != "a" {
 			t.Fatalf("row after apply: %+v", r)
 		}
-		if r.ChannelCost == nil || *r.ChannelCost != 0.5 { // discount 1 × rate 0.5
+		if r.ChannelCost == nil || !near(*r.ChannelCost, 0.5/store.DefaultUSDCNYRate) { // discount 1 × rate 0.5 ÷ 7.2
 			t.Fatalf("cost: %v", r.ChannelCost)
 		}
 	}

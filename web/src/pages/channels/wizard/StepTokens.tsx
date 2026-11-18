@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useUpstreamGroups, useUpstreams, useUpstreamTokens } from '@/api/queries';
+import { useUpstreamGroups, useUpstreams, useUpstreamTokens, useUsdCnyRate } from '@/api/queries';
 import type { UpstreamToken } from '@/api/types';
 import { AddTokenDialog, type TokenDialog } from '@/components/entities/AddTokenDialog';
 import { tokenColumns } from '@/components/entities/tokenColumns';
@@ -27,9 +27,10 @@ export function StepTokens({ upstreamId, value, onChange, single = false }: Step
   const list = useMemo(() => tokens.data ?? [], [tokens.data]);
   const groupList = groups.data;
   const rate = upstream?.currency_rate;
+  const usdRate = useUsdCnyRate();
   const columns = useMemo(
-    () => pickColumns(tokenColumns({ groups: groupList, rate }), COLUMN_IDS),
-    [groupList, rate],
+    () => pickColumns(tokenColumns({ groups: groupList, rate, usdRate }), COLUMN_IDS),
+    [groupList, rate, usdRate],
   );
   const selected = useMemo<ReadonlySet<string>>(() => new Set(value.map(String)), [value]);
   const toggle = useCallback(

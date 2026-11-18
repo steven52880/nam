@@ -63,6 +63,15 @@ export function formatPercent(
   return `${sign}${percent.toFixed(opts?.digits ?? 1)}%`;
 }
 
+/**
+ * 「原厂价的倍数」→ 百分比：0.024 → 2.4%，0.0085 → 0.85%，1.5 → 150%。
+ * 按有效数字（默认 3 位）取，去掉多余的 0；空值显示「—」。
+ */
+export function formatRatioPercent(v: number | null | undefined, digits = 3): string {
+  if (v === null || v === undefined) return DASH;
+  return `${formatSignificant(v * 100, digits)}%`;
+}
+
 /** 毫秒：默认「850 ms」；unit:false 只返回数字。 */
 export function formatMs(v: number | null | undefined, opts?: { unit?: boolean }): string {
   if (v === null || v === undefined) return DASH;
@@ -94,7 +103,7 @@ export function formatDate(d: Date): string {
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}`;
 }
 
-/** 折扣：最多 4 位小数，去掉多余的 0。 */
+/** 倍率（上游分组倍率）：最多 4 位小数，去掉多余的 0。 */
 export function formatDiscount(v: number): string {
   return String(Number(v.toFixed(4)));
 }

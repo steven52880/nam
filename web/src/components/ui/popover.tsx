@@ -4,6 +4,8 @@ import { cn } from '@/lib/utils';
 
 export const Popover = PopoverPrimitive.Root;
 export const PopoverTrigger = PopoverPrimitive.Trigger;
+/** 只做定位锚点，点击它不会打开 / 关闭浮层。 */
+export const PopoverAnchor = PopoverPrimitive.Anchor;
 
 export function PopoverContent({
   className,

@@ -40,7 +40,7 @@ func TestPull_aggregates_and_is_idempotent(t *testing.T) {
 	}
 	var row store.StatsHourly
 	must(t, e.st.DB.First(&row, "channel_id = 1").Error)
-	m := FromRow(row).Metrics()
+	m := FromRow(row).Metrics(1)
 	if row.Vendor != "anthropic" || m.FailByClass[Class5xx] != 2 || !near(*m.MeasuredCostPrice, 0.175, 1e-9) ||
 		!near(*m.CacheHit, 0.2, 1e-12) || m.PricedRequests != 10 || !near(m.CostCNY, 0.01743, 1e-9) {
 		t.Fatalf("row %+v metrics %+v", row, m)

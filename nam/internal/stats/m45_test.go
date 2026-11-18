@@ -80,7 +80,7 @@ func TestChannelStats_model_stored_window(t *testing.T) {
 	if len(all) != 3 || all[m.ch1].Success != 12 || all[m.ch2].Success != 3 || all[m.ch3].Success != 2 {
 		t.Fatalf("no model: %+v", all)
 	}
-	if !approx(f(all[m.ch1].StdCostPrice), 0.175) || !approx(f(all[m.ch3].StdCostPrice), 0.05) {
+	if !approx(f(all[m.ch1].StdCostPrice), 0.175/store.DefaultUSDCNYRate) || !approx(f(all[m.ch3].StdCostPrice), 0.05/store.DefaultUSDCNYRate) {
 		t.Fatalf("no model std: %v %v", all[m.ch1].StdCostPrice, all[m.ch3].StdCostPrice)
 	}
 	if tierOf(all[m.ch3]) != TierCheap || tierOf(all[m.ch1]) != TierMid || tierOf(all[m.ch2]) != TierExpensive {
@@ -93,7 +93,7 @@ func TestChannelStats_model_stored_window(t *testing.T) {
 	if len(got) != 2 || got[m.ch1].Success != 5 || got[m.ch2].Success != 3 {
 		t.Fatalf("test-model: %+v", got)
 	}
-	if !approx(f(got[m.ch1].StdCostPrice), 0.2*0.5) || !approx(f(got[m.ch2].StdCostPrice), 0.5*0.5) {
+	if !approx(f(got[m.ch1].StdCostPrice), 0.2*0.5/store.DefaultUSDCNYRate) || !approx(f(got[m.ch2].StdCostPrice), 0.5*0.5/store.DefaultUSDCNYRate) {
 		t.Fatalf("test-model std: %v %v", got[m.ch1].StdCostPrice, got[m.ch2].StdCostPrice)
 	}
 	if tierOf(got[m.ch1]) != TierCheap || tierOf(got[m.ch2]) != TierMid {
@@ -152,7 +152,7 @@ func TestRate_model_restricts_channels(t *testing.T) {
 		t.Fatalf("ch2 does not carry 'other' but was rated: %v", r.std)
 	}
 	// ch1 has no override for "other": channel discount 0.35; ch3: 0.1
-	if !approx(f(r.std[m.ch1]), 0.175) || !approx(f(r.std[m.ch3]), 0.05) {
+	if !approx(f(r.std[m.ch1]), 0.175/store.DefaultUSDCNYRate) || !approx(f(r.std[m.ch3]), 0.05/store.DefaultUSDCNYRate) {
 		t.Fatalf("std: %v %v", r.std[m.ch1], r.std[m.ch3])
 	}
 	if t1, t3 := r.tierPtr(m.ch1), r.tierPtr(m.ch3); t1 == nil || t3 == nil || *t3 != TierCheap || *t1 != TierMid {
@@ -175,7 +175,7 @@ func TestRate_model_restricts_channels(t *testing.T) {
 		t.Fatal("stdPrice on an unpriced model must be nil")
 	}
 	// empty model keeps the old choice (cheapest priced model: other → 0.35 × 0.5)
-	if v := stdPrice(pr, ch1, nil, ""); v == nil || !approx(*v, 0.175) {
+	if v := stdPrice(pr, ch1, nil, ""); v == nil || !approx(*v, 0.175/store.DefaultUSDCNYRate) {
 		t.Fatalf("stdPrice no model: %v", v)
 	}
 }

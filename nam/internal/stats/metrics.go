@@ -22,17 +22,19 @@ type Metrics struct {
 	CacheReadTokens  int64    `json:"cache_read_tokens"`
 	CacheWriteTokens int64    `json:"cache_write_tokens"`
 
-	CostCNY            float64  `json:"cost_cny"`
-	RevenueCNY         float64  `json:"revenue_cny"`
+	CostCNY            float64  `json:"cost_cny"`    // 元
+	RevenueCNY         float64  `json:"revenue_cny"` // 元
 	PricedRequests     int64    `json:"priced_requests"`
-	EffectiveCostPrice *float64 `json:"effective_cost_price"`
-	MeasuredCostPrice  *float64 `json:"measured_cost_price"`
+	EffectiveCostPrice *float64 `json:"effective_cost_price"` // 实际花费是原厂价（不计缓存）的多少倍，无单位
+	MeasuredCostPrice  *float64 `json:"measured_cost_price"`  // 实际花费是原厂价（计缓存）的多少倍，无单位
 	Margin             *float64 `json:"margin"`
 }
 
-// Metrics derives the display metrics. speed_estimated is true only when the speed
-// percentiles come from the estimated histogram (no exact sample, at least one estimate).
-func (a Agg) Metrics() Metrics {
+// Metrics derives the display metrics. usdRate is the 美元参考汇率 (元 / 1 美元, > 0): the
+// cost prices (元 / 原厂 1 美元) are divided by it, so they come out as unitless multiples of
+// the official price. cost_cny / revenue_cny stay in 元. speed_estimated is true only when
+// the speed percentiles come from the estimated histogram (no exact sample, at least one estimate).
+func (a Agg) Metrics(usdRate float64) Metrics {
 	m := Metrics{
 		Requests: a.Success + a.Fail, Success: a.Success, Fail: a.Fail,
 		FailByClass:  map[string]int64{},
@@ -55,8 +57,8 @@ func (a Agg) Metrics() Metrics {
 	}
 	m.SpeedP50, m.SpeedP95 = quantiles(speed)
 	m.CacheHit = ratio(float64(a.Read), float64(a.Input+a.Read+a.Write))
-	m.EffectiveCostPrice = ratio(a.CostCNY, a.OfficialNoCacheUSD)
-	m.MeasuredCostPrice = ratio(a.CostCNY, a.OfficialUSD)
+	m.EffectiveCostPrice = ratio(a.CostCNY, a.OfficialNoCacheUSD*usdRate)
+	m.MeasuredCostPrice = ratio(a.CostCNY, a.OfficialUSD*usdRate)
 	m.Margin = ratio(a.RevenueCNY-a.CostCNY, a.RevenueCNY)
 	return m
 }

@@ -32,12 +32,17 @@ export const invalidate = {
     ),
   /** 缓存测试开始、结束、取消。 */
   cacheTests: (qc: QueryClient) => qc.invalidateQueries({ queryKey: keys.channels.latestCacheTests() }),
-  /** 价格覆盖、别名、模型级折扣、缓存覆盖。 */
+  /** 价格覆盖、别名、模型级倍率、缓存覆盖。 */
   prices: (qc: QueryClient) =>
     all(qc.invalidateQueries({ queryKey: keys.prices.all() }), qc.invalidateQueries({ queryKey: keys.channels.all() })),
-  /** 设置保存（含调度间隔）。 */
+  /** 设置保存（含调度间隔、美元参考汇率）：参考汇率会改变渠道售价等成本数值，所以渠道和统计一并刷新。 */
   settings: (qc: QueryClient) =>
-    all(qc.invalidateQueries({ queryKey: keys.settings() }), qc.invalidateQueries({ queryKey: keys.jobs() })),
+    all(
+      qc.invalidateQueries({ queryKey: keys.settings() }),
+      qc.invalidateQueries({ queryKey: keys.jobs() }),
+      qc.invalidateQueries({ queryKey: keys.channels.all() }),
+      qc.invalidateQueries({ queryKey: keys.stats.all() }),
+    ),
   /** 手动触发任务。 */
   jobs: (qc: QueryClient) => qc.invalidateQueries({ queryKey: keys.jobs() }),
   /** 统计重算、清空。 */

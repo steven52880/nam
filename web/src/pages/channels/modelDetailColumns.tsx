@@ -35,7 +35,7 @@ export function modelRowId(row: ModelRow): string {
 }
 
 /**
- * 渠道模型明细的列。channelId、fallback（渠道的上游分组折扣）、modelStats 变化时才重建。
+ * 渠道模型明细的列。channelId、fallback（渠道的上游分组倍率）、modelStats 变化时才重建。
  */
 export function useModelDetailColumns(
   channelId: number,
@@ -55,14 +55,14 @@ export function useModelDetailColumns(
       width: 6,
       cell: (m) => formatSignificant(m.upstream_input),
     }),
-    customCol<ModelRow>('derived_discount', '推算折扣', {
+    customCol<ModelRow>('derived_discount', '推算倍率', {
       width: 9,
       align: 'right',
       sortType: 'number',
       accessor: (m) => m.derived,
       cell: (m) => <DerivedCell row={m} />,
     }),
-    customCol<ModelRow>('discount_override', '上游分组折扣覆盖', {
+    customCol<ModelRow>('discount_override', '上游分组倍率覆盖', {
       width: 10,
       align: 'right',
       sortType: 'number',

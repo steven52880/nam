@@ -37,6 +37,7 @@ type state struct {
 	ups     map[uint]store.Upstream
 	tokens  map[uint]store.UpstreamToken
 	vendors *vendorIndex
+	usdRate float64 // 美元参考汇率 (元 / 1 美元)；channel_cost 除以它
 }
 
 func (s *Service) load(ctx context.Context) (*state, error) {
@@ -45,7 +46,8 @@ func (s *Service) load(ctx context.Context) (*state, error) {
 		return nil, resp.Upstream(fmt.Errorf("读取 NewAPI 渠道失败：%w", err))
 	}
 	st := &state{live: live, liveMap: map[int]ports.Channel{}, ext: map[int]store.ChannelExt{},
-		drafts: map[int]store.ChannelDraft{}, ups: map[uint]store.Upstream{}, tokens: map[uint]store.UpstreamToken{}}
+		usdRate: s.St.USDRate(ctx),
+		drafts:  map[int]store.ChannelDraft{}, ups: map[uint]store.Upstream{}, tokens: map[uint]store.UpstreamToken{}}
 	for _, c := range live {
 		st.liveMap[c.ID] = c
 	}
@@ -95,6 +97,12 @@ func (st *state) effective(live ports.Channel, isLive bool, body draftBody) port
 	return c
 }
 
+// channelCost is the 渠道售价 as a unitless multiple of the official price:
+// 分组倍率 × 上游货币汇率 ÷ 美元参考汇率. The one place that applies the 参考汇率 to channel rows.
+func (st *state) channelCost(discount, currencyRate float64) float64 {
+	return discount * currencyRate / st.usdRate
+}
+
 // row builds the UI row for one channel id (live, draft-create, or both).
 func (st *state) row(id int) Row {
 	live, isLive := st.liveMap[id]
@@ -136,7 +144,7 @@ func (st *state) row(id int) Row {
 		if u, ok := st.ups[*r.UpstreamID]; ok {
 			r.UpstreamName = u.Name
 			rate := u.CurrencyRate
-			cost := r.Discount * rate
+			cost := st.channelCost(r.Discount, rate)
 			r.CurrencyRate, r.ChannelCost = &rate, &cost
 		}
 	}

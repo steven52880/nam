@@ -23,7 +23,7 @@ export function useModelDiscountMutation(channelId: number) {
   });
 }
 
-/** 模型级上游分组折扣覆盖：失焦或 Enter 提交，空值表示沿用渠道折扣。 */
+/** 模型级上游分组倍率覆盖：失焦或 Enter 提交，空值表示沿用渠道倍率。 */
 export function DiscountCell({
   channelId,
   model,
@@ -48,7 +48,7 @@ export function DiscountCell({
     if (text.trim() === initial) return;
     const discount = parseFraction(text);
     if (discount === undefined) {
-      toast.error('上游分组折扣必须大于 0，留空表示沿用渠道折扣');
+      toast.error('上游分组倍率必须大于 0，留空表示沿用渠道倍率');
       setText(initial);
       return;
     }

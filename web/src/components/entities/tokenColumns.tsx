@@ -2,22 +2,25 @@ import type { UpstreamGroup, UpstreamToken } from '@/api/types';
 import { StatusBadge } from '@/components/cells/StatusBadge';
 import { numberCol, textCol, type TableColumn } from '@/components/table';
 import { Badge } from '@/components/ui/misc';
-import { formatNumber } from '@/lib/format';
+import { formatNumber, formatRatioPercent } from '@/lib/format';
 import { TOKEN_STATUS } from '@/lib/labels';
+import { CHANNEL_PRICE_HINT, channelPrice } from '@/lib/usdRate';
 
 export interface TokenColumnOptions {
   /** 该上游的分组倍率，用于「分组倍率」列；不传时该列为空。 */
   groups?: readonly UpstreamGroup[];
-  /** 该上游的货币汇率，用于「渠道标价倍率」列（分组倍率 × 汇率）；不传时该列为空。 */
+  /** 该上游的货币汇率（元/$），用于「上游渠道售价」列；不传时该列为空。 */
   rate?: number;
+  /** 美元参考汇率（元/$，设置项 usd_cny_rate，由页面层取到后传入）；不传时「上游渠道售价」列为空。 */
+  usdRate?: number;
 }
 
 /** 上游页「令牌」标签页和渠道向导选令牌共用的列；列宽单位 rem，列 id 上线后不改。 */
-export function tokenColumns({ groups, rate }: TokenColumnOptions = {}): TableColumn<UpstreamToken>[] {
+export function tokenColumns({ groups, rate, usdRate }: TokenColumnOptions = {}): TableColumn<UpstreamToken>[] {
   const ratioOf = (group: string): number | null => groups?.find((g) => g.name === group)?.ratio ?? null;
-  const priceRatioOf = (group: string): number | null => {
+  const priceOf = (group: string): number | null => {
     const ratio = ratioOf(group);
-    return ratio === null || rate === undefined ? null : ratio * rate;
+    return ratio === null || rate === undefined || usdRate === undefined ? null : channelPrice(ratio, rate, usdRate);
   };
   return [
     textCol<UpstreamToken>('name', '令牌名', (t) => t.name, {
@@ -39,9 +42,10 @@ export function tokenColumns({ groups, rate }: TokenColumnOptions = {}): TableCo
       width: 6.5,
       cell: (t) => formatNumber(ratioOf(t.group), 3),
     }),
-    numberCol<UpstreamToken>('price_ratio', '渠道标价倍率', (t) => priceRatioOf(t.group), {
+    numberCol<UpstreamToken>('price_ratio', '上游渠道售价', (t) => priceOf(t.group), {
       width: 7,
-      cell: (t) => formatNumber(priceRatioOf(t.group), 3),
+      headerTitle: CHANNEL_PRICE_HINT,
+      cell: (t) => formatRatioPercent(priceOf(t.group)),
     }),
     numberCol<UpstreamToken>('quota_usd', '额度（美元）', (t) => (t.unlimited ? null : t.quota_usd), {
       width: 8,

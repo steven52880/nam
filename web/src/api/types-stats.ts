@@ -1,6 +1,7 @@
 /** M4 统计接口的类型，契约见 .omo/plans/m4-stats.md「JSON 契约」。比率都是 0–1 的小数。 */
 
-export type StatsWindow = 'latest' | '3d' | '7d';
+/** latest，或 <正整数>h / <正整数>d（上限 186 天）；校验见 lib/statsWindow.ts。 */
+export type StatsWindow = 'latest' | `${number}h` | `${number}d`;
 export type StatsDim = 'channel' | 'model' | 'upstream' | 'vendor';
 export type StatsBucket = 'hour' | 'day';
 export type FailClass = '429' | '5xx' | 'timeout' | '401' | 'balance' | 'other';
@@ -33,15 +34,25 @@ export interface StatsMetrics {
   revenue_cny: number;
   /** 能算出成本的请求数。 */
   priced_requests: number;
-  /** 实测成本价（有效口径）：实际成本 ÷ 不算缓存的原厂成本，缓存命中越高越低。 */
+  /**
+   * 实际负载成本（原「实测成本」，有效口径）：渠道真实请求的实际花费 ÷ 同样请求不算缓存、按原厂价计的费用
+   * （统一成人民币后相除）。后端已除以美元参考汇率，值是「原厂价的倍数」（0.024 = 2.4%），前端不再除；缓存命中越高越低。
+   */
   effective_cost_price: number | null;
-  /** 定价口径：实际成本 ÷ 按原厂缓存价算的原厂成本（M5 用）。 */
+  /**
+   * 实际计费倍率（原「定价口径成本价」）：实际花费 ÷ 算上缓存优惠的原厂价，值是原厂价的倍数。
+   * 正常应约等于上游渠道售价，明显偏高说明上游多扣了。
+   */
   measured_cost_price: number | null;
   margin: number | null;
 }
 
 export interface ChannelStatsItem extends StatsMetrics {
   channel_id: number;
+  /**
+   * 标准负载成本（原「标准负载成本价」）：用同厂商所有渠道近 7 天的平均 token 比例，按渠道配置的倍率、汇率、
+   * 缓存价理论计算的 实际花费 ÷ 不算缓存的原厂价；值是原厂价的倍数。价格档按它划分。
+   */
   std_cost_price: number | null;
   price_tier: PriceTier | null;
   quality_tier: QualityTier;
@@ -74,6 +85,7 @@ export interface ScatterPoint {
   channel_id: number;
   name: string;
   vendor: string;
+  /** 标准负载成本（原厂价的倍数），含义同 ChannelStatsItem.std_cost_price。 */
   std_cost_price: number | null;
   wilson: number | null;
   requests: number;

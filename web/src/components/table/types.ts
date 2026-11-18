@@ -82,9 +82,11 @@ export interface DataTableProps<T> {
   groupBy?: (row: T) => string;
   groupLabel?: (key: string) => ReactNode;
   sortGroups?: (keys: string[]) => string[];
-  /** 变化时全部重新折叠。 */
+  /** 变化时回到默认状态（默认折叠：全部折叠；groupsDefaultExpanded：全部展开）。 */
   groupResetKey?: string;
-  /** 为 true 时全部展开。 */
+  /** 为 true 时分组默认全部展开（点组标题收起）；默认 false = 默认全部折叠。 */
+  groupsDefaultExpanded?: boolean;
+  /** 为 true 时全部展开（优先于手动收起，用于搜索）。 */
   expandAll?: boolean;
   /** 提供才允许拖动组标题；参数是可见组的新顺序。 */
   onGroupReorder?: (visibleKeys: string[]) => void;

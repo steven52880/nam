@@ -23,7 +23,8 @@ func (s *Server) registerStatsRoutes(p *gin.RouterGroup) {
 // maxModelParam caps the length (in characters) of a model query parameter.
 const maxModelParam = 200
 
-// windowParam defaults to "latest"; validity is checked by the stats package.
+// windowParam defaults to "latest"; the raw value (e.g. "12h", "30d") is passed through and
+// validity is checked by the stats package.
 func windowParam(c *gin.Context) string {
 	if w := c.Query("window"); w != "" {
 		return w

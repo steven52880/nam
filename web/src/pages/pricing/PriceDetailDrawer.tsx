@@ -12,7 +12,7 @@ import { sourceLabel } from './constants';
 
 const CHANNEL_COLUMNS: TableColumn<PriceChannelUse>[] = [
   textCol('name', '渠道', (c) => c.name, { width: 12 }),
-  numberCol('discount', '上游分组折扣', (c) => c.discount, {
+  numberCol('discount', '上游分组倍率', (c) => c.discount, {
     width: 8,
     cell: (c) => formatNumber(c.discount, 3),
   }),

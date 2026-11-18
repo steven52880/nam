@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -72,7 +73,7 @@ func TestM4StatsQueries(t *testing.T) {
 	if ca.Success != 10 || ca.Fail != 2 || ca.FailByClass["5xx"] != 2 || len(ca.FailByClass) != 1 {
 		t.Fatalf("channel a counts: %+v", ca)
 	}
-	if !near(f(ca.CacheHit), 0.2, 1e-9) || !near(f(ca.EffectiveCostPrice), 0.001743/0.0105, 1e-6) || !near(f(ca.MeasuredCostPrice), 0.175, 1e-6) {
+	if !near(f(ca.CacheHit), 0.2, 1e-9) || !near(f(ca.EffectiveCostPrice), 0.001743/0.0105/7.2, 1e-6) || !near(f(ca.MeasuredCostPrice), 0.175/7.2, 1e-6) {
 		t.Fatalf("channel a cache/cost: hit=%v eff=%v meas=%v", ca.CacheHit, ca.EffectiveCostPrice, ca.MeasuredCostPrice)
 	}
 	if ca.SpeedEstimated || !near(f(ca.SpeedP50), 250, 0.05) {
@@ -82,7 +83,7 @@ func TestM4StatsQueries(t *testing.T) {
 		t.Fatalf("channel b speed: est=%v p50=%v", cb.SpeedEstimated, cb.SpeedP50)
 	}
 	for _, c := range []stats.ChannelStatsItem{ca, cb} {
-		if !near(f(c.StdCostPrice), 0.175, 1e-6) || c.PriceTier == nil {
+		if !near(f(c.StdCostPrice), 0.175/7.2, 1e-6) || c.PriceTier == nil {
 			t.Fatalf("channel %d std/tier: std=%v tier=%v", c.ChannelID, c.StdCostPrice, c.PriceTier)
 		}
 	}
@@ -181,6 +182,20 @@ func TestM4StatsBadParams(t *testing.T) {
 	}
 	if r := m.call("PUT", "/settings", map[string]string{"stats_backfill_days": "30", "newapi_log_cleanup": "true"}); r.Code != 200 {
 		t.Errorf("valid settings: %d %s", r.Code, r.Raw)
+	}
+}
+
+func TestUSDCNYRateSetting(t *testing.T) {
+	m := newM3(t)
+	for _, v := range []string{"0", "-1", "100.01", "abc", "", "NaN", "Inf", " 7"} {
+		if r := m.call("PUT", "/settings", map[string]string{"usd_cny_rate": v}); r.Code != 400 {
+			t.Errorf("usd_cny_rate %q: want 400, got %d", v, r.Code)
+		}
+	}
+	for _, v := range []string{"7.2", "100", "0.5", "1"} {
+		if r := m.call("PUT", "/settings", map[string]string{"usd_cny_rate": v}); r.Code != 200 || !strings.Contains(r.Raw, `"usd_cny_rate":"`+v+`"`) {
+			t.Errorf("usd_cny_rate %q: %d %s", v, r.Code, r.Raw)
+		}
 	}
 }
 

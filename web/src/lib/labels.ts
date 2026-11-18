@@ -1,4 +1,5 @@
 import type { CredType, FailClass, JobName, PriceStatus, StatsWindow, SyncState, UpstreamType } from '@/api/types';
+import { parseCustomWindow } from './statsWindow';
 
 /** 徽标颜色，与 components/ui/misc.tsx 的 Badge tone 一一对应。 */
 export type Tone = 'success' | 'warning' | 'danger' | 'neutral' | 'accent';
@@ -90,11 +91,21 @@ export const CHANNEL_TYPE: Record<58 | 24, LabelDef> = {
   24: def('Gemini 原生（24）'),
 };
 
-export const STATS_WINDOW: Record<StatsWindow, LabelDef> = {
+/** 统计时长预设（下拉里固定显示的几项）；自定义时长用 statsWindowLabel。 */
+export const STATS_WINDOW_PRESETS: Record<'latest' | '3d' | '7d', LabelDef> = {
   latest: def('最新'),
   '3d': def('3 天'),
   '7d': def('7 天'),
 };
+
+/** 统计时长的文字：latest → 最新，12h → 12 小时，30d → 30 天；认不出的原样返回。 */
+export function statsWindowLabel(window: StatsWindow): string {
+  const preset = (STATS_WINDOW_PRESETS as Record<string, LabelDef | undefined>)[window];
+  if (preset) return preset.label;
+  const custom = parseCustomWindow(window);
+  if (!custom) return window;
+  return `${custom.amount} ${custom.unit === 'h' ? '小时' : '天'}`;
+}
 
 export const FAIL_CLASS: Record<FailClass, LabelDef> = {
   '429': def('429 限流', 'danger'),

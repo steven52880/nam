@@ -41,8 +41,9 @@ func (s *Service) Series(ctx context.Context, from, to int64, dim, key, bucket s
 	if err != nil {
 		return out, err
 	}
+	usd := s.St.USDRate(ctx)
 	for t, a := range buckets {
-		out.Points = append(out.Points, SeriesPoint{Metrics: a.Metrics(), T: t})
+		out.Points = append(out.Points, SeriesPoint{Metrics: a.Metrics(usd), T: t})
 	}
 	sort.Slice(out.Points, func(i, j int) bool { return out.Points[i].T < out.Points[j].T })
 	return out, nil
