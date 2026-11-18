@@ -1,5 +1,4 @@
 import { Plus } from 'lucide-react';
-import { useCallback, useMemo } from 'react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { SplitPane } from '@/components/layout/SplitPane';
 import { DataTable } from '@/components/table';
@@ -10,64 +9,21 @@ import { useLayoutEditable } from '@/lib/layout/LayoutProvider';
 import { ChannelDialogs } from './channels/ChannelDialogs';
 import { ChannelToolbar } from './channels/ChannelToolbar';
 import { rowClass } from './channels/columns';
-import { COLUMN_FIELDS } from './channels/constants';
+import { DEFAULT_SORT } from './channels/constants';
 import { BulkUpstreamSelect } from './channels/EditableCells';
 import { distinct, rowKey } from './channels/filter';
-import { buildGroupLookups, groupKeyOf, groupLabelOf } from './channels/grouping';
 import { ModelDetail } from './channels/ModelDetail';
-import { buildRowMenu } from './channels/rowMenu';
-import { useChannelColumns } from './channels/useChannelColumns';
 import { useChannelsPage } from './channels/useChannelsPage';
-import { summarizeGroup, type ChannelViewRow } from './channels/viewModel';
+import { useChannelTable } from './channels/useChannelTable';
+import type { ChannelViewRow } from './channels/viewModel';
 
 const rowMenuHeader = (row: ChannelViewRow) => row.name;
 
 export default function ChannelsPage() {
   const page = useChannelsPage();
-  const { rows, actions, dialogs, wizard, view, groupMode, filters } = page;
-  const columns = useChannelColumns(page);
+  const { rows, actions, dialogs, wizard, view, groupMode, filters, grouping } = page;
+  const table = useChannelTable(page);
   const editable = useLayoutEditable();
-
-  const rowById = useMemo(() => new Map(rows.map((r) => [rowKey(r), r])), [rows]);
-  const lookups = useMemo(() => buildGroupLookups(rows), [rows]);
-  const groupBy = useMemo(() => groupKeyOf(groupMode), [groupMode]);
-  const groupLabel = useCallback((key: string) => groupLabelOf(groupMode, key, lookups), [groupMode, lookups]);
-  const hasStats = page.stats.size > 0;
-  // 传给表格的回调保持引用稳定，否则拖列宽时表体会整个重新渲染
-  const groupSummary = useCallback(
-    (_key: string, groupRows: ChannelViewRow[]) => summarizeGroup(groupRows, hasStats),
-    [hasStats],
-  );
-
-  const isDirty = useCallback(
-    (rowId: string, columnId: string) => {
-      const row = rowById.get(rowId);
-      const fields = COLUMN_FIELDS[columnId];
-      return !!row && !!fields && fields.some((f) => row.dirty_fields.includes(f));
-    },
-    [rowById],
-  );
-  const cellClassName = useCallback((row: ChannelViewRow, columnId: string) => {
-    const fields = COLUMN_FIELDS[columnId];
-    return fields?.some((f) => row.drift_fields.includes(f)) ? 'bg-destructive/15' : undefined;
-  }, []);
-  // 只依赖引用稳定的函数（mutate、useCallback、setState），不依赖每次渲染都换新的 actions 对象
-  const { setStatus } = actions;
-  const openInNewapi = actions.openInNewapi.mutate;
-  const copyAsNew = actions.copyAsNew.mutate;
-  const rowMenu = useCallback(
-    (row: ChannelViewRow) =>
-      buildRowMenu(row, {
-        setStatus,
-        openTest: dialogs.setTestRow,
-        openCache: dialogs.setCacheRow,
-        openInNewapi: (id) => openInNewapi(id),
-        copyAsNew: (r) => copyAsNew(r),
-        openDrift: dialogs.setDriftRow,
-        askDelete: dialogs.setDeleteRow,
-      }),
-    [setStatus, openInNewapi, copyAsNew, dialogs.setTestRow, dialogs.setCacheRow, dialogs.setDriftRow, dialogs.setDeleteRow],
-  );
 
   const selected = page.selectedRows;
   const toolbar = (
@@ -111,6 +67,9 @@ export default function ChannelsPage() {
         tags={distinct(rows, (r) => r.tag)}
         statsWindow={page.statsWindow}
         onStatsWindow={page.setStatsWindow}
+        model={page.model}
+        onModel={page.setModel}
+        modelOptions={page.modelOptions}
       />
       {page.list.isError && <Banner tone="error">{page.list.error.message}</Banner>}
       {page.errorLogHint && (
@@ -127,24 +86,27 @@ export default function ChannelsPage() {
             layoutId="channels.main"
             className="min-h-0 flex-1"
             data={view.rows}
-            columns={columns}
+            columns={table.columns}
             getRowId={rowKey}
+            defaultSort={DEFAULT_SORT}
             selection="cells"
-            groupBy={groupBy}
-            groupLabel={groupLabel}
-            groupSummary={groupSummary}
+            groupBy={grouping.groupBy}
+            groupLabel={grouping.groupLabel}
+            sortGroups={grouping.sortGroups}
+            onGroupReorder={grouping.onGroupReorder}
+            groupSummary={table.groupSummary}
             groupResetKey={groupMode}
             expandAll={filters.search.trim() !== ''}
-            isDirty={isDirty}
+            isDirty={table.isDirty}
             rowClassName={rowClass}
-            cellClassName={cellClassName}
+            cellClassName={table.cellClassName}
             toolbar={toolbar}
             onEdit={actions.edit}
             onCopy={actions.copy}
             onPaste={actions.paste}
             onFocusRowChange={page.setFocusId}
             onSelectionChange={page.setRange}
-            rowMenu={rowMenu}
+            rowMenu={table.rowMenu}
             rowMenuHeader={rowMenuHeader}
           />
         }

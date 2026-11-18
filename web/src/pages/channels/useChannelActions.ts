@@ -7,11 +7,21 @@ import { invalidate } from '@/api/invalidate';
 import type { ChannelChange, ChannelRow } from '@/api/types';
 import type { GridRange } from '@/components/table';
 import { useActionMutation } from '@/hooks/useActionMutation';
-import { copyColumnsOf, copyRowText, planPaste } from './clipboard';
+import { copyableColumns, copyColumnsOf, copyRowText, planPaste } from './clipboard';
 import { parseCell, toChange } from './edits';
 import { useDraftPatch } from './useChannels';
 
-export function useChannelActions(rows: ChannelRow[]) {
+const COPY_LABELS: Record<string, string> = {
+  status: '状态',
+  discount: '上游分组折扣',
+  priority: '优先级',
+  weight: '权重',
+  tag: '标签',
+  models: '模型',
+};
+
+/** model：当前选中的模型；选了模型时折扣列显示的是模型级折扣，不能通过编辑、复制、粘贴改渠道折扣。 */
+export function useChannelActions(rows: ChannelRow[], model: string | null) {
   const qc = useQueryClient();
   // 只依赖 mutate（引用稳定）；mutation 对象本身每次状态变化都是新的，依赖它会让列定义反复重建
   const { mutate: patchMutate } = useDraftPatch();
@@ -20,6 +30,7 @@ export function useChannelActions(rows: ChannelRow[]) {
 
   const edit = useCallback(
     (rowId: string, columnId: string, value: string) => {
+      if (model !== null && columnId === 'discount') return;
       const row = byId(rowId);
       const parsed = parseCell(columnId, value);
       if (!row) return;
@@ -29,7 +40,7 @@ export function useChannelActions(rows: ChannelRow[]) {
       }
       patchMutate([toChange(row.id, parsed.patch)]);
     },
-    [byId, patchMutate],
+    [byId, patchMutate, model],
   );
 
   const saveModels = useCallback(
@@ -58,23 +69,23 @@ export function useChannelActions(rows: ChannelRow[]) {
       }
       const row = byId(range.rowIds[0]);
       if (!row) return;
-      const allowed = copyColumnsOf(range.columnIds);
+      const allowed = copyColumnsOf(range.columnIds, model);
       const skipped = range.columnIds.length - allowed.length;
       if (allowed.length === 0) {
-        toast.info('所选列不能复制，可复制：状态、上游分组折扣、优先级、权重、标签、模型');
+        toast.info(`所选列不能复制，可复制：${copyableColumns(model).map((c) => COPY_LABELS[c] ?? c).join('、')}`);
         return;
       }
       if (skipped > 0) toast.info(`已跳过 ${skipped} 个不能复制的列`);
-      return copyRowText(row, range.columnIds);
+      return copyRowText(row, range.columnIds, model);
     },
-    [byId],
+    [byId, model],
   );
 
   /** Ctrl+V：单行文本粘贴到选区内每一行（按可复制列依次对应），合并为一次 PATCH。 */
   const paste = useCallback(
     (range: GridRange, text: string) => {
       const targets = range.rowIds.map(byId).filter((r): r is ChannelRow => r !== undefined);
-      const { changes, skipped } = planPaste(targets, range.columnIds, text);
+      const { changes, skipped } = planPaste(targets, range.columnIds, text, model);
       if (skipped.length > 0) toast.info(`有 ${skipped.length} 列因不可粘贴或内容无效被跳过`);
       if (changes.length === 0) {
         toast.info('没有可粘贴的内容');
@@ -82,7 +93,7 @@ export function useChannelActions(rows: ChannelRow[]) {
       }
       pasteMutate(changes);
     },
-    [byId, pasteMutate],
+    [byId, pasteMutate, model],
   );
 
   /** 改上游：先匹配令牌，匹配到就一起写入草稿；需要手动时只写上游并提示选令牌。 */

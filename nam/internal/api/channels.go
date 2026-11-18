@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/steven52880/nam/internal/channels"
@@ -20,6 +21,7 @@ func (s *Server) registerChannelRoutes(p *gin.RouterGroup) {
 	p.POST("/channels/match-tokens", s.matchTokens)
 	p.POST("/channels/delete", s.markDelete)
 	p.GET("/channels/plan", s.channelPlan)
+	p.GET("/channels/costs", s.channelCosts)
 	p.POST("/channels/apply", s.applyChannels)
 	p.GET("/channels/:id/drift", s.channelDrift)
 	p.POST("/channels/:id/drift/accept", s.acceptDrift)
@@ -40,6 +42,25 @@ func parseChannelID(c *gin.Context) (int, bool) {
 		return 0, false
 	}
 	return id, true
+}
+
+// GET /channels/costs?model= (required): every channel's cost on one model.
+func (s *Server) channelCosts(c *gin.Context) {
+	model := strings.TrimSpace(c.Query("model"))
+	if model == "" {
+		resp.FailFrom(c, resp.Invalid("model 不能为空"))
+		return
+	}
+	if utf8.RuneCountInString(model) > maxModelParam {
+		resp.FailFrom(c, resp.Invalid("model 不能超过 200 个字符"))
+		return
+	}
+	items, err := s.Channels.ModelCosts(c.Request.Context(), model)
+	if err != nil {
+		resp.FailFrom(c, err)
+		return
+	}
+	resp.OK(c, gin.H{"model": model, "items": items})
 }
 
 func (s *Server) listChannels(c *gin.Context) {

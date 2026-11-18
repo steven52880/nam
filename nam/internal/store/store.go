@@ -138,7 +138,11 @@ const (
 	KeyLogRetentionDays   = "log_retention_days"   // NewAPI 原始日志保留天数，默认 30
 	KeyStatsRetentionDays = "stats_retention_days" // 聚合保留天数，默认 180
 	KeyJobIntervalPrefix  = "job_interval."        // + job name
+	KeyUILayoutPrefix     = "ui_layout."           // + user id: 前端布局文档
 )
+
+// UILayoutKey is the settings key holding one user's UI layout document.
+func UILayoutKey(userID int) string { return KeyUILayoutPrefix + strconv.Itoa(userID) }
 
 // Defaults applied on first start (only if absent).
 var Defaults = map[string]string{

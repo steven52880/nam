@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from 'react';
-import { useChannels } from '@/api/queries';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { useChannelCosts, useChannels } from '@/api/queries';
 import type { ChannelRow, StatsWindow } from '@/api/types';
 import type { GridRange } from '@/components/table';
 import { useLayoutSlot } from '@/lib/layout/LayoutProvider';
@@ -8,8 +8,9 @@ import type { GroupMode } from './constants';
 import { EMPTY_FILTERS, rowKey, type ChannelFilters } from './filter';
 import { CHANNELS_PAGE_SLOT } from './pageSlot';
 import { useChannelActions } from './useChannelActions';
+import { useChannelGrouping } from './useChannelGrouping';
 import { useChannelStats } from './useChannelStats';
-import { buildChannelView } from './viewModel';
+import { buildChannelView, modelOptionsOf } from './viewModel';
 
 const NO_ROWS: ChannelRow[] = [];
 
@@ -18,18 +19,40 @@ export function useChannelsPage() {
   const list = useChannels();
   const url = useUrlState();
   const rows = list.data?.items ?? NO_ROWS;
-  const actions = useChannelActions(rows);
+  // 网址参数 model：选了模型后统计和成本都按该模型；清除后回到汇总
+  const model = url.get('model') || null;
+  const actions = useChannelActions(rows, model);
 
-  // 布局槽位 page:channels：分组方式、下栏占比
+  // 布局槽位 page:channels：分组方式、上游 / 标签的组顺序、下栏占比。
+  // 回调读 ref 里的最新值：下栏拖动时槽位每次都变，回调的引用不能跟着变，否则表体会整个重新渲染
   const [slot, setSlot] = useLayoutSlot(CHANNELS_PAGE_SLOT);
-  const setGroupMode = useCallback((groupMode: GroupMode) => setSlot({ ...slot, groupMode }), [slot, setSlot]);
-  const setSplitRatio = useCallback((splitRatio: number) => setSlot({ ...slot, splitRatio }), [slot, setSlot]);
+  const slotRef = useRef(slot);
+  slotRef.current = slot;
+  const setGroupMode = useCallback((groupMode: GroupMode) => setSlot({ ...slotRef.current, groupMode }), [setSlot]);
+  const setSplitRatio = useCallback((splitRatio: number) => setSlot({ ...slotRef.current, splitRatio }), [setSlot]);
+  const saveGroupOrder = useCallback(
+    (mode: 'upstream' | 'tag', order: string[]) => {
+      const cur = slotRef.current;
+      setSlot({ ...cur, groupOrder: { ...cur.groupOrder, [mode]: order } });
+    },
+    [setSlot],
+  );
+  const grouping = useChannelGrouping(rows, slot.groupMode, slot.groupOrder[slot.groupMode as 'upstream' | 'tag'], saveGroupOrder);
+
+  const { patch: patchUrl } = url;
+  const setModel = useCallback((value: string | null) => patchUrl({ model: value || null }), [patchUrl]);
+  const modelOptions = useMemo(() => modelOptionsOf(rows), [rows]);
+  const costsQuery = useChannelCosts(model);
+  const costs = model === null ? null : (costsQuery.data?.items ?? null);
 
   const [filters, setFilters] = useState<ChannelFilters>(() => ({ ...EMPTY_FILTERS, search: url.get('search') ?? '' }));
   const [statsWindow, setStatsWindow] = useState<StatsWindow>('latest');
-  const { stats, errorLogHint } = useChannelStats(statsWindow);
+  const { stats, errorLogHint } = useChannelStats(statsWindow, model);
 
-  const view = useMemo(() => buildChannelView({ rows, stats, filters }), [rows, stats, filters]);
+  const view = useMemo(
+    () => buildChannelView({ rows, stats, costs, model, filters }),
+    [rows, stats, costs, model, filters],
+  );
 
   // 选区与焦点
   const [focusId, setFocusId] = useState<string | null>(null);
@@ -70,6 +93,10 @@ export function useChannelsPage() {
     actions,
     groupMode: slot.groupMode,
     setGroupMode,
+    grouping,
+    model,
+    setModel,
+    modelOptions,
     splitRatio: slot.splitRatio,
     setSplitRatio,
     filters,

@@ -122,12 +122,21 @@ export function useChannelModels(id: number | null) {
   });
 }
 
-/** 渠道统计。model 为 null 时请求全部模型的汇总；选模型的接口参数第五批接入。 */
-export function useChannelStats(window: StatsWindow) {
+/** 渠道统计。model 为 null 时是全部模型的汇总，否则只统计该模型。 */
+export function useChannelStats(window: StatsWindow, model: string | null = null) {
   return useQuery({
-    queryKey: keys.stats.channels(window, null),
-    queryFn: () => api.statsChannels(window),
+    queryKey: keys.stats.channels(window, model),
+    queryFn: () => api.statsChannels(window, model),
     refetchInterval: 60_000,
+  });
+}
+
+/** 某个模型在各渠道上的成本；model 为 null 时不请求。随渠道数据一起失效（keys.channels.all）。 */
+export function useChannelCosts(model: string | null) {
+  return useQuery({
+    queryKey: keys.channels.costs(model ?? ''),
+    queryFn: () => api.channelCosts(model ?? ''),
+    enabled: model !== null,
   });
 }
 

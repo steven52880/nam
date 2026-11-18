@@ -29,6 +29,49 @@ describe('copyRowText', () => {
   });
 });
 
+describe('选了模型时跳过折扣列', () => {
+  const M = 'gpt-4o';
+
+  it('copyColumnsOf：选了模型时去掉 discount，没选时保留', () => {
+    expect(copyColumnsOf(['discount'], M)).toEqual([]);
+    expect(copyColumnsOf(['priority', 'discount', 'weight'], M)).toEqual(['priority', 'weight']);
+    expect(copyColumnsOf(['priority', 'discount', 'weight'], null)).toEqual(['priority', 'discount', 'weight']);
+    expect(copyColumnsOf(['priority', 'discount', 'weight'])).toEqual(['priority', 'discount', 'weight']);
+  });
+
+  it('copyRowText：单选 discount 一列为空串', () => {
+    expect(copyRowText(makeChannel({ discount: 0.8 }), ['discount'], M)).toBe('');
+  });
+
+  it('copyRowText：discount 夹在中间时跳过，其它列不错位', () => {
+    const row = makeChannel({ priority: 3, weight: 20, discount: 0.8 });
+    expect(copyRowText(row, ['priority', 'discount', 'weight'], M)).toBe('3\t20');
+    expect(copyRowText(row, ['priority', 'discount', 'weight'], null)).toBe(`3\t${copyRowText(row, ['discount'])}\t20`);
+  });
+
+  it('planPaste：单选 discount 一列不产生修改，并记录为跳过', () => {
+    const plan = planPaste([makeChannel({ id: 1 })], ['discount'], '0.5', M);
+    expect(plan.changes).toEqual([]);
+    expect(plan.skipped).toEqual(['discount']);
+  });
+
+  it('planPaste：discount 夹在中间时不写折扣，第 i 个可复制列取第 i 段文本', () => {
+    const plan = planPaste([makeChannel({ id: 5 })], ['priority', 'discount', 'weight'], '7\t30', M);
+    expect(plan.changes).toEqual([{ channel_id: 5, fields: { priority: 7, weight: 30 }, ext: {} }]);
+    expect(plan.skipped).toEqual(['discount']);
+  });
+
+  it('planPaste：广播时也不写折扣', () => {
+    const plan = planPaste([makeChannel({ id: 5 })], ['discount', 'priority'], '9', M);
+    expect(plan.changes).toEqual([{ channel_id: 5, fields: { priority: 9 }, ext: {} }]);
+  });
+
+  it('planPaste：没选模型时折扣照常粘贴', () => {
+    const plan = planPaste([makeChannel({ id: 5 })], ['priority', 'discount'], '7\t0.5', null);
+    expect(plan.changes[0].ext).toHaveProperty('discount');
+  });
+});
+
 describe('planPaste', () => {
   it('夹着只读列：第 i 个可复制列取第 i 段文本（修正错位）', () => {
     const plan = planPaste([makeChannel({ id: 5 })], ['priority', 'balance', 'weight'], '7\t30');

@@ -122,7 +122,7 @@ export function SplitPane({
         aria-valuemax={Math.round(MAX_RATIO * 100)}
         aria-disabled={disabled || undefined}
         tabIndex={0}
-        title={disabled ? undefined : '拖动调整高度'}
+        title={disabled ? '布局未加载，暂时不能调整' : '拖动调整高度'}
         onPointerDown={onPointerDown}
         onKeyDown={onKeyDown}
         className={cn(

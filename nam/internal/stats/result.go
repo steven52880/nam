@@ -42,6 +42,7 @@ type ChannelStatsItem struct {
 // ChannelStatsList is the GET /stats/channels payload.
 type ChannelStatsList struct {
 	Window       string             `json:"window"`
+	Model        string             `json:"model"`
 	GeneratedAt  int64              `json:"generated_at"`
 	PatchP1      bool               `json:"patch_p1"`
 	ErrorLogHint bool               `json:"error_log_hint"`

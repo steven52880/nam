@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react';
-import type { PriceTier, QualityTier } from '@/api/types';
+import type { ChannelStatsItem, PriceTier, QualityTier } from '@/api/types';
 import { CostCell } from '@/components/cells/CostCell';
 import { type CostRange } from '@/components/cells/costColor';
 import { Dash } from '@/components/cells/Dash';
@@ -15,6 +15,7 @@ type Col = TableColumn<Row>;
 
 const STATS_REASON = '统计列由系统计算，不能编辑';
 const EFFECTIVE_COST_HINT = '每消耗原厂 1 美元（不算缓存）实际花多少元，缓存命中越高越低';
+const NEEDS_MODEL_HINT = '选择模型后显示';
 
 type BadgeTone = NonNullable<ComponentProps<typeof Badge>['tone']>;
 
@@ -32,13 +33,20 @@ const QUALITY_TIERS: Record<QualityTier, { label: string; tone: BadgeTone; rank:
 };
 
 export interface StatColumnOptions {
+  /** 当前选中的模型；null = 渠道汇总（首字延迟、吐字速度这两列只在选了模型后显示）。 */
+  model: string | null;
   /** 当前可见行的实测成本范围，用于颜色梯度。 */
   effectiveCostRange: CostRange | null;
   /** 当前可见行的标准负载成本价范围。 */
   stdCostRange: CostRange | null;
 }
 
-/** 统计列读 `row.stat`（渠道汇总统计）；宽度单位 rem。 */
+/** 统计列读 `row.stat`；渠道不含所选模型（hasModel = false）时整行统计显示「—」。 */
+function statOf(r: Row): ChannelStatsItem | null {
+  return r.view.hasModel ? r.stat : null;
+}
+
+/** 统计列读 `row.stat`；宽度单位 rem。 */
 function statColumn(
   id: string,
   header: string,
@@ -49,50 +57,68 @@ function statColumn(
   return numberCol<Row>(id, header, accessor, { cell, readOnlyReason: STATS_REASON, width: 5.75, ...extra });
 }
 
+/** 只有选了模型才有意义的统计列：没选模型时整列显示「—」，表头提示"选择模型后显示"。 */
+function modelOnlyColumn(
+  model: string | null,
+  id: string,
+  header: string,
+  pick: (s: ChannelStatsItem) => number | null,
+  cell: Col['cell'],
+  width: number,
+): Col {
+  if (model === null) {
+    return statColumn(id, header, () => null, () => <Dash />, { width, headerTitle: NEEDS_MODEL_HINT });
+  }
+  return statColumn(id, header, (r) => {
+    const s = statOf(r);
+    return s ? pick(s) : null;
+  }, cell, { width });
+}
+
 /** main：默认显示的统计列；extra：默认隐藏的统计列。 */
-export function buildStatColumns({ effectiveCostRange, stdCostRange }: StatColumnOptions): {
+export function buildStatColumns({ model, effectiveCostRange, stdCostRange }: StatColumnOptions): {
   main: Col[];
   extra: Col[];
 } {
   return {
     main: [
-      statColumn('success_rate', '成功率', (r) => r.stat?.success_rate ?? null, (r) => <SuccessRateCell metrics={r.stat ?? undefined} />),
-      statColumn('first_token', '首字延迟', (r) => r.stat?.frt_p50 ?? null, (r) => <FirstTokenCell metrics={r.stat ?? undefined} />, { width: 6.25 }),
-      statColumn('speed', '吐字速度', (r) => r.stat?.speed_p50 ?? null, (r) => <SpeedStatCell metrics={r.stat ?? undefined} />, { width: 7 }),
-      statColumn('cache_hit', '缓存命中率', (r) => r.stat?.cache_hit ?? null, (r) => <PercentCell value={r.stat?.cache_hit} />, { width: 6.25 }),
+      statColumn('success_rate', '成功率', (r) => statOf(r)?.success_rate ?? null, (r) => <SuccessRateCell metrics={statOf(r) ?? undefined} />),
+      modelOnlyColumn(model, 'first_token', '首字延迟', (s) => s.frt_p50, (r) => <FirstTokenCell metrics={statOf(r) ?? undefined} />, 6.25),
+      modelOnlyColumn(model, 'speed', '吐字速度', (s) => s.speed_p50, (r) => <SpeedStatCell metrics={statOf(r) ?? undefined} />, 7),
+      statColumn('cache_hit', '缓存命中率', (r) => statOf(r)?.cache_hit ?? null, (r) => <PercentCell value={statOf(r)?.cache_hit} />, { width: 6.25 }),
       statColumn(
         'effective_cost',
         '实测成本',
-        (r) => r.stat?.effective_cost_price ?? null,
-        (r) => <CostCell value={r.stat?.effective_cost_price} range={effectiveCostRange} hint={EFFECTIVE_COST_HINT} />,
+        (r) => statOf(r)?.effective_cost_price ?? null,
+        (r) => <CostCell value={statOf(r)?.effective_cost_price} range={effectiveCostRange} hint={EFFECTIVE_COST_HINT} />,
         { headerTitle: EFFECTIVE_COST_HINT },
       ),
     ],
     extra: [
-      statColumn('measured_cost', '定价口径成本价', (r) => r.stat?.measured_cost_price ?? null, (r) => (
-        <CostCell value={r.stat?.measured_cost_price} range={null} />
+      statColumn('measured_cost', '定价口径成本价', (r) => statOf(r)?.measured_cost_price ?? null, (r) => (
+        <CostCell value={statOf(r)?.measured_cost_price} range={null} />
       ), { width: 7.5, hidden: true }),
-      statColumn('std_cost', '标准负载成本价', (r) => r.stat?.std_cost_price ?? null, (r) => (
-        <CostCell value={r.stat?.std_cost_price} range={stdCostRange} />
+      statColumn('std_cost', '标准负载成本价', (r) => statOf(r)?.std_cost_price ?? null, (r) => (
+        <CostCell value={statOf(r)?.std_cost_price} range={stdCostRange} />
       ), { width: 7.5, hidden: true }),
       statColumn('price_tier', '价格档', (r) => {
-        const tier = r.stat?.price_tier;
+        const tier = statOf(r)?.price_tier;
         return tier ? PRICE_TIERS[tier].rank : null;
       }, (r) => {
-        const tier = r.stat?.price_tier;
+        const tier = statOf(r)?.price_tier;
         return tier ? <Badge tone={PRICE_TIERS[tier].tone}>{PRICE_TIERS[tier].label}</Badge> : <Dash />;
       }, { width: 5, hidden: true }),
       statColumn('quality_tier', '质量档', (r) => {
-        const item = r.stat;
+        const item = statOf(r);
         return item ? QUALITY_TIERS[item.quality_tier].rank : null;
       }, (r) => {
-        const item = r.stat;
+        const item = statOf(r);
         if (!item) return <Dash />;
         const tier = QUALITY_TIERS[item.quality_tier];
         return <Badge tone={tier.tone}>{tier.label}</Badge>;
       }, { width: 5.75, hidden: true }),
-      statColumn('cost', '成本（元）', (r) => r.stat?.cost_cny ?? null, (r) => {
-        const item = r.stat;
+      statColumn('cost', '成本（元）', (r) => statOf(r)?.cost_cny ?? null, (r) => {
+        const item = statOf(r);
         return item ? <span className="tabular-nums">{formatSignificant(item.cost_cny, 4)}</span> : <Dash />;
       }, { width: 6.25, hidden: true }),
     ],

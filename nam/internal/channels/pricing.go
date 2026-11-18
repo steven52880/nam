@@ -2,6 +2,7 @@ package channels
 
 import (
 	"context"
+	"slices"
 
 	"github.com/steven52880/nam/internal/pricing"
 )
@@ -49,21 +50,79 @@ func priceRows(rows []Row, st *state, book *pricing.Book) {
 		if _, ok := book.Resolve(model); !ok {
 			model = book.CheapestModel(r.Models)
 		}
-		p, ok := book.Resolve(model)
-		if !ok {
+		overrides, cache := costInputs(st, r.ID)
+		disc := pricing.EffectiveDiscount(r.Discount, overrides, model)
+		cny := unitCostCNY(book, model, disc, *r.CurrencyRate, cache)
+		if cny == nil {
 			continue
 		}
-		overrides := map[string]float64{}
-		cache := pricing.CacheRatio{}
-		if e, ok := st.ext[r.ID]; ok {
-			overrides = pricing.ModelDiscounts(e.ModelDiscount)
-			cache = pricing.ParseCacheRatio(e.CacheOverride)
-		}
-		disc := pricing.EffectiveDiscount(r.Discount, overrides, model)
-		usd := pricing.OfficialUSD(p, pricing.StandardRequest, cache)
-		cny := pricing.ChannelCNY(usd, disc, *r.CurrencyRate)
-		r.UnitCost, r.UnitCostModel = &cny, model
+		r.UnitCost, r.UnitCostModel = cny, model
 	}
+}
+
+// costInputs returns a channel's per-model discount overrides and cache-ratio override
+// (empty when the channel has no ext row).
+func costInputs(st *state, id int) (overrides map[string]float64, cache pricing.CacheRatio) {
+	overrides = map[string]float64{}
+	if e, ok := st.ext[id]; ok {
+		overrides = pricing.ModelDiscounts(e.ModelDiscount)
+		cache = pricing.ParseCacheRatio(e.CacheOverride)
+	}
+	return overrides, cache
+}
+
+// unitCostCNY is the cost of one standard request on model, or nil when the model has no
+// price in the book.
+func unitCostCNY(book *pricing.Book, model string, disc, rate float64, cache pricing.CacheRatio) *float64 {
+	p, ok := book.Resolve(model)
+	if !ok {
+		return nil
+	}
+	usd := pricing.OfficialUSD(p, pricing.StandardRequest, cache)
+	cny := pricing.ChannelCNY(usd, disc, rate)
+	return &cny
+}
+
+// ModelCost is one channel's cost for a single model (GET /channels/costs).
+type ModelCost struct {
+	ChannelID   int      `json:"channel_id"`
+	HasModel    bool     `json:"has_model"`
+	Discount    *float64 `json:"discount"`
+	ChannelCost *float64 `json:"channel_cost"`
+	UnitCost    *float64 `json:"unit_cost"`
+}
+
+// ModelCosts computes every channel row's discount and cost on model. Rows that do not
+// carry the model have HasModel=false and nil numbers. Row set equals List (incl. drafts).
+func (s *Service) ModelCosts(ctx context.Context, model string) ([]ModelCost, error) {
+	st, err := s.load(ctx)
+	if err != nil {
+		return nil, err
+	}
+	book, err := pricing.LoadBook(ctx, s.St)
+	if err != nil {
+		return nil, err
+	}
+	rows := st.rows()
+	out := make([]ModelCost, 0, len(rows))
+	for _, r := range rows {
+		mc := ModelCost{ChannelID: r.ID}
+		if !slices.Contains(r.Models, model) {
+			out = append(out, mc)
+			continue
+		}
+		mc.HasModel = true
+		overrides, cache := costInputs(st, r.ID)
+		disc := pricing.EffectiveDiscount(r.Discount, overrides, model)
+		mc.Discount = &disc
+		if r.CurrencyRate != nil {
+			cc := disc * *r.CurrencyRate
+			mc.ChannelCost = &cc
+			mc.UnitCost = unitCostCNY(book, model, disc, *r.CurrencyRate, cache)
+		}
+		out = append(out, mc)
+	}
+	return out, nil
 }
 
 // testModelFor picks the default test model for a batch-created channel: the cheapest

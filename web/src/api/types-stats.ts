@@ -49,6 +49,8 @@ export interface ChannelStatsItem extends StatsMetrics {
 
 export interface ChannelStatsList {
   window: StatsWindow;
+  /** 请求时带的模型；空字符串 = 全部模型的汇总。 */
+  model: string;
   generated_at: number;
   patch_p1: boolean;
   error_log_hint: boolean;

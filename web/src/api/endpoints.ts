@@ -49,6 +49,7 @@ import type {
   VendorMatchResponse,
   JobStatus,
   ChannelStatsList,
+  ModelCostList,
   ModelStatsList,
   OverviewQuery,
   SeriesQuery,
@@ -56,7 +57,9 @@ import type {
   StatsSeries,
   StatsStatus,
   StatsWindow,
+  UiLayoutResponse,
 } from './types';
+import type { LayoutDoc } from '@/lib/layout/store';
 
 export const api = {
   session: () => request<Session>('/session', { silent: true }),
@@ -154,8 +157,11 @@ export const api = {
   settings: () => request<Settings>('/settings'),
   saveSettings: (body: Settings) => request<Settings>('/settings', { method: 'PUT', body }),
 
-  statsChannels: (window: StatsWindow) =>
-    request<ChannelStatsList>('/stats/channels', { query: { window } }),
+  statsChannels: (window: StatsWindow, model?: string | null) =>
+    request<ChannelStatsList>('/stats/channels', { query: { window, model: model || undefined } }),
+  channelCosts: (model: string) => request<ModelCostList>('/channels/costs', { query: { model } }),
+  uiLayout: () => request<UiLayoutResponse>('/ui/layout', { silent: true }),
+  saveUiLayout: (layout: LayoutDoc) => request<{ saved_at: number }>('/ui/layout', { method: 'PUT', body: { layout } }),
   statsChannelModels: (id: number, window: StatsWindow) =>
     request<ModelStatsList>(`/stats/channels/${id}/models`, { query: { window } }),
   statsOverview: (q: OverviewQuery) => request<StatsOverview>('/stats/overview', { query: { ...q } }),

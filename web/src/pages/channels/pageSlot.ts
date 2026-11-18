@@ -4,7 +4,7 @@ import { GROUP_MODE_OPTIONS, type GroupMode } from './constants';
 /** 槽位 `page:channels`：分组方式、拖动后的组顺序、下栏占比。 */
 export interface ChannelsPageSlot {
   groupMode: GroupMode;
-  /** 上游 / 标签的组顺序（第五批启用，这批不读不写）。 */
+  /** 上游 / 标签的组顺序（拖动组标题后写回）。 */
   groupOrder: { upstream: string[]; tag: string[] };
   /** 下栏占容器高度的比例。 */
   splitRatio: number;
@@ -35,7 +35,7 @@ function parseSlot(data: unknown): ChannelsPageSlot | null {
 export const CHANNELS_PAGE_SLOT: SlotSpec<ChannelsPageSlot> = {
   id: 'page:channels',
   version: 1,
-  // 这批保持现状按上游分组；第五批改成按厂商
-  defaults: () => ({ groupMode: 'upstream', groupOrder: { upstream: [], tag: [] }, splitRatio: 0.3 }),
+  // 布局之前只存在内存里（没有已保存的数据），默认改成按厂商分组，版本号不变
+  defaults: () => ({ groupMode: 'vendor', groupOrder: { upstream: [], tag: [] }, splitRatio: 0.3 }),
   parse: parseSlot,
 };

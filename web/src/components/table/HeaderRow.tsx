@@ -68,7 +68,7 @@ function HeaderCell<T>({
       ref={s.setNodeRef}
       style={s.style}
       data-col-id={id}
-      title={col?.headerTitle}
+      title={col?.headerTitle ?? (col && !col.fixed && !editable ? '布局未加载，暂时不能调整列' : undefined)}
       {...(draggable ? s.attributes : {})}
       {...(draggable ? s.listeners : {})}
       role="columnheader"

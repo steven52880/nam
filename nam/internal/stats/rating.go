@@ -2,6 +2,7 @@ package stats
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"time"
 
@@ -104,14 +105,17 @@ func (s *Service) vendorMix(ctx context.Context) (map[string]pricing.Usage, erro
 
 // stdPrice is the channel's cost per official USD under the vendor's token mix, on the
 // channel's test model (or the cheapest priced one). nil when unmanaged or unpriced.
-func stdPrice(pr *Pricer, ch ports.Channel, mix map[string]pricing.Usage) *float64 {
+// A non-empty model overrides that choice: the price is taken on exactly that model.
+func stdPrice(pr *Pricer, ch ports.Channel, mix map[string]pricing.Usage, model string) *float64 {
 	cp, ok := pr.channels[ch.ID]
 	if !ok {
 		return nil
 	}
-	model := ch.TestModel
-	if _, priced := pr.book.Resolve(model); !priced {
-		model = pr.book.CheapestModel(ch.Models)
+	if model == "" {
+		model = ch.TestModel
+		if _, priced := pr.book.Resolve(model); !priced {
+			model = pr.book.CheapestModel(ch.Models)
+		}
 	}
 	p, ok := pr.book.Resolve(model)
 	if !ok {
@@ -130,8 +134,10 @@ func stdPrice(pr *Pricer, ch ports.Channel, mix map[string]pricing.Usage) *float
 	return &v
 }
 
-// rate computes std_cost_price and price tiers for every listed channel.
-func (s *Service) rate(ctx context.Context, pr *Pricer, chans []ports.Channel) (ratings, error) {
+// rate computes std_cost_price and price tiers for every listed channel. A non-empty
+// model restricts the computation to channels that serve that model, so price tiers only
+// compare channels among themselves that carry it.
+func (s *Service) rate(ctx context.Context, pr *Pricer, chans []ports.Channel, model string) (ratings, error) {
 	mix, err := s.vendorMix(ctx)
 	if err != nil {
 		return ratings{}, err
@@ -139,7 +145,10 @@ func (s *Service) rate(ctx context.Context, pr *Pricer, chans []ports.Channel) (
 	r := ratings{std: map[int]*float64{}}
 	var entries []stdEntry
 	for _, ch := range chans {
-		v := stdPrice(pr, ch, mix)
+		if model != "" && !slices.Contains(ch.Models, model) {
+			continue
+		}
+		v := stdPrice(pr, ch, mix, model)
 		r.std[ch.ID] = v
 		if v != nil {
 			entries = append(entries, stdEntry{id: ch.ID, vendor: pr.channels[ch.ID].ext.Vendor, price: *v})

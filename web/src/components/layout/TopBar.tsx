@@ -19,6 +19,7 @@ import { ApplyDialog } from '@/components/entities/ApplyDialog';
 import { useTheme } from '@/hooks/useTheme';
 import { ConnectionStatus } from './ConnectionStatus';
 import { GlobalSearch } from './GlobalSearch';
+import { LayoutSaveButton } from './LayoutSaveButton';
 import { PasswordDialog } from './PasswordDialog';
 
 export function TopBar() {
@@ -53,6 +54,7 @@ export function TopBar() {
         待应用草稿 {draftCount}
       </Button>
       <ApplyDialog open={applyOpen} onOpenChange={setApplyOpen} />
+      <LayoutSaveButton />
       <Button variant="ghost" size="icon" onClick={toggle} title="切换主题">
         {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
       </Button>

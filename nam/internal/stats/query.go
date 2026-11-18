@@ -90,9 +90,10 @@ func (s *Service) windowAggs(ctx context.Context, window string, channelID int) 
 	return wd, now, nil
 }
 
-// ChannelStats is GET /stats/channels.
-func (s *Service) ChannelStats(ctx context.Context, window string) (ChannelStatsList, error) {
-	out := ChannelStatsList{Window: window, Items: []ChannelStatsItem{}}
+// ChannelStats is GET /stats/channels. A non-empty model narrows every channel's numbers
+// to that model (channels without it are skipped); empty keeps the channel totals.
+func (s *Service) ChannelStats(ctx context.Context, window, model string) (ChannelStatsList, error) {
+	out := ChannelStatsList{Window: window, Model: model, Items: []ChannelStatsItem{}}
 	wd, at, err := s.windowAggs(ctx, window, 0)
 	if err != nil {
 		return out, err
@@ -106,11 +107,18 @@ func (s *Service) ChannelStats(ctx context.Context, window string) (ChannelStats
 	if err != nil {
 		return out, err
 	}
-	rt, err := s.rate(ctx, pr, chans)
+	rt, err := s.rate(ctx, pr, chans, model)
 	if err != nil {
 		return out, err
 	}
 	for id, a := range wd.ch {
+		if model != "" {
+			ma, ok := wd.models[id][model]
+			if !ok {
+				continue
+			}
+			a = ma
+		}
 		m := a.Metrics()
 		out.Items = append(out.Items, ChannelStatsItem{
 			Metrics: m, ChannelID: id, StdCostPrice: rt.std[id], PriceTier: rt.tierPtr(id),

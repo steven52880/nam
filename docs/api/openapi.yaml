@@ -510,10 +510,29 @@ components:
       type: object
       properties:
         window: { type: string, enum: [latest, 3d, 7d] }
+        model: { type: string, description: 请求的模型（去掉首尾空白）；为空 = 渠道总计 }
         generated_at: { type: integer }
         patch_p1: { type: boolean }
         error_log_hint: { type: boolean }
         items: { type: array, items: { $ref: '#/components/schemas/StatsChannelItem' } }
+    ModelCost:
+      type: object
+      properties:
+        channel_id: { type: integer }
+        has_model: { type: boolean, description: 渠道的模型列表是否含该模型；false 时下面三项都为 null }
+        discount: { type: number, nullable: true, description: 该模型的有效折扣（模型级折扣优先于渠道折扣） }
+        channel_cost: { type: number, nullable: true, description: 折扣 × 上游货币汇率；渠道没有上游时为 null }
+        unit_cost: { type: number, nullable: true, description: 该模型一次标准请求的成本（元）；没有汇率或价格库没有该模型时为 null }
+    ModelCostList:
+      type: object
+      properties:
+        model: { type: string }
+        items: { type: array, items: { $ref: '#/components/schemas/ModelCost' } }
+    UiLayoutResponse:
+      type: object
+      properties:
+        layout: { type: object, nullable: true, additionalProperties: true }
+        saved_at: { type: integer, description: Unix 秒；0 = 从未保存 }
     StatsModelItem:
       allOf:
         - { $ref: '#/components/schemas/StatsMetrics' }
@@ -777,6 +796,14 @@ paths:
       summary: 应用预览
       parameters: [{ name: ids, in: query, schema: { type: string }, description: 逗号分隔的渠道 id；省略 = 全部草稿 }]
       responses: { '200': { description: 'data = PlanItem[]（先删除，再更新，最后创建）' } }
+  /channels/costs:
+    get:
+      summary: 每个渠道在指定模型上的折扣与成本（行集合与 GET /channels 相同，含负数 id 的草稿新建渠道）
+      parameters:
+        - { name: model, in: query, required: true, schema: { type: string, minLength: 1, maxLength: 200 }, description: 去掉首尾空白后不能为空 }
+      responses:
+        '200': { description: 'data = ModelCostList' }
+        '400': { description: model 为空或超过 200 个字符 }
   /channels/apply:
     post:
       summary: 应用草稿，逐条写 NewAPI（全部经审计）；失败的草稿保留并带错误
@@ -900,6 +927,27 @@ paths:
     put:
       requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/Settings' } } } }
       responses: { '200': { description: data = Settings（更新后） }, '400': { description: 校验失败或未知键 } }
+  /ui/layout:
+    get:
+      summary: 当前用户的界面布局（按用户 id 存在 nam.db）
+      responses:
+        '200': { description: 'data = UiLayoutResponse；从未保存过时 layout = null，saved_at = 0' }
+        '401': { description: 没有有效的用户身份 }
+    put:
+      summary: 保存当前用户的界面布局（整份覆盖，不写审计）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [layout]
+              properties:
+                layout: { type: object, additionalProperties: true, description: 必须是 JSON 对象；整个请求体不超过 256 KB }
+      responses:
+        '200': { description: 'data = {saved_at: integer}（Unix 秒）' }
+        '400': { description: layout 不是 JSON 对象，或请求体超过 256 KB（布局太大） }
+        '401': { description: 没有有效的用户身份 }
   /audit:
     get:
       parameters:
@@ -921,7 +969,13 @@ paths:
       summary: 渠道统计（latest = 每渠道最近 100 条日志，缓存 60 秒；3d / 7d 读小时聚合）
       parameters:
         - { name: window, in: query, schema: { type: string, enum: [latest, 3d, 7d], default: latest } }
-      responses: { '200': { description: data = StatsChannelList }, '400': { description: window 不合法 } }
+        - name: model
+          in: query
+          schema: { type: string, maxLength: 200 }
+          description: >-
+            按模型统计。去掉首尾空白后为空 = 渠道总计（与不传相同）；不为空时，每个渠道只返回该模型的数据，
+            没有该模型数据的渠道不出现；std_cost_price 按该模型计价，价格档只在含该模型的渠道之间比较。
+      responses: { '200': { description: data = StatsChannelList }, '400': { description: window 不合法，或 model 超过 200 个字符 } }
   /stats/channels/{id}/models:
     parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
     get:

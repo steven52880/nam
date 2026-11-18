@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildGroupLookups, groupKeyOf, groupLabelOf } from './grouping';
+import { buildGroupLookups, groupKeyOf, groupLabelOf, sortGroupKeys } from './grouping';
 import { makeChannel } from './testRows';
 
 describe('groupKeyOf', () => {
@@ -23,6 +23,58 @@ describe('groupKeyOf', () => {
   it('上游改名不影响组键', () => {
     const key = groupKeyOf('upstream')!;
     expect(key(makeChannel({ upstream_id: 3, upstream_name: '旧名' }))).toBe(key(makeChannel({ upstream_id: 3, upstream_name: '新名' })));
+  });
+});
+
+describe('sortGroupKeys', () => {
+  const label = (k: string) => k;
+  const ctx = (over: Partial<Parameters<typeof sortGroupKeys>[2]> = {}) => ({
+    vendorOrder: [],
+    savedOrder: [],
+    labelOf: label,
+    ...over,
+  });
+
+  it('按厂商：vendorOrder 里的按顺序', () => {
+    expect(sortGroupKeys('vendor', ['c', 'a', 'b'], ctx({ vendorOrder: ['b', 'c', 'a'] }))).toEqual(['b', 'c', 'a']);
+  });
+
+  it('按厂商：不在 vendorOrder 里的按名称排在后面', () => {
+    expect(sortGroupKeys('vendor', ['zeta', 'known', 'alpha'], ctx({ vendorOrder: ['known'] }))).toEqual(['known', 'alpha', 'zeta']);
+  });
+
+  it('按厂商：vendorOrder 里有但没有渠道的厂商被忽略，不影响其余顺序', () => {
+    expect(sortGroupKeys('vendor', ['b', 'a'], ctx({ vendorOrder: ['x', 'a', 'y', 'b'] }))).toEqual(['a', 'b']);
+  });
+
+  it('兜底组 \'\' 永远最后（即使在保存的顺序里）', () => {
+    expect(sortGroupKeys('vendor', ['', 'a', 'b'], ctx({ vendorOrder: ['a'] }))).toEqual(['a', 'b', '']);
+    expect(sortGroupKeys('tag', ['', 'a'], ctx({ savedOrder: ['', 'a'] }))).toEqual(['a', '']);
+    expect(sortGroupKeys('upstream', ['', '2', '1'], ctx())).toEqual(['1', '2', '']);
+  });
+
+  it('按上游：保存的顺序在前，新上游按名称排在后面', () => {
+    const names: Record<string, string> = { '1': '乙', '2': '甲', '3': '丙', '4': '丁' };
+    const labelOf = (k: string) => names[k] ?? k;
+    expect(sortGroupKeys('upstream', ['4', '3', '2', '1'], ctx({ savedOrder: ['2', '1'], labelOf }))).toEqual(['2', '1', '3', '4']);
+  });
+
+  it('按上游：上游改名不影响保存的顺序（键是 upstream_id）', () => {
+    const before = sortGroupKeys('upstream', ['1', '2'], ctx({ savedOrder: ['2', '1'], labelOf: (k) => (k === '1' ? '旧名' : '乙') }));
+    const after = sortGroupKeys('upstream', ['1', '2'], ctx({ savedOrder: ['2', '1'], labelOf: (k) => (k === '1' ? 'Z新名' : '乙') }));
+    expect(before).toEqual(['2', '1']);
+    expect(after).toEqual(before);
+  });
+
+  it('按标签：保存的顺序加新标签', () => {
+    expect(sortGroupKeys('tag', ['new', 'b', 'a'], ctx({ savedOrder: ['b', 'a'] }))).toEqual(['b', 'a', 'new']);
+  });
+
+  it('不改动传入数组；不分组保持原样', () => {
+    const keys = ['b', 'a'];
+    sortGroupKeys('tag', keys, ctx());
+    expect(keys).toEqual(['b', 'a']);
+    expect(sortGroupKeys('none', keys, ctx())).toEqual(['b', 'a']);
   });
 });
 

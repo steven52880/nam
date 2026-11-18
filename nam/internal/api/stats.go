@@ -3,6 +3,8 @@ package api
 import (
 	"errors"
 	"strconv"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/steven52880/nam/internal/resp"
@@ -17,6 +19,9 @@ func (s *Server) registerStatsRoutes(p *gin.RouterGroup) {
 	p.GET("/stats/status", s.statsStatus)
 	p.POST("/stats/rebuild", s.statsRebuild)
 }
+
+// maxModelParam caps the length (in characters) of a model query parameter.
+const maxModelParam = 200
 
 // windowParam defaults to "latest"; validity is checked by the stats package.
 func windowParam(c *gin.Context) string {
@@ -37,7 +42,12 @@ func int64Query(c *gin.Context, name string) (int64, bool) {
 }
 
 func (s *Server) statsChannels(c *gin.Context) {
-	out, err := s.Stats.ChannelStats(c.Request.Context(), windowParam(c))
+	model := strings.TrimSpace(c.Query("model"))
+	if utf8.RuneCountInString(model) > maxModelParam {
+		resp.FailFrom(c, resp.Invalid("model 不能超过 200 个字符"))
+		return
+	}
+	out, err := s.Stats.ChannelStats(c.Request.Context(), windowParam(c), model)
 	if err != nil {
 		resp.FailFrom(c, err)
 		return

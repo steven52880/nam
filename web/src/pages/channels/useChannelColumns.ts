@@ -10,6 +10,7 @@ export function useChannelColumns(page: ChannelsPageState) {
   // 只依赖引用稳定的 mutate，不依赖每次状态变化都会换新的 mutation 对象
   const setUpstream = page.actions.setUpstream.mutate;
   const ranges = page.view.ranges;
+  const { model } = page;
 
   const vendors = useVendors();
   const vendorGroups = useMemo(
@@ -25,6 +26,7 @@ export function useChannelColumns(page: ChannelsPageState) {
   return useMemo(
     () =>
       buildChannelColumns({
+        model,
         onOpenModels: setModelRow,
         onOpenDrift: setDriftRow,
         onSetUpstream: (row, upstreamId) => setUpstream({ targets: [row], upstreamId }),
@@ -34,6 +36,6 @@ export function useChannelColumns(page: ChannelsPageState) {
         cacheTests,
         ranges,
       }),
-    [setModelRow, setDriftRow, setUpstream, setToken, setVendor, vendorGroups, cacheTests, ranges],
+    [model, setModelRow, setDriftRow, setUpstream, setToken, setVendor, vendorGroups, cacheTests, ranges],
   );
 }

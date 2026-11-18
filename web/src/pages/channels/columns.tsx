@@ -26,6 +26,8 @@ type Row = ChannelViewRow;
 type Col = TableColumn<Row>;
 
 interface ColumnOptions {
+  /** 当前选中的模型；null = 渠道汇总。 */
+  model: string | null;
   onOpenModels: (row: ChannelRow) => void;
   onOpenDrift: (row: ChannelRow) => void;
   onSetUpstream: (row: ChannelRow, upstreamId: number) => void;
@@ -92,6 +94,7 @@ function ManualCacheCell({ test }: { test: CacheTest | undefined }) {
 
 /** 列宽单位 rem（原像素 ÷ 16，取到 0.25）；列 id 上线后不改（保存的布局靠它）。 */
 export function buildChannelColumns({
+  model,
   onOpenModels,
   onOpenDrift,
   onSetUpstream,
@@ -101,7 +104,7 @@ export function buildChannelColumns({
   cacheTests,
   ranges,
 }: ColumnOptions): Col[] {
-  const stat = buildStatColumns({ effectiveCostRange: ranges.effectiveCost, stdCostRange: ranges.stdCost });
+  const stat = buildStatColumns({ model, effectiveCostRange: ranges.effectiveCost, stdCostRange: ranges.stdCost });
   return [
     textCol<Row>('status', '状态', (r) => r.status, {
       width: 5.75,
@@ -149,40 +152,48 @@ export function buildChannelColumns({
       validate: (v) => validateCell('models', v),
       cell: (r) => <ModelCountCell models={r.models} />,
     }),
-    numberCol<Row>('discount', '上游分组折扣', (r) => r.discount, {
+    numberCol<Row>('discount', '上游分组折扣', (r) => r.view.discount, {
       width: 7.5,
-      editable: true,
+      // 选了模型时显示的是模型级生效折扣，和渠道折扣不是同一个值，不允许在这里改
+      editable: model === null,
+      readOnlyReason: model === null ? undefined : '选了模型时这里显示该模型的生效折扣；改渠道折扣请先清除模型，改模型级折扣请在下方模型明细里改',
       toText: (r) => formatDiscount(r.discount),
       validate: (v) => validateCell('discount', v),
-      cell: (r) => (
-        <span className="inline-flex items-center justify-end gap-1">
-          <Badge tone={r.discount_source === 'manual' ? 'warning' : 'neutral'}>
-            {r.discount_source === 'manual' ? '手动' : '自动'}
-          </Badge>
-          {formatDiscount(r.discount)}
-        </span>
-      ),
+      cell: (r) => {
+        if (r.view.discount === null) return <Dash />;
+        // 选了模型：显示模型级生效折扣，来源徽标说的是渠道折扣，不再显示
+        return (
+          <span className="inline-flex items-center justify-end gap-1">
+            {model === null && (
+              <Badge tone={r.discount_source === 'manual' ? 'warning' : 'neutral'}>
+                {r.discount_source === 'manual' ? '手动' : '自动'}
+              </Badge>
+            )}
+            {formatDiscount(r.view.discount)}
+          </span>
+        );
+      },
     }),
     numberCol<Row>('currency_rate', '上游货币汇率', (r) => r.currency_rate, {
       width: 7,
       readOnlyReason: '上游货币汇率在上游详情中修改',
       cell: (r) => formatNumber(r.currency_rate),
     }),
-    numberCol<Row>('channel_cost', '上游渠道成本价', (r) => r.channel_cost, {
+    numberCol<Row>('channel_cost', '上游渠道成本价', (r) => r.view.channelCost, {
       width: 7.5,
       readOnlyReason: COST_REASON,
-      cell: (r) => <CostCell value={r.channel_cost} range={ranges.channelCost} />,
+      cell: (r) => <CostCell value={r.view.channelCost} range={ranges.channelCost} />,
     }),
-    numberCol<Row>('unit_cost', '单次成本（元）', (r) => r.unit_cost, {
+    numberCol<Row>('unit_cost', '单次成本（元）', (r) => r.view.unitCost, {
       width: 7.5,
       readOnlyReason: '单次成本由价格与折扣计算，不能编辑',
       cell: (r) => (
         <CostCell
-          value={r.unit_cost}
+          value={r.view.unitCost}
           range={ranges.unitCost}
           digits={4}
           significant
-          hint={`按 ${r.unit_cost_model || '—'} 的标准请求计算（1000 输入，其中 200 缓存，500 输出）`}
+          hint={`按 ${r.view.unitCostModel || '—'} 的标准请求计算（1000 输入，其中 200 缓存，500 输出）`}
         />
       ),
     }),

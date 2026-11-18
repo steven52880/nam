@@ -154,7 +154,7 @@ func (s *Service) scatter(ctx context.Context, nm names, perChannel map[int]Agg,
 	if err != nil {
 		return out, err
 	}
-	rt, err := s.rate(ctx, pr, chans)
+	rt, err := s.rate(ctx, pr, chans, "")
 	if err != nil {
 		return out, err
 	}

@@ -71,6 +71,24 @@ export interface ChannelRow {
   draft_error?: string;
 }
 
+/** 某个模型在各渠道上的成本（GET /channels/costs?model=）。行集合与渠道列表相同（含负数 id 的草稿新建渠道）。 */
+export interface ModelCost {
+  channel_id: number;
+  /** 渠道是否包含该模型；为 false 时其余字段都是 null。 */
+  has_model: boolean;
+  /** 该模型的生效折扣（含模型级折扣覆盖）。 */
+  discount: number | null;
+  /** 折扣 × 上游货币汇率；没有上游时为 null。 */
+  channel_cost: number | null;
+  /** 该模型的单次成本（元），标准请求同 ChannelRow.unit_cost。 */
+  unit_cost: number | null;
+}
+
+export interface ModelCostList {
+  model: string;
+  items: ModelCost[];
+}
+
 export interface ChannelList {
   items: ChannelRow[];
   draft_count: number;

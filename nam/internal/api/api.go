@@ -78,6 +78,10 @@ func (s *Server) Register(g *gin.RouterGroup) {
 	p.GET("/settings", s.getSettings)
 	p.PUT("/settings", s.putSettings)
 
+	// per-user UI layout
+	p.GET("/ui/layout", s.getUILayout)
+	p.PUT("/ui/layout", s.putUILayout)
+
 	// audit
 	p.GET("/audit", s.listAudit)
 	p.GET("/audit/:id", s.getAudit)

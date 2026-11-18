@@ -1,6 +1,7 @@
 import type { StatsWindow } from '@/api/types';
 import { FilterBar } from '@/components/filters/FilterBar';
 import { FilterSelect } from '@/components/filters/FilterSelect';
+import { ModelCombobox, type ModelOption } from '@/components/pickers/ModelCombobox';
 import { SearchInput } from '@/components/filters/SearchInput';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { GROUP_MODE_OPTIONS, type GroupMode } from './constants';
@@ -21,6 +22,11 @@ interface ChannelToolbarProps {
   tags: string[];
   statsWindow: StatsWindow;
   onStatsWindow: (window: StatsWindow) => void;
+  /** 选中的模型；null = 渠道汇总。 */
+  model: string | null;
+  onModel: (model: string | null) => void;
+  /** 全部渠道（未筛选）里的模型及其渠道数。 */
+  modelOptions: ModelOption[];
 }
 
 export function ChannelToolbar({
@@ -33,6 +39,9 @@ export function ChannelToolbar({
   tags,
   statsWindow,
   onStatsWindow,
+  model,
+  onModel,
+  modelOptions,
 }: ChannelToolbarProps) {
   const set = (key: keyof ChannelFilters) => (value: string) => onFilters({ ...filters, [key]: value });
   const pair = (items: string[]): Array<[string, string]> => items.map((i) => [i, i]);
@@ -69,6 +78,7 @@ export function ChannelToolbar({
         value={filters.search}
         onChange={(search) => onFilters({ ...filters, search })}
       />
+      <ModelCombobox variant="toolbar" className="w-56" value={model} onChange={onModel} options={modelOptions} />
     </FilterBar>
   );
 }

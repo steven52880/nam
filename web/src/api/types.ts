@@ -1,3 +1,5 @@
+import type { LayoutDoc } from '@/lib/layout/store';
+
 export interface Envelope<T> {
   success: boolean;
   message: string;
@@ -150,6 +152,12 @@ export interface LoginFailure {
 export * from './types-channels';
 export * from './types-pricing';
 export * from './types-stats';
+
+/** GET /ui/layout：当前用户保存的界面布局；没有保存过时 layout 为 null、saved_at 为 0。 */
+export interface UiLayoutResponse {
+  layout: LayoutDoc | null;
+  saved_at: number;
+}
 
 export interface PasswordInput {
   old_password: string;
