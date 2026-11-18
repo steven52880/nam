@@ -1,5 +1,5 @@
 import { RefreshCw } from 'lucide-react';
-import { useDeferredValue, useMemo, useState } from 'react';
+import { useCallback, useDeferredValue, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
 import { invalidate } from '@/api/invalidate';
@@ -10,15 +10,18 @@ import { ModelCountCell } from '@/components/cells/ModelCountCell';
 import { Banner } from '@/components/ui/banner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ALL_FILTER, FilterSelect } from '@/components/filters/FilterSelect';
+import { DataTable } from '@/components/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/misc';
 import { useActionMutation } from '@/hooks/useActionMutation';
 import { cn } from '@/lib/utils';
 import { AliasDialog } from './pricing/AliasDialog';
-import { ALL_VENDORS, STATUS_TABS } from './pricing/constants';
+import { priceColumns, priceRowMenu } from './pricing/columns';
+import { STATUS_TABS } from './pricing/constants';
 import { OverrideDialog } from './pricing/OverrideDialog';
 import { PriceDetailDrawer } from './pricing/PriceDetailDrawer';
-import { PRICE_HEADERS, PriceTableRow } from './pricing/PriceTableRow';
+
+const getPriceRowId = (row: PriceRow) => row.model;
 
 function DisabledButton({ label }: { label: string }) {
   return (
@@ -44,7 +47,7 @@ function useSyncPrices() {
 
 export default function PricingPage() {
   const [status, setStatus] = useState<PriceStatusFilter>('all');
-  const [vendor, setVendor] = useState(ALL_VENDORS);
+  const [vendor, setVendor] = useState(ALL_FILTER);
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search.trim());
   const [detailRow, setDetailRow] = useState<PriceRow | null>(null);
@@ -53,7 +56,7 @@ export default function PricingPage() {
 
   const list = usePriceList({
     status: status === 'all' ? undefined : status,
-    vendor: vendor === ALL_VENDORS ? undefined : vendor,
+    vendor: vendor === ALL_FILTER ? undefined : vendor,
     q: deferredSearch || undefined,
   });
   const everything = usePriceList({});
@@ -64,8 +67,24 @@ export default function PricingPage() {
     [everything.data],
   );
   const counts = list.data?.counts ?? everything.data?.counts;
-  const items = list.data?.items ?? [];
-  const actions = { onDetail: setDetailRow, onOverride: setOverrideRow, onAlias: setAliasRow };
+  const items = useMemo(() => list.data?.items ?? [], [list.data]);
+  const vendorOptions = useMemo<Array<[string, string]>>(() => vendors.map((v) => [v, v]), [vendors]);
+  const columns = useMemo(
+    () => priceColumns({ onDetail: setDetailRow, onOverride: setOverrideRow, onAlias: setAliasRow }),
+    [],
+  );
+  const rowMenu = useCallback(
+    (row: PriceRow) => priceRowMenu(row, { onDetail: setDetailRow, onOverride: setOverrideRow, onAlias: setAliasRow }),
+    [],
+  );
+  const tableStatus = useMemo(
+    () => ({
+      loading: list.isLoading,
+      // 原来只在查询成功且为空时才显示这句；出错时上方有 Banner，表内留空
+      empty: list.isSuccess ? '没有符合条件的模型，可以先点「同步价格库」' : '',
+    }),
+    [list.isLoading, list.isSuccess],
+  );
 
   return (
     <div className="flex h-full flex-col gap-2 p-4">
@@ -100,35 +119,21 @@ export default function PricingPage() {
             </Button>
           ))}
         </div>
-        <Select value={vendor} onValueChange={setVendor}>
-          <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL_VENDORS}>全部厂商</SelectItem>
-            {vendors.map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        <FilterSelect className="w-36" label="厂商" value={vendor} options={vendorOptions} onChange={setVendor} />
         <Input className="w-56" placeholder="搜索模型名或别名" value={search} onChange={(e) => setSearch(e.target.value)} />
         <span className="text-sm text-muted-foreground"><ModelCountCell count={items.length} variant="text" /></span>
       </div>
       {list.isError && <Banner tone="error">{list.error.message}</Banner>}
-      <div className="min-h-0 flex-1 overflow-auto rounded border bg-card">
-        <table className="w-full border-separate border-spacing-0 text-base">
-          <thead className="sticky top-0 z-10 bg-muted">
-            <tr>
-              {PRICE_HEADERS.map((h, index) => (
-                <th key={h} className={cn('h-7 whitespace-nowrap border-b border-r px-2 text-sm font-medium text-muted-foreground', index === 0 ? 'text-left' : 'text-left')}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((row) => <PriceTableRow key={row.model} row={row} actions={actions} />)}
-            {list.isLoading && <tr><td colSpan={PRICE_HEADERS.length} className="h-16 text-center text-muted-foreground">加载中…</td></tr>}
-            {list.isSuccess && items.length === 0 && (
-              <tr><td colSpan={PRICE_HEADERS.length} className="h-16 text-center text-muted-foreground">没有符合条件的模型，可以先点「同步价格库」</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DataTable<PriceRow>
+        layoutId="pricing.list"
+        className="min-h-0 flex-1"
+        data={items}
+        columns={columns}
+        getRowId={getPriceRowId}
+        status={tableStatus}
+        onRowDoubleClick={setDetailRow}
+        rowMenu={rowMenu}
+      />
       <PriceDetailDrawer row={detailRow} onClose={() => setDetailRow(null)} />
       <OverrideDialog row={overrideRow} onClose={() => setOverrideRow(null)} />
       <AliasDialog row={aliasRow} onClose={() => setAliasRow(null)} />

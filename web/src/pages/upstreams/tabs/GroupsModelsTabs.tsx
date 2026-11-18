@@ -1,11 +1,18 @@
+import { useMemo } from 'react';
 import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
 import { invalidate } from '@/api/invalidate';
 import { useUpstreamGroups, useUpstreamModelPrices } from '@/api/queries';
+import type { UpstreamGroup, UpstreamModel } from '@/api/types';
+import { groupColumns } from '@/components/entities/groupColumns';
+import { DataTable, numberCol, textCol, type TableColumn } from '@/components/table';
 import { Button } from '@/components/ui/button';
 import { useActionMutation } from '@/hooks/useActionMutation';
-import { formatNumber, formatTime } from '@/lib/format';
+import { formatNumber } from '@/lib/format';
 import { DeriveSection } from './DeriveSection';
+
+const getGroupId = (g: UpstreamGroup) => g.name;
+const getModelId = (m: UpstreamModel) => String(m.id);
 
 export function GroupsTab({ upstreamId }: { upstreamId: number }) {
   const groups = useUpstreamGroups(upstreamId);
@@ -18,7 +25,16 @@ export function GroupsTab({ upstreamId }: { upstreamId: number }) {
       else toast.success('已同步分组倍率');
     },
   });
-  const list = groups.data ?? [];
+  const list = useMemo(() => groups.data ?? [], [groups.data]);
+  const columns = useMemo(() => groupColumns(), []);
+  const status = useMemo(
+    () => ({
+      loading: groups.isLoading,
+      error: groups.isError ? groups.error.message : null,
+      empty: '还没有分组倍率，点击「立即同步倍率」',
+    }),
+    [groups.isLoading, groups.isError, groups.error],
+  );
 
   return (
     <div className="grid gap-2 p-4">
@@ -26,63 +42,61 @@ export function GroupsTab({ upstreamId }: { upstreamId: number }) {
         <span className="text-sm text-muted-foreground">共 {list.length} 个分组</span>
         <Button size="sm" disabled={sync.isPending} onClick={() => sync.mutate()}>{sync.isPending ? '同步中…' : '立即同步倍率'}</Button>
       </div>
-      <div className="overflow-auto rounded border">
-        <table className="w-full text-base">
-          <thead className="bg-muted text-left text-sm text-muted-foreground">
-            <tr><th className="h-7 px-2 font-medium">分组名</th><th className="px-2 text-right font-medium">分组倍率</th><th className="px-2 font-medium">说明</th><th className="px-2 font-medium">更新时间</th></tr>
-          </thead>
-          <tbody>
-            {list.map((g) => (
-              <tr key={g.name} className="h-7 border-t">
-                <td className="px-2 font-medium">{g.name}</td>
-                <td className="px-2 text-right tabular-nums">{formatNumber(g.ratio, 3)}</td>
-                <td className="px-2 text-muted-foreground">{g.desc || '—'}</td>
-                <td className="whitespace-nowrap px-2 tabular-nums">{formatTime(g.updated_at)}</td>
-              </tr>
-            ))}
-            {groups.isLoading && <tr><td colSpan={4} className="h-12 text-center text-muted-foreground">加载中…</td></tr>}
-            {groups.isSuccess && list.length === 0 && <tr><td colSpan={4} className="h-12 text-center text-muted-foreground">还没有分组倍率，点击「立即同步倍率」</td></tr>}
-          </tbody>
-        </table>
-      </div>
+      <DataTable<UpstreamGroup>
+        layoutId="upstream.groups"
+        className="max-h-[60vh]"
+        data={list}
+        columns={columns}
+        getRowId={getGroupId}
+        status={status}
+      />
     </div>
   );
 }
 
+const num = (v: number | null) => (v === null ? '—' : formatNumber(v, 4));
+
+/** 上游模型价格列；列宽单位 rem，列 id 上线后不改。 */
+function modelPriceColumns(): TableColumn<UpstreamModel>[] {
+  const price = (id: string, header: string, get: (m: UpstreamModel) => number | null): TableColumn<UpstreamModel> =>
+    numberCol<UpstreamModel>(id, header, get, { width: 6.5, cell: (m) => num(get(m)) });
+  return [
+    textCol<UpstreamModel>('model', '模型', (m) => m.model, { width: 14, className: 'font-medium' }),
+    textCol<UpstreamModel>('group', '分组', (m) => m.group, { width: 7, cell: (m) => m.group || '—' }),
+    price('model_ratio', '倍率', (m) => m.model_ratio),
+    price('input', '输入', (m) => m.input),
+    price('output', '输出', (m) => m.output),
+    price('cache_read', '缓存读', (m) => m.cache_read),
+    price('cache_write', '缓存写', (m) => m.cache_write),
+    price('per_request', '按次', (m) => m.per_request),
+  ];
+}
+
 export function ModelsTab({ upstreamId }: { upstreamId: number }) {
   const models = useUpstreamModelPrices(upstreamId);
-  const list = models.data ?? [];
-  const num = (v: number | null) => (v === null ? '—' : formatNumber(v, 4));
+  const list = useMemo(() => models.data ?? [], [models.data]);
+  const columns = useMemo(() => modelPriceColumns(), []);
+  const status = useMemo(
+    () => ({
+      loading: models.isLoading,
+      error: models.isError ? models.error.message : null,
+      empty: '暂无上游模型价格（价格同步在后续里程碑提供）',
+    }),
+    [models.isLoading, models.isError, models.error],
+  );
 
   return (
     <div className="grid gap-2 p-4">
       <DeriveSection upstreamId={upstreamId} />
       <span className="text-sm text-muted-foreground">共 {list.length} 条上游模型价格（美元 / 百万，按上游额度计，已换算到各分组）</span>
-      <div className="max-h-[60vh] overflow-auto rounded border">
-        <table className="w-max min-w-full text-base">
-          <thead className="sticky top-0 bg-muted text-left text-sm text-muted-foreground">
-            <tr>
-              {['模型', '分组', '倍率', '输入', '输出', '缓存读', '缓存写', '按次'].map((h) => <th key={h} className="h-7 whitespace-nowrap px-2 font-medium">{h}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {list.map((m) => (
-              <tr key={m.id} className="h-7 border-t">
-                <td className="px-2 font-medium">{m.model}</td>
-                <td className="px-2">{m.group || '—'}</td>
-                <td className="px-2 text-right tabular-nums">{num(m.model_ratio)}</td>
-                <td className="px-2 text-right tabular-nums">{num(m.input)}</td>
-                <td className="px-2 text-right tabular-nums">{num(m.output)}</td>
-                <td className="px-2 text-right tabular-nums">{num(m.cache_read)}</td>
-                <td className="px-2 text-right tabular-nums">{num(m.cache_write)}</td>
-                <td className="px-2 text-right tabular-nums">{num(m.per_request)}</td>
-              </tr>
-            ))}
-            {models.isLoading && <tr><td colSpan={8} className="h-12 text-center text-muted-foreground">加载中…</td></tr>}
-            {models.isSuccess && list.length === 0 && <tr><td colSpan={8} className="h-12 text-center text-muted-foreground">暂无上游模型价格（价格同步在后续里程碑提供）</td></tr>}
-          </tbody>
-        </table>
-      </div>
+      <DataTable<UpstreamModel>
+        layoutId="upstream.prices"
+        className="max-h-[60vh]"
+        data={list}
+        columns={columns}
+        getRowId={getModelId}
+        status={status}
+      />
     </div>
   );
 }

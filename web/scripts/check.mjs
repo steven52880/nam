@@ -232,25 +232,25 @@ const RULES = [
   {
     name: '裸表格',
     batch: 4,
-    enabled: false,
+    enabled: true,
     desc: '<table 只能出现在 components/table/',
     run: (file) => (file.relNoExt.startsWith('components/table/') ? [] : lineRule(/<table\b/, '<table 只能写在 components/table/')(file)),
   },
   {
     name: '数据列表',
     batch: 4,
-    enabled: false,
+    enabled: true,
     desc: '不能有 <datalist（改用 Combobox）',
     run: lineRule(/<datalist\b/, '不能用 <datalist，改用 Combobox'),
   },
   {
     name: '下拉选择',
     batch: 4,
-    enabled: false,
+    enabled: true,
     desc: '@/components/ui/select 只能在白名单文件里使用',
     run: (file) => {
       if (file.ext === '.css') return [];
-      const allowed = ['ChannelToolbar.tsx', 'UpstreamForm.tsx', 'VendorSection.tsx', 'Stats.tsx'];
+      const allowed = ['ChannelToolbar.tsx', 'UpstreamForm.tsx', 'VendorSection.tsx', 'Stats.tsx', 'IntervalRow.tsx'];
       if (allowed.includes(posix.basename(file.rel)) || file.relNoExt === 'components/ui/select') return [];
       return file
         .imports()

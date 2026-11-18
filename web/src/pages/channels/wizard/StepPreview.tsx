@@ -1,11 +1,54 @@
 import type { UseMutationResult } from '@tanstack/react-query';
 import { errorText } from '@/api/errors';
-import type { BatchPreview, BatchRequest } from '@/api/types';
+import type { BatchPreview, BatchPreviewItem, BatchRequest } from '@/api/types';
 import { ModelCountCell } from '@/components/cells/ModelCountCell';
+import { DataTable, customCol, numberCol, textCol, type TableColumn } from '@/components/table';
 import { Banner } from '@/components/ui/banner';
 import { Badge } from '@/components/ui/misc';
-import { formatNumber } from '@/lib/format';
+import { DASH, formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
+
+const NO_ITEMS: BatchPreviewItem[] = [];
+const PREVIEW_STATUS = { empty: '没有可生成的渠道' };
+
+function previewRowId(it: BatchPreviewItem): string {
+  return it.name;
+}
+
+const PREVIEW_COLUMNS: TableColumn<BatchPreviewItem>[] = [
+  textCol('name', '名称', (it) => it.name, {
+    width: 14,
+    cell: (it) => (
+      <span className={cn('font-medium', it.duplicate && 'text-destructive')}>
+        {it.name}{it.duplicate && <Badge tone="danger" className="ml-1">重名</Badge>}
+      </span>
+    ),
+  }),
+  textCol('token_name', '令牌', (it) => it.token_name, { width: 8 }),
+  textCol('vendor', '厂商', (it) => it.vendor, { width: 7 }),
+  textCol('group', '分组', (it) => it.group, { width: 8 }),
+  textCol('channel_type', '渠道类型', (it) => (it.channel_type === 24 ? '24 Gemini 原生' : '58 透传'), { width: 9.5 }),
+  customCol<BatchPreviewItem>('models', '模型', {
+    width: 5,
+    accessor: (it) => it.fields.models?.length ?? 0,
+    sortType: 'number',
+    cell: (it) => (
+      <span title={it.fields.models?.join('，')}><ModelCountCell models={it.fields.models} variant="count" /></span>
+    ),
+  }),
+  numberCol('discount', '上游分组折扣', (it) => it.ext.discount, {
+    width: 9,
+    cell: (it) => (
+      <>
+        {it.ext.discount !== undefined ? formatNumber(it.ext.discount, 3) : DASH}
+        {it.ext.discount_source === 'manual' && <Badge tone="warning" className="ml-1">手动</Badge>}
+      </>
+    ),
+  }),
+  numberCol('priority', '优先级', (it) => it.fields.priority, { width: 5, cell: (it) => it.fields.priority ?? DASH }),
+  numberCol('weight', '权重', (it) => it.fields.weight, { width: 4.5, cell: (it) => it.fields.weight ?? DASH }),
+  textCol('test_model', '测试模型', (it) => it.fields.test_model, { width: 10, cell: (it) => it.fields.test_model || DASH }),
+];
 
 interface StepPreviewProps {
   preview: UseMutationResult<BatchPreview, Error, BatchRequest>;
@@ -13,7 +56,7 @@ interface StepPreviewProps {
 }
 
 export function StepPreview({ preview, tokenNames }: StepPreviewProps) {
-  const items = preview.data?.items ?? [];
+  const items = preview.data?.items ?? NO_ITEMS;
   const warnings = preview.data?.warnings ?? [];
   const byToken = Object.entries(preview.data?.unassigned_by_token ?? {}).filter(([, models]) => models.length > 0);
   const unassigned = preview.data?.unassigned ?? [];
@@ -48,39 +91,14 @@ export function StepPreview({ preview, tokenNames }: StepPreviewProps) {
         </Banner>
       )}
       {preview.isSuccess && (
-        <div className="max-h-80 overflow-auto rounded border">
-          <table className="w-max min-w-full text-base">
-            <thead className="sticky top-0 bg-muted text-left text-sm text-muted-foreground">
-              <tr>
-                {['名称', '令牌', '厂商', '分组', '渠道类型', '模型', '上游分组折扣', '优先级', '权重', '测试模型'].map((h) => (
-                  <th key={h} className="h-7 whitespace-nowrap px-2 font-medium">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((it) => (
-                <tr key={it.name} className="h-7 border-t">
-                  <td className={cn('whitespace-nowrap px-2 font-medium', it.duplicate && 'text-destructive')}>
-                    {it.name}{it.duplicate && <Badge tone="danger" className="ml-1">重名</Badge>}
-                  </td>
-                  <td className="px-2">{it.token_name}</td>
-                  <td className="px-2">{it.vendor}</td>
-                  <td className="px-2">{it.group}</td>
-                  <td className="whitespace-nowrap px-2">{it.channel_type === 24 ? '24 Gemini 原生' : '58 透传'}</td>
-                  <td className="px-2" title={it.fields.models?.join('，')}><ModelCountCell models={it.fields.models} variant="count" /></td>
-                  <td className="px-2 text-right tabular-nums">
-                    {it.ext.discount !== undefined ? formatNumber(it.ext.discount, 3) : '—'}
-                    {it.ext.discount_source === 'manual' && <Badge tone="warning" className="ml-1">手动</Badge>}
-                  </td>
-                  <td className="px-2 text-right tabular-nums">{it.fields.priority ?? '—'}</td>
-                  <td className="px-2 text-right tabular-nums">{it.fields.weight ?? '—'}</td>
-                  <td className="px-2">{it.fields.test_model || '—'}</td>
-                </tr>
-              ))}
-              {items.length === 0 && <tr><td colSpan={10} className="h-12 text-center text-muted-foreground">没有可生成的渠道</td></tr>}
-            </tbody>
-          </table>
-        </div>
+        <DataTable<BatchPreviewItem>
+          layoutId="wizard.preview"
+          className="max-h-80"
+          data={items}
+          columns={PREVIEW_COLUMNS}
+          getRowId={previewRowId}
+          status={PREVIEW_STATUS}
+        />
       )}
     </div>
   );

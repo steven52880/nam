@@ -1,13 +1,33 @@
 import { usePriceDetail } from '@/api/queries';
-import type { PriceRow } from '@/api/types';
+import type { PriceChannelUse, PriceRow } from '@/api/types';
 import { StatusBadge } from '@/components/cells/StatusBadge';
 import { NewapiPriceText, OfficialPriceText } from '@/components/PriceText';
+import { DataTable, numberCol, textCol, type TableColumn } from '@/components/table';
 import { DrawerShell } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/misc';
 import { Section } from '@/components/ui/section';
 import { formatNumber, formatSignificant } from '@/lib/format';
 import { PRICE_STATUS } from '@/lib/labels';
 import { sourceLabel } from './constants';
+
+const CHANNEL_COLUMNS: TableColumn<PriceChannelUse>[] = [
+  textCol('name', '渠道', (c) => c.name, { width: 12 }),
+  numberCol('discount', '上游分组折扣', (c) => c.discount, {
+    width: 8,
+    cell: (c) => formatNumber(c.discount, 3),
+  }),
+  numberCol('cost_in', '成本（元 / 百万 输入）', (c) => c.cost_in_per_m, {
+    width: 12,
+    cell: (c) => formatSignificant(c.cost_in_per_m),
+  }),
+  numberCol('cost_out', '成本（元 / 百万 输出）', (c) => c.cost_per_request ?? c.cost_out_per_m, {
+    width: 12,
+    cell: (c) =>
+      c.cost_per_request !== null ? `${formatSignificant(c.cost_per_request)} 元/次` : formatSignificant(c.cost_out_per_m),
+  }),
+];
+const CHANNEL_STATUS = { empty: '没有渠道使用该模型' };
+const getChannelId = (c: PriceChannelUse) => String(c.id);
 
 function DetailBody({ row }: { row: PriceRow }) {
   const model = row.model;
@@ -39,31 +59,14 @@ function DetailBody({ row }: { row: PriceRow }) {
         <Section variant="plain" title="覆盖备注"><p className="text-sm">{override.remark}</p></Section>
       )}
       <Section variant="plain" title={`使用该模型的渠道（${channels.length}）`}>
-        <div className="overflow-auto rounded border">
-          <table className="w-full text-base">
-            <thead className="bg-muted text-left text-sm text-muted-foreground">
-              <tr>
-                <th className="h-7 px-2 font-medium">渠道</th>
-                <th className="px-2 text-right font-medium">上游分组折扣</th>
-                <th className="px-2 text-right font-medium">成本（元 / 百万 输入）</th>
-                <th className="px-2 text-right font-medium">成本（元 / 百万 输出）</th>
-              </tr>
-            </thead>
-            <tbody>
-              {channels.map((c) => (
-                <tr key={c.id} className="h-7 border-t">
-                  <td className="px-2">{c.name}</td>
-                  <td className="px-2 text-right tabular-nums">{formatNumber(c.discount, 3)}</td>
-                  <td className="px-2 text-right tabular-nums">{formatSignificant(c.cost_in_per_m)}</td>
-                  <td className="px-2 text-right tabular-nums">{c.cost_per_request !== null ? `${formatSignificant(c.cost_per_request)} 元/次` : formatSignificant(c.cost_out_per_m)}</td>
-                </tr>
-              ))}
-              {channels.length === 0 && (
-                <tr><td colSpan={4} className="h-12 text-center text-muted-foreground">没有渠道使用该模型</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <DataTable<PriceChannelUse>
+          layoutId="pricing.channels"
+          className="max-h-80"
+          data={channels}
+          columns={CHANNEL_COLUMNS}
+          getRowId={getChannelId}
+          status={CHANNEL_STATUS}
+        />
       </Section>
     </div>
   );

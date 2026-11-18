@@ -91,8 +91,8 @@ export default function SettingsPage() {
   const b = backend.data;
 
   return (
-    <div className="flex h-full gap-4 p-4">
-      <nav className="sticky top-0 hidden w-36 shrink-0 self-start md:block">
+    <div className="flex h-full gap-4 pl-4">
+      <nav className="sticky top-0 mt-4 hidden w-36 shrink-0 self-start md:block">
         <div className="mb-1 text-xs text-muted-foreground">分区</div>
         {SECTIONS.map(([id, label]) => (
           <a key={id} href={`#${id}`} onClick={(e) => { e.preventDefault(); document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }); }}
@@ -101,7 +101,7 @@ export default function SettingsPage() {
         <a href="#rate" onClick={(e) => { e.preventDefault(); document.getElementById('rate')?.scrollIntoView({ behavior: 'smooth' }); }}
           className="flex h-7 items-center rounded px-2 text-muted-foreground hover:bg-accent hover:text-foreground">站点汇率</a>
       </nav>
-      <div className="flex min-w-0 max-w-4xl flex-1 flex-col gap-3 overflow-y-auto pr-1">
+      <div className="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto py-4 pr-4">
         <PageHeader title="设置" actions={<Button disabled={!valid || save.isPending || !settings.data} onClick={() => save.mutate()}>保存</Button>} />
         <Section id="connection" title="NewAPI 连接">
           <DescRow label="运行模式">{session.mode === 'embedded' ? '嵌入模式' : '独立模式'}</DescRow>

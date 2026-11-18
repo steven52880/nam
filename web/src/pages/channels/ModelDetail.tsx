@@ -1,58 +1,13 @@
 import { useChannelModels, useChannelModelStats } from '@/api/queries';
 import { useMemo } from 'react';
-import type { ChannelModels, ChannelRow, ModelRow, ModelStatsItem, StatsWindow } from '@/api/types';
-import { Dash } from '@/components/cells/Dash';
-import { OfficialPriceText } from '@/components/PriceText';
+import type { ChannelModels, ChannelRow, ModelRow, StatsWindow } from '@/api/types';
+import { DataTable } from '@/components/table';
 import { Badge } from '@/components/ui/misc';
-import { formatNumber, formatPercent, formatSignificant } from '@/lib/format';
-import { CacheOverridePopover, DiscountCell } from './ModelDiscountControls';
-import { FirstTokenCell, SpeedStatCell, SuccessRateCell } from './StatCells';
+import { formatNumber } from '@/lib/format';
+import { CacheOverridePopover } from './ModelDiscountControls';
+import { modelRowId, useModelDetailColumns } from './modelDetailColumns';
 
-const HEADERS = [
-  '模型名',
-  '原厂价（美元 / 百万）',
-  '上游价',
-  '推算折扣',
-  '上游分组折扣覆盖',
-  '成本（元）',
-  '请求数',
-  '成功率',
-  '首字延迟',
-  '吐字速度',
-];
-
-function ModelStatCells({ metrics }: { metrics: ModelStatsItem | undefined }) {
-  return (
-    <>
-      <td className="border-b border-r px-2 text-right tabular-nums">{metrics ? metrics.requests : <Dash />}</td>
-      <td className="border-b border-r px-2 text-right"><SuccessRateCell metrics={metrics} /></td>
-      <td className="border-b border-r px-2 text-right"><FirstTokenCell metrics={metrics} /></td>
-      <td className="border-b border-r px-2 text-right"><SpeedStatCell metrics={metrics} /></td>
-    </>
-  );
-}
-
-function DerivedCell({ row }: { row: ModelRow }) {
-  if (row.derived === null) {
-    return <span className="text-xs text-muted-foreground">{row.reason || '无法推算'}</span>;
-  }
-  return (
-    <span className="inline-flex items-center justify-end gap-1 tabular-nums">
-      {row.deviates && <Badge tone="warning" title={row.reason}>偏离 {formatPercent(row.deviation, { signed: true })}</Badge>}
-      {formatNumber(row.derived, 3)}
-    </span>
-  );
-}
-
-function CostCell({ row }: { row: ModelRow }) {
-  if (row.cost_per_request !== null) return <span className="tabular-nums">{formatSignificant(row.cost_per_request)} 元/次</span>;
-  if (row.cost_in_per_m === null && row.cost_out_per_m === null) return <Dash />;
-  return (
-    <span className="tabular-nums">
-      {formatSignificant(row.cost_in_per_m)} / {formatSignificant(row.cost_out_per_m)}
-    </span>
-  );
-}
+const NO_MODELS: ModelRow[] = [];
 
 function Header({ detail }: { detail: ChannelModels }) {
   return (
@@ -88,6 +43,7 @@ function useModelStats(channelId: number | null, statsWindow: StatsWindow) {
 export function ModelDetail({ row, statsWindow }: { row: ChannelRow | null; statsWindow: StatsWindow }) {
   const query = useChannelModels(row?.id ?? null);
   const modelStats = useModelStats(row?.id ?? null, statsWindow);
+  const columns = useModelDetailColumns(row?.id ?? 0, query.data?.discount ?? row?.discount ?? 0, modelStats);
   if (!row) {
     return (
       <div className="flex h-full items-center justify-center rounded border bg-card text-muted-foreground">
@@ -103,7 +59,7 @@ export function ModelDetail({ row, statsWindow }: { row: ChannelRow | null; stat
     );
   }
   const detail = query.data;
-  const models = detail?.models ?? [];
+  const models = detail?.models ?? NO_MODELS;
   return (
     <div className="flex h-full min-h-0 flex-col rounded border bg-card">
       {detail ? <Header detail={detail} /> : (
@@ -111,35 +67,14 @@ export function ModelDetail({ row, statsWindow }: { row: ChannelRow | null; stat
           {query.isError ? query.error.message : '加载中…'}
         </div>
       )}
-      <div className="min-h-0 flex-1 overflow-auto">
-        <table className="w-max min-w-full border-separate border-spacing-0 text-base">
-          <thead className="sticky top-0 z-10 bg-muted">
-            <tr>
-              {HEADERS.map((h, index) => (
-                <th key={h} className={`h-7 whitespace-nowrap border-b border-r px-2 text-sm font-medium text-muted-foreground ${index === 0 ? 'text-left' : 'text-right'}`}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {models.map((m) => (
-              <tr key={m.model} className="hover:bg-accent/40">
-                <td className="h-7 border-b border-r px-2">{m.model}</td>
-                <td className="border-b border-r px-2 text-right"><OfficialPriceText price={m.price} /></td>
-                <td className="border-b border-r px-2 text-right tabular-nums">{formatSignificant(m.upstream_input)}</td>
-                <td className="border-b border-r px-2 text-right"><DerivedCell row={m} /></td>
-                <td className="border-b border-r px-2 text-right">
-                  <DiscountCell channelId={row.id} model={m.model} override={m.override} fallback={detail?.discount ?? row.discount} />
-                </td>
-                <td className="border-b border-r px-2 text-right"><CostCell row={m} /></td>
-                <ModelStatCells metrics={modelStats.get(m.model)} />
-              </tr>
-            ))}
-            {detail && models.length === 0 && (
-              <tr><td colSpan={HEADERS.length} className="h-12 text-center text-muted-foreground">该渠道没有模型</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DataTable<ModelRow>
+        layoutId="channels.models"
+        className="min-h-0 flex-1 rounded-none border-0"
+        data={models}
+        columns={columns}
+        getRowId={modelRowId}
+        status={{ loading: query.isLoading, error: query.isError ? query.error.message : null, empty: '该渠道没有模型' }}
+      />
     </div>
   );
 }

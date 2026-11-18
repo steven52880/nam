@@ -23,5 +23,3 @@ export function sourceLabel(source: string): string {
   if (!source) return '—';
   return SOURCE_LABELS[source] ?? source;
 }
-
-export const ALL_VENDORS = '__all__';

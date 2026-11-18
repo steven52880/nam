@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
 import { errorText } from '@/api/errors';
@@ -10,9 +10,10 @@ import { useActionMutation } from '@/hooks/useActionMutation';
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/form/Field';
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DataTable, numberCol, type SortSpec, type TableColumn } from '@/components/table';
 import { Input } from '@/components/ui/input';
 import { formatPercent } from '@/lib/format';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Combobox, type ComboboxItem } from '@/components/ui/combobox';
 
 function isRound(v: unknown): v is CacheTestRound {
   return typeof v === 'object' && v !== null && 'round' in v && 'input' in v;
@@ -28,41 +29,38 @@ function parseRounds(raw: string): CacheTestRound[] {
   }
 }
 
+const ROUND_SORT: SortSpec[] = [{ id: 'round', desc: false }];
+
+const ROUND_COLUMNS: TableColumn<CacheTestRound>[] = [
+  numberCol('round', '轮次', (r) => r.round, { width: 4.5, align: 'left' }),
+  numberCol('input', '输入', (r) => r.input, { width: 4.5 }),
+  numberCol('cache_read', '缓存读取', (r) => r.cache_read, { width: 5.5 }),
+  numberCol('cache_write', '缓存写入', (r) => r.cache_write, { width: 5.5 }),
+  numberCol('output', '输出', (r) => r.output, { width: 4.5 }),
+  numberCol('duration_ms', '耗时（毫秒）', (r) => r.duration_ms, { width: 7.5 }),
+];
+
+function roundId(r: CacheTestRound): string {
+  return String(r.round);
+}
+
 function RoundsTable({ test }: { test: CacheTest }) {
-  const rounds = parseRounds(test.per_round);
+  const rounds = useMemo(() => parseRounds(test.per_round), [test.per_round]);
   const running = test.status === 'running';
+  const pendingText = running && rounds.length < test.rounds ? `第 ${rounds.length + 1} 轮进行中…` : null;
   return (
     <div className="grid gap-2">
       {(rounds.length > 0 || running) && (
-        <table className="w-full text-sm tabular-nums">
-          <thead>
-            <tr className="border-b text-right text-muted-foreground">
-              <th className="px-2 py-1 text-left font-normal">轮次</th>
-              <th className="px-2 py-1 font-normal">输入</th>
-              <th className="px-2 py-1 font-normal">缓存读取</th>
-              <th className="px-2 py-1 font-normal">缓存写入</th>
-              <th className="px-2 py-1 font-normal">输出</th>
-              <th className="px-2 py-1 font-normal">耗时（毫秒）</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rounds.map((r) => (
-              <tr key={r.round} className="border-b text-right last:border-0">
-                <td className="px-2 py-1 text-left">{r.round}</td>
-                <td className="px-2 py-1">{r.input}</td>
-                <td className="px-2 py-1">{r.cache_read}</td>
-                <td className="px-2 py-1">{r.cache_write}</td>
-                <td className="px-2 py-1">{r.output}</td>
-                <td className="px-2 py-1">{r.duration_ms}</td>
-              </tr>
-            ))}
-            {running && rounds.length < test.rounds && (
-              <tr className="text-muted-foreground">
-                <td colSpan={6} className="px-2 py-1 text-left">第 {rounds.length + 1} 轮进行中…</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+        <DataTable<CacheTestRound>
+          layoutId="channels.cache-rounds"
+          className="max-h-72"
+          data={rounds}
+          columns={ROUND_COLUMNS}
+          getRowId={roundId}
+          defaultSort={ROUND_SORT}
+          toolbar={rounds.length > 0 && pendingText ? <span className="text-sm text-muted-foreground">{pendingText}</span> : undefined}
+          status={{ empty: pendingText ?? undefined }}
+        />
       )}
       {running && <div className="text-sm text-muted-foreground">测试中…每 2 秒刷新一次</div>}
       {running && test.rate !== null && (
@@ -88,6 +86,7 @@ export function CacheTestDialog({ row, onClose }: { row: ChannelRow | null; onCl
   const [rounds, setRounds] = useState('3');
   const [testId, setTestId] = useState<number | null>(null);
   const notified = useRef<number | null>(null);
+  const modelItems = useMemo<ComboboxItem[]>(() => (row?.models ?? []).map((m) => ({ value: m, label: m })), [row]);
 
   useEffect(() => {
     setModel(row?.models[0] ?? '');
@@ -135,12 +134,14 @@ export function CacheTestDialog({ row, onClose }: { row: ChannelRow | null; onCl
         <DialogBody className="grid content-start gap-3">
           <div className="grid grid-cols-[1fr_6rem] gap-3">
             <Field label="测试模型">
-              <Select value={model} onValueChange={setModel} disabled={running}>
-                <SelectTrigger><SelectValue placeholder="选择模型" /></SelectTrigger>
-                <SelectContent>
-                  {row?.models.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <Combobox
+                variant="field"
+                items={modelItems}
+                value={model === '' ? null : model}
+                onChange={(v) => setModel(v ?? '')}
+                disabled={running}
+                placeholder="选择模型"
+              />
             </Field>
             <Field label="轮数（2~10）">
               <Input inputMode="numeric" value={rounds} disabled={running} onChange={(e) => setRounds(e.target.value)} />

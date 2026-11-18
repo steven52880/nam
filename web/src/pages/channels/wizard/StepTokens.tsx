@@ -1,11 +1,14 @@
-import { useState } from 'react';
-import { groupRatioOf, useUpstreamGroups, useUpstreams, useUpstreamTokens } from '@/api/queries';
-import { StatusBadge } from '@/components/cells/StatusBadge';
+import { useCallback, useMemo, useState } from 'react';
+import { useUpstreamGroups, useUpstreams, useUpstreamTokens } from '@/api/queries';
+import type { UpstreamToken } from '@/api/types';
 import { AddTokenDialog, type TokenDialog } from '@/components/entities/AddTokenDialog';
+import { tokenColumns } from '@/components/entities/tokenColumns';
+import { DataTable, pickColumns } from '@/components/table';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/misc';
-import { formatNumber } from '@/lib/format';
-import { TOKEN_STATUS, UPSTREAM_CAPS } from '@/lib/labels';
+import { UPSTREAM_CAPS } from '@/lib/labels';
+
+const getTokenId = (t: UpstreamToken) => String(t.id);
+const COLUMN_IDS = ['name', 'key_hint', 'group', 'group_ratio', 'price_ratio', 'quota_usd', 'status', 'channel_count'];
 
 interface StepTokensProps {
   upstreamId: number;
@@ -21,12 +24,36 @@ export function StepTokens({ upstreamId, value, onChange, single = false }: Step
   const tokens = useUpstreamTokens(upstreamId);
   const groups = useUpstreamGroups(upstreamId);
   const upstream = upstreams.data?.find((u) => u.id === upstreamId) ?? null;
-  const list = tokens.data ?? [];
-  const ratioOf = (group: string) => groupRatioOf(groups.data, group);
-  const toggle = (id: number) => {
-    if (single) onChange(value.includes(id) ? [] : [id]);
-    else onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id]);
-  };
+  const list = useMemo(() => tokens.data ?? [], [tokens.data]);
+  const groupList = groups.data;
+  const rate = upstream?.currency_rate;
+  const columns = useMemo(
+    () => pickColumns(tokenColumns({ groups: groupList, rate }), COLUMN_IDS),
+    [groupList, rate],
+  );
+  const selected = useMemo<ReadonlySet<string>>(() => new Set(value.map(String)), [value]);
+  const toggle = useCallback(
+    (id: number) => {
+      if (single) onChange(value.includes(id) ? [] : [id]);
+      else onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id]);
+    },
+    [single, value, onChange],
+  );
+  // 整行点击切换选中：单选模式下 DataTable 会先选中再回调这里，同一次事件里以最后一次 onChange 为准，保持原来"再点已选行取消"的行为。
+  const onRowClick = useCallback((t: UpstreamToken) => toggle(t.id), [toggle]);
+  const onSelectionChange = useCallback((ids: Set<string>) => onChange([...ids].map(Number)), [onChange]);
+  const rowSelection = useMemo(
+    () => ({ mode: single ? ('single' as const) : ('multi' as const), selected, onChange: onSelectionChange }),
+    [single, selected, onSelectionChange],
+  );
+  const status = useMemo(
+    () => ({
+      loading: tokens.isLoading,
+      error: tokens.isError ? tokens.error.message : null,
+      empty: '该上游还没有令牌，请同步、在上游新建或手动录入',
+    }),
+    [tokens.isLoading, tokens.isError, tokens.error],
+  );
   const unbuilt = list.filter((t) => (t.channel_count ?? 0) === 0).map((t) => t.id);
 
   return (
@@ -50,36 +77,16 @@ export function StepTokens({ upstreamId, value, onChange, single = false }: Step
           </span>
         )}
       </div>
-      <div className="max-h-72 overflow-y-auto rounded border">
-        <table className="w-full text-base">
-          <thead className="sticky top-0 bg-muted text-left text-sm text-muted-foreground">
-            <tr>
-              <th className="h-7 w-8 px-2" />
-              <th className="px-2 font-medium">令牌</th>
-              <th className="px-2 font-medium">上游分组</th>
-              <th className="px-2 text-right font-medium">分组倍率</th>
-              <th className="px-2 text-right font-medium">额度（美元）</th>
-              <th className="px-2 font-medium">状态</th>
-              <th className="px-2 font-medium">渠道</th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.map((t) => (
-              <tr key={t.id} className="h-7 cursor-pointer border-t hover:bg-accent/40" onClick={() => toggle(t.id)}>
-                <td className="px-2"><input type={single ? 'radio' : 'checkbox'} checked={value.includes(t.id)} readOnly /></td>
-                <td className="px-2"><span className="font-medium">{t.name}</span> <span className="text-xs text-muted-foreground">{t.key_hint}</span></td>
-                <td className="px-2">{t.group || '—'}</td>
-                <td className="px-2 text-right tabular-nums">{formatNumber(ratioOf(t.group), 3)}</td>
-                <td className="px-2 text-right tabular-nums">{t.unlimited ? '不限' : formatNumber(t.quota_usd)}</td>
-                <td className="px-2"><StatusBadge dict={TOKEN_STATUS} value={t.status === 1 ? 1 : 0} /></td>
-                <td className="px-2">{(t.channel_count ?? 0) > 0 ? <Badge tone="accent">已建 {t.channel_count}</Badge> : <span className="text-muted-foreground">未建</span>}</td>
-              </tr>
-            ))}
-            {tokens.isLoading && <tr><td colSpan={7} className="h-12 text-center text-muted-foreground">加载中…</td></tr>}
-            {tokens.isSuccess && list.length === 0 && <tr><td colSpan={7} className="h-12 text-center text-muted-foreground">该上游还没有令牌，请同步、在上游新建或手动录入</td></tr>}
-          </tbody>
-        </table>
-      </div>
+      <DataTable<UpstreamToken>
+        layoutId="wizard.tokens"
+        className="max-h-72"
+        data={list}
+        columns={columns}
+        getRowId={getTokenId}
+        status={status}
+        rowSelection={rowSelection}
+        onRowClick={onRowClick}
+      />
       {upstream && (
         <AddTokenDialog
           upstream={upstream}

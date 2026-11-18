@@ -1,13 +1,7 @@
-import type { KeyboardEvent } from 'react';
-import { useUpstreams, useUpstreamTokens, useVendors } from '@/api/queries';
+import { useVendors } from '@/api/queries';
 import type { ChannelRow } from '@/api/types';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { TokenPicker, UpstreamPicker, VendorPicker } from '@/components/pickers';
 import { DASH } from '@/lib/format';
-
-/** 单元格内的下拉：阻止键盘事件冒泡到表格，避免触发表格的方向键 / Enter 处理。 */
-function stopKeys(e: KeyboardEvent<HTMLElement>) {
-  e.stopPropagation();
-}
 
 function locked(row: ChannelRow): boolean {
   return row.sync_state === 'draft_delete';
@@ -19,22 +13,15 @@ interface UpstreamCellProps {
 }
 
 export function UpstreamCell({ row, onChange }: UpstreamCellProps) {
-  const upstreams = useUpstreams();
   return (
-    <div onKeyDown={stopKeys}>
-      <Select
-        value={row.upstream_id === null ? '' : String(row.upstream_id)}
-        disabled={locked(row)}
-        onValueChange={(v) => onChange(row, Number(v))}
-      >
-        <SelectTrigger className="h-6 border-transparent bg-transparent px-1">
-          <SelectValue placeholder={DASH}>{row.upstream_name || DASH}</SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          {(upstreams.data ?? []).map((u) => <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>)}
-        </SelectContent>
-      </Select>
-    </div>
+    <UpstreamPicker
+      variant="cell"
+      value={row.upstream_id}
+      disabled={locked(row)}
+      placeholder={DASH}
+      fallbackLabel={row.upstream_name || undefined}
+      onChange={(id) => onChange(row, id)}
+    />
   );
 }
 
@@ -45,24 +32,17 @@ interface TokenCellProps {
 
 export function TokenCell({ row, onChange }: TokenCellProps) {
   const upstreamId = row.upstream_id;
-  const tokens = useUpstreamTokens(upstreamId);
   return (
-    <div onKeyDown={stopKeys}>
-      <Select
-        value={row.token_id === null ? '' : String(row.token_id)}
-        disabled={locked(row) || upstreamId === null}
-        onValueChange={(v) => onChange(row, Number(v))}
-      >
-        <SelectTrigger className="h-6 border-transparent bg-transparent px-1" title={upstreamId === null ? '请先选择上游' : undefined}>
-          <SelectValue placeholder={upstreamId === null ? DASH : '选择令牌'}>{row.token_name || (upstreamId === null ? DASH : '选择令牌')}</SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          {(tokens.data ?? []).map((t) => (
-            <SelectItem key={t.id} value={String(t.id)}>{t.name}{t.manual ? '（手动）' : ''}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
+    <TokenPicker
+      variant="cell"
+      upstreamId={upstreamId}
+      value={row.token_id}
+      disabled={locked(row) || upstreamId === null}
+      title={upstreamId === null ? '请先选择上游' : undefined}
+      placeholder={upstreamId === null ? DASH : '选择令牌'}
+      fallbackLabel={row.token_name || undefined}
+      onChange={(id) => onChange(row, id)}
+    />
   );
 }
 
@@ -75,31 +55,28 @@ export function VendorCell({ row, onChange }: VendorCellProps) {
   const vendors = useVendors();
   const vendor = (vendors.data ?? []).find((v) => v.name === row.vendor);
   return (
-    <div onKeyDown={stopKeys} title={vendor ? `托管分组：${vendor.group_name}；改厂商会移除其他厂商的分组` : undefined}>
-      <Select value={row.vendor} disabled={locked(row)} onValueChange={(v) => onChange(row, v)}>
-        <SelectTrigger className="h-6 border-transparent bg-transparent px-1">
-          <SelectValue placeholder={DASH}>{row.vendor || DASH}</SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          {(vendors.data ?? []).map((v) => <SelectItem key={v.id} value={v.name}>{v.name}</SelectItem>)}
-          {vendors.isSuccess && (vendors.data ?? []).length === 0 && (
-            <div className="px-2 py-1.5 text-sm text-muted-foreground">还没有厂商，请先到「设置 → 厂商分组」添加</div>
-          )}
-        </SelectContent>
-      </Select>
+    <div title={vendor ? `托管分组：${vendor.group_name}；改厂商会移除其他厂商的分组` : undefined}>
+      <VendorPicker
+        variant="cell"
+        value={row.vendor}
+        disabled={locked(row)}
+        placeholder={DASH}
+        fallbackLabel={row.vendor || undefined}
+        onChange={(name) => onChange(row, name)}
+      />
     </div>
   );
 }
 
 /** 工具栏：对选中的多行批量设置上游。 */
 export function BulkUpstreamSelect({ count, onPick }: { count: number; onPick: (upstreamId: number) => void }) {
-  const upstreams = useUpstreams();
   return (
-    <Select value="" onValueChange={(v) => onPick(Number(v))}>
-      <SelectTrigger className="w-40"><SelectValue placeholder={`设置上游（${count}）`} /></SelectTrigger>
-      <SelectContent>
-        {(upstreams.data ?? []).map((u) => <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>)}
-      </SelectContent>
-    </Select>
+    <UpstreamPicker
+      variant="toolbar"
+      value={null}
+      placeholder={`设置上游（${count}）`}
+      className="w-40"
+      onChange={onPick}
+    />
   );
 }

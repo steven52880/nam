@@ -1,14 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { api } from '@/api/endpoints';
 import type { ChannelRow } from '@/api/types';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useActionMutation } from '@/hooks/useActionMutation';
 import { Field } from '@/components/form/Field';
-import { Input } from '@/components/ui/input';
+import { Combobox, type ComboboxItem } from '@/components/ui/combobox';
 
 export function TestChannelDialog({ row, onClose }: { row: ChannelRow | null; onClose: () => void }) {
   const [model, setModel] = useState('');
+  const items = useMemo<ComboboxItem[]>(() => (row?.models ?? []).map((m) => ({ value: m, label: m })), [row]);
 
   useEffect(() => {
     if (row) setModel(row.test_model || row.models[0] || '');
@@ -35,10 +36,14 @@ export function TestChannelDialog({ row, onClose }: { row: ChannelRow | null; on
       onConfirm={() => run.mutate()}
     >
       <Field label="测试模型（默认为渠道的测试模型）">
-        <Input value={model} onChange={(e) => setModel(e.target.value)} list="channel-test-models" />
-        <datalist id="channel-test-models">
-          {row?.models.map((m) => <option key={m} value={m} />)}
-        </datalist>
+        <Combobox
+          variant="field"
+          allowCustom
+          items={items}
+          value={model === '' ? null : model}
+          onChange={(v) => setModel(v ?? '')}
+          placeholder="选择或输入模型"
+        />
       </Field>
     </ConfirmDialog>
   );

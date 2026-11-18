@@ -1,8 +1,8 @@
-﻿import { ChevronDown, ChevronRight } from 'lucide-react';
-import { Fragment, useState } from 'react';
+﻿import { useMemo, useState } from 'react';
 import { useAudit } from '@/api/queries';
 import type { AuditLog } from '@/api/types';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { DataTable, numberCol, textCol, type TableColumn } from '@/components/table';
 import { Button } from '@/components/ui/button';
 import { FilterBar } from '@/components/filters/FilterBar';
 import { ALL_FILTER, FilterSelect } from '@/components/filters/FilterSelect';
@@ -43,13 +43,36 @@ function Detail({ log }: { log: AuditLog }) {
   );
 }
 
+const AUDIT_COLUMNS: TableColumn<AuditLog>[] = [
+  numberCol<AuditLog>('at', '时间', (a) => a.at, { width: 11.75, align: 'left', cell: (a) => formatTime(a.at) }),
+  textCol<AuditLog>('kind', '类型', (a) => labelOf(AUDIT_KIND, a.kind).label, { width: 6 }),
+  textCol<AuditLog>('target', '对象', (a) => a.target, {
+    width: 10,
+    cell: (a) => <span title={a.target}>{a.target}</span>,
+  }),
+  textCol<AuditLog>('summary', '变更摘要', (a) => a.summary, {
+    width: 28,
+    cell: (a) => <span title={a.summary}>{a.summary}</span>,
+  }),
+  textCol<AuditLog>('trigger', '触发方式', (a) => a.trigger, {
+    width: 6.5,
+    cell: (a) => <TriggerBadge trigger={a.trigger} />,
+  }),
+  textCol<AuditLog>('result', '结果', (a) => a.result, {
+    width: 6,
+    cell: (a) => <AuditResultBadge result={a.result} />,
+  }),
+  textCol<AuditLog>('operator', '操作人', (a) => a.operator, { width: 7, cell: (a) => a.operator || '—' }),
+];
+const getAuditId = (a: AuditLog) => String(a.id);
+const renderAuditDetail = (a: AuditLog) => <Detail log={a} />;
+
 export default function AuditPage() {
   const [kind, setKind] = useState(ALL);
   const [trigger, setTrigger] = useState(ALL);
   const [result, setResult] = useState(ALL);
   const [q, setQ] = useState('');
   const [page, setPage] = useState(0);
-  const [openId, setOpenId] = useState<number | null>(null);
 
   const param = (v: string) => (v === ALL ? undefined : v);
   const query = useAudit({
@@ -61,6 +84,15 @@ export default function AuditPage() {
     offset: page * PAGE_SIZE,
   });
 
+  const items = useMemo(() => query.data?.items ?? [], [query.data]);
+  const status = useMemo(
+    () => ({
+      loading: query.isLoading,
+      error: query.isError ? query.error.message : null,
+      empty: '没有符合条件的记录',
+    }),
+    [query.isLoading, query.isError, query.error],
+  );
   const total = query.data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const withReset = (set: (v: string) => void) => (v: string) => {
@@ -69,7 +101,7 @@ export default function AuditPage() {
   };
 
   return (
-    <div className="flex flex-col gap-3 p-4">
+    <div className="flex h-full flex-col gap-3 p-4">
       <PageHeader title="写入历史与审计" description="所有写入 NewAPI 与 nam 的记录，展开可看完整差异和原始请求/响应。" />
       <FilterBar clearable={false}>
         <FilterSelect className="w-32" value={kind} onChange={withReset(setKind)} label="类型" options={[['channel', '渠道'], ['price', '价格'], ['setting', '设置'], ['upstream', '上游'], ['cache_test', '缓存测试']]} />
@@ -85,48 +117,16 @@ export default function AuditPage() {
           }}
         />
       </FilterBar>
-      <div className="overflow-hidden rounded border bg-card">
-        <table className="w-full text-base">
-          <thead className="bg-muted text-left text-sm text-muted-foreground">
-            <tr>
-              <th className="w-8" />
-              {['时间', '类型', '对象', '变更摘要', '触发方式', '结果', '操作人'].map((h) => (
-                <th key={h} className="h-7 px-2 font-medium">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {(query.data?.items ?? []).map((a) => {
-              const open = openId === a.id;
-              return (
-                <Fragment key={a.id}>
-                  <tr className="cursor-pointer border-t hover:bg-accent/40" onClick={() => setOpenId(open ? null : a.id)}>
-                    <td className="pl-2">{open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}</td>
-                    <td className="h-7 whitespace-nowrap px-2 tabular-nums">{formatTime(a.at)}</td>
-                    <td className="px-2">{labelOf(AUDIT_KIND, a.kind).label}</td>
-                    <td className="max-w-40 truncate px-2" title={a.target}>{a.target}</td>
-                    <td className="max-w-md truncate px-2" title={a.summary}>{a.summary}</td>
-                    <td className="px-2"><TriggerBadge trigger={a.trigger} /></td>
-                    <td className="px-2"><AuditResultBadge result={a.result} /></td>
-                    <td className="px-2">{a.operator || '—'}</td>
-                  </tr>
-                  {open && (
-                    <tr className="border-t">
-                      <td colSpan={8} className="p-0"><Detail log={a} /></td>
-                    </tr>
-                  )}
-                </Fragment>
-              );
-            })}
-            {query.data?.items.length === 0 && (
-              <tr><td colSpan={8} className="h-16 text-center text-muted-foreground">没有符合条件的记录</td></tr>
-            )}
-            {query.isError && (
-              <tr><td colSpan={8} className="h-16 text-center text-destructive">{query.error.message}</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DataTable<AuditLog>
+        layoutId="audit.list"
+        className="min-h-0 flex-1"
+        data={items}
+        columns={AUDIT_COLUMNS}
+        getRowId={getAuditId}
+        manualSorting
+        status={status}
+        renderExpanded={renderAuditDetail}
+      />
       <div className="flex items-center justify-end gap-2 text-muted-foreground">
         <span>共 {total} 条，第 {page + 1} / {pages} 页</span>
         <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage(page - 1)}>上一页</Button>

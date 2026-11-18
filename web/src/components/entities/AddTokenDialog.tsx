@@ -1,9 +1,9 @@
-import { useId, useState } from 'react';
+import { useState } from 'react';
 import { api } from '@/api/endpoints';
 import { invalidate } from '@/api/invalidate';
-import { useUpstreamGroups } from '@/api/queries';
 import type { Upstream, UpstreamToken } from '@/api/types';
 import { Field } from '@/components/form/Field';
+import { GroupPicker } from '@/components/pickers';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -20,9 +20,6 @@ interface AddTokenDialogProps {
 }
 
 export function AddTokenDialog({ upstream, mode, onClose, onCreated }: AddTokenDialogProps) {
-  const listId = useId();
-  // 自己取上游分组，上游页和渠道向导打开的是同一个弹窗、同样能下拉
-  const groups = useUpstreamGroups(mode !== null ? upstream.id : null).data;
   const [name, setName] = useState('');
   const [group, setGroup] = useState('');
   const [key, setKey] = useState('');
@@ -55,12 +52,7 @@ export function AddTokenDialog({ upstream, mode, onClose, onCreated }: AddTokenD
         <div className="grid gap-3">
           <Field label="令牌名"><Input autoFocus value={name} onChange={(e) => setName(e.target.value)} /></Field>
           <Field label="分组">
-            <Input list={groups ? listId : undefined} value={group} onChange={(e) => setGroup(e.target.value)} />
-            {groups && (
-              <datalist id={listId}>
-                {groups.map((g) => <option key={g.name} value={g.name}>{`倍率 ${g.ratio}`}</option>)}
-              </datalist>
-            )}
+            <GroupPicker upstream={upstream} value={group || null} onChange={setGroup} />
           </Field>
           {mode === 'manual' && <Field label="key（sk-…）"><Input type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} /></Field>}
           {mode === 'remote' && (

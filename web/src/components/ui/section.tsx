@@ -14,7 +14,7 @@ export type SectionProps = {
 export function Section({ title, description, actions, variant = 'card', flush, className, children, ...props }: SectionProps) {
   if (variant === 'plain') {
     return (
-      <section className={cn('grid gap-1', className)} {...props}>
+      <section className={cn('grid grid-cols-[minmax(0,1fr)] gap-1', className)} {...props}>
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
           {actions}
@@ -31,7 +31,7 @@ export function Section({ title, description, actions, variant = 'card', flush, 
         {description && <span className="text-sm font-normal text-muted-foreground">{description}</span>}
         {actions && <div className="ml-auto flex items-center gap-2">{actions}</div>}
       </div>
-      {flush ? children : <div className="grid gap-3 p-3">{children}</div>}
+      {flush ? children : <div className="grid grid-cols-[minmax(0,1fr)] gap-3 p-3">{children}</div>}
     </section>
   );
 }

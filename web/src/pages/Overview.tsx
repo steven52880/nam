@@ -1,15 +1,17 @@
 import { Play } from 'lucide-react';
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '@/api/endpoints';
 import { invalidate } from '@/api/invalidate';
 import { useAuditRecent, useJobs } from '@/api/queries';
 import { StatusBadge } from '@/components/cells/StatusBadge';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { DataTable, customCol, numberCol, textCol, type TableColumn } from '@/components/table';
 import { Button } from '@/components/ui/button';
 import { Section } from '@/components/ui/section';
 import { useActionMutation } from '@/hooks/useActionMutation';
 import { formatDuration, formatIntervalSeconds, formatTime } from '@/lib/format';
-import { JOB_STATUS, JOB_TITLES, type JobStatusKey } from '@/lib/labels';
+import { JOB_STATUS, JOB_TITLES, labelOf, type JobStatusKey } from '@/lib/labels';
 import type { JobStatus } from '@/api/types';
 import { AuditResultBadge } from '@/components/entities/AuditBadges';
 
@@ -21,9 +23,13 @@ function jobStatusKey(job: JobStatus): JobStatusKey {
   return 'idle';
 }
 
+const EMPTY_JOBS: JobStatus[] = [];
+
 function JobResult({ job }: { job: JobStatus }) {
   return <StatusBadge dict={JOB_STATUS} value={jobStatusKey(job)} />;
 }
+
+const getJobId = (j: JobStatus) => j.name;
 
 function JobsTable() {
   const jobs = useJobs();
@@ -32,37 +38,64 @@ function JobsTable() {
     success: (_, name) => `已将「${JOB_TITLES[name as keyof typeof JOB_TITLES] ?? name}」加入队列`,
     invalidate: invalidate.jobs,
   });
+  const runPending = run.isPending;
+  const runMutate = run.mutate;
+
+  const columns = useMemo<TableColumn<JobStatus>[]>(
+    () => [
+      textCol<JobStatus>('name', '名称', (j) => j.title || JOB_TITLES[j.name], { width: 10 }),
+      numberCol<JobStatus>('interval', '间隔', (j) => j.interval_s, {
+        width: 6,
+        align: 'left',
+        cell: (j) => formatIntervalSeconds(j.interval_s),
+      }),
+      numberCol<JobStatus>('last_start', '上次运行', (j) => j.last_start, {
+        width: 11,
+        align: 'left',
+        cell: (j) => formatTime(j.last_start),
+      }),
+      numberCol<JobStatus>('duration', '耗时', (j) => j.last_duration_ms, {
+        width: 6,
+        align: 'left',
+        cell: (j) => formatDuration(j.last_duration_ms),
+      }),
+      textCol<JobStatus>('result', '结果', (j) => labelOf(JOB_STATUS, jobStatusKey(j)).label, {
+        width: 6,
+        cell: (j) => <JobResult job={j} />,
+      }),
+      textCol<JobStatus>('message', '说明', (j) => j.last_message, {
+        width: 20,
+        className: 'text-muted-foreground',
+        cell: (j) => <span title={j.last_message}>{j.last_message || '—'}</span>,
+      }),
+      customCol<JobStatus>('actions', '', {
+        width: 8,
+        align: 'right',
+        fixed: true,
+        cell: (j) => (
+          <Button size="sm" variant="outline" disabled={runPending || j.running} onClick={() => runMutate(j.name)}>
+            <Play className="h-3 w-3" />立即运行
+          </Button>
+        ),
+      }),
+    ],
+    [runPending, runMutate],
+  );
+  const status = useMemo(
+    () => ({ loading: jobs.isLoading, error: jobs.isError ? jobs.error.message : null }),
+    [jobs.isLoading, jobs.isError, jobs.error],
+  );
 
   return (
     <Section title="后台任务" flush>
-      <table className="w-full text-base">
-        <thead className="bg-muted text-left text-sm text-muted-foreground">
-          <tr>
-            {['名称', '间隔', '上次运行', '耗时', '结果', '说明', ''].map((h) => (
-              <th key={h} className="h-7 px-3 font-medium">{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {(jobs.data ?? []).map((j) => (
-            <tr key={j.name} className="border-t hover:bg-accent/40">
-              <td className="h-7 px-3">{j.title || JOB_TITLES[j.name]}</td>
-              <td className="px-3">{formatIntervalSeconds(j.interval_s)}</td>
-              <td className="px-3 tabular-nums">{formatTime(j.last_start)}</td>
-              <td className="px-3 tabular-nums">{formatDuration(j.last_duration_ms)}</td>
-              <td className="px-3"><JobResult job={j} /></td>
-              <td className="max-w-xs truncate px-3 text-muted-foreground" title={j.last_message}>{j.last_message || '—'}</td>
-              <td className="px-3 text-right">
-                <Button size="sm" variant="outline" disabled={run.isPending || j.running} onClick={() => run.mutate(j.name)}>
-                  <Play className="h-3 w-3" />立即运行
-                </Button>
-              </td>
-            </tr>
-          ))}
-          {jobs.isLoading && <tr><td colSpan={7} className="h-12 text-center text-muted-foreground">加载中…</td></tr>}
-          {jobs.isError && <tr><td colSpan={7} className="h-12 text-center text-destructive">{jobs.error.message}</td></tr>}
-        </tbody>
-      </table>
+      <DataTable<JobStatus>
+        layoutId="overview.jobs"
+        className="rounded-none border-0"
+        data={jobs.data ?? EMPTY_JOBS}
+        columns={columns}
+        getRowId={getJobId}
+        status={status}
+      />
     </Section>
   );
 }
