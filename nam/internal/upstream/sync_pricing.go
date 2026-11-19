@@ -17,25 +17,26 @@ func (s *Syncer) SyncGroups(ctx context.Context, id uint) (int, error) {
 		if errors.Is(err, store.ErrNotFound) {
 			return 0, err
 		}
-		s.record(ctx, id, "", err)
+		s.record(ctx, id, "", err, groupParts("", err, 0, 0)...)
 		return 0, err
 	}
 	p, err := ad.Pricing(ctx, site)
-	if errors.Is(err, ErrUnsupported) {
-		s.record(ctx, u.ID, u.CredType, nil)
-		return 0, nil
-	}
+	var nGroups, nPrices int
 	if err == nil {
-		err = s.storePricing(ctx, u.ID, p)
+		nGroups, nPrices, err = s.storePricing(ctx, u.ID, p)
 	}
-	s.record(ctx, u.ID, u.CredType, err)
+	s.record(ctx, u.ID, u.CredType, err, groupParts(u.CredType, err, nGroups, nPrices)...)
 	if err != nil {
+		if errors.Is(err, ErrUnsupported) {
+			return 0, nil
+		}
 		return 0, err
 	}
 	return len(p.Groups), nil
 }
 
-func (s *Syncer) storePricing(ctx context.Context, id uint, p Pricing) error {
+// storePricing replaces the stored groups and model prices and returns how many of each were stored.
+func (s *Syncer) storePricing(ctx context.Context, id uint, p Pricing) (int, int, error) {
 	now := time.Now().Unix()
 	groups := make([]store.UpstreamGroup, 0, len(p.Groups))
 	seenG := map[string]bool{}
@@ -59,7 +60,7 @@ func (s *Syncer) storePricing(ctx context.Context, id uint, p Pricing) error {
 			CacheRead: m.CacheRead, CacheWrite: m.CacheWrite, PerRequest: m.PerRequest, UpdatedAt: now,
 		})
 	}
-	return s.St.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := s.St.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("upstream_id = ?", id).Delete(&store.UpstreamGroup{}).Error; err != nil {
 			return err
 		}
@@ -76,6 +77,7 @@ func (s *Syncer) storePricing(ctx context.Context, id uint, p Pricing) error {
 		}
 		return nil
 	})
+	return len(groups), len(prices), err
 }
 
 // SyncBalance refreshes balance_usd/balance_at. ErrUnsupported leaves the balance untouched.
@@ -86,14 +88,10 @@ func (s *Syncer) SyncBalance(ctx context.Context, id uint) error {
 		if errors.Is(err, store.ErrNotFound) {
 			return err
 		}
-		s.record(ctx, id, "", err)
+		s.record(ctx, id, "", err, namedPart{store.SyncPartBalance, outcome("", err, nil)})
 		return err
 	}
 	b, err := ad.Balance(ctx, site)
-	if errors.Is(err, ErrUnsupported) {
-		s.record(ctx, u.ID, u.CredType, nil)
-		return nil
-	}
 	if err == nil {
 		var usd any
 		if !b.Unlimited {
@@ -102,6 +100,9 @@ func (s *Syncer) SyncBalance(ctx context.Context, id uint) error {
 		err = s.St.DB.WithContext(ctx).Model(&store.Upstream{}).Where("id = ?", u.ID).
 			Updates(map[string]any{"balance_usd": usd, "balance_at": time.Now().Unix()}).Error
 	}
-	s.record(ctx, u.ID, u.CredType, err)
+	s.record(ctx, u.ID, u.CredType, err, namedPart{store.SyncPartBalance, outcome(u.CredType, err, nil)})
+	if errors.Is(err, ErrUnsupported) {
+		return nil
+	}
 	return err
 }

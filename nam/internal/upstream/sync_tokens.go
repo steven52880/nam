@@ -31,19 +31,18 @@ func (s *Syncer) SyncTokens(ctx context.Context, id uint) (int, error) {
 		if errors.Is(err, store.ErrNotFound) {
 			return 0, err
 		}
-		s.record(ctx, id, "", err)
+		s.record(ctx, id, "", err, namedPart{store.SyncPartTokens, outcome("", err, nil)})
 		return 0, err
 	}
 	remote, err := ad.ListTokens(ctx, site)
-	if errors.Is(err, ErrUnsupported) {
-		s.record(ctx, u.ID, u.CredType, nil)
-		return 0, nil
-	}
 	if err == nil {
 		err = s.storeTokens(ctx, u.ID, remote)
 	}
-	s.record(ctx, u.ID, u.CredType, err)
+	s.record(ctx, u.ID, u.CredType, err, namedPart{store.SyncPartTokens, outcome(u.CredType, err, intp(len(remote)))})
 	if err != nil {
+		if errors.Is(err, ErrUnsupported) {
+			return 0, nil
+		}
 		return 0, err
 	}
 	return len(remote), nil

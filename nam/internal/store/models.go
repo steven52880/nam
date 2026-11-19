@@ -1,6 +1,10 @@
 package store
 
-import "time"
+import (
+	"database/sql/driver"
+	"encoding/json"
+	"time"
+)
 
 // Upstream types.
 const (
@@ -39,13 +43,73 @@ type Upstream struct {
 	Remark         string  `json:"remark"`
 	AdapterConfig  string  `json:"adapter_config"` // JSON, generic adapter only
 
-	BalanceUSD      *float64  `json:"balance_usd"`
-	BalanceAt       int64     `json:"balance_at"`
-	LastSyncAt      int64     `json:"last_sync_at"`
-	LastSyncError   string    `json:"last_sync_error"`
-	ConsecutiveFail int       `json:"consecutive_fail"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	BalanceUSD      *float64 `json:"balance_usd"`
+	BalanceAt       int64    `json:"balance_at"`
+	LastSyncAt      int64    `json:"last_sync_at"`
+	LastSyncError   string   `json:"last_sync_error"`
+	ConsecutiveFail int      `json:"consecutive_fail"`
+	// SyncParts is the latest outcome of each synced part (balance/tokens/groups/model_prices).
+	// Read-only for gorm: written only through an atomic json_set UPDATE in the upstream syncer,
+	// so that SaveUpstream never overwrites it with a stale copy.
+	SyncParts SyncParts `gorm:"type:text;<-:false" json:"sync_parts"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// Sync part names and states used in Upstream.SyncParts.
+const (
+	SyncPartBalance     = "balance"
+	SyncPartTokens      = "tokens"
+	SyncPartGroups      = "groups"
+	SyncPartModelPrices = "model_prices"
+
+	SyncOK          = "ok"          // synced
+	SyncFail        = "fail"        // pulling failed
+	SyncUnsupported = "unsupported" // this upstream type does not provide it
+	SyncEmpty       = "empty"       // synced but the upstream returned nothing (model_prices only)
+)
+
+// SyncPart is the latest sync outcome of one part of an upstream.
+type SyncPart struct {
+	State   string `json:"state"`
+	At      int64  `json:"at"`
+	Message string `json:"message"`
+	Count   *int   `json:"count"` // tokens / groups / model prices; nil for balance
+}
+
+// SyncParts maps a part name to its latest outcome. A nil map serializes as {}.
+type SyncParts map[string]SyncPart
+
+// Scan reads the JSON column. NULL, empty or malformed values yield an empty map so that a
+// bad legacy value can never make an upstream unreadable.
+func (p *SyncParts) Scan(src any) error {
+	var raw []byte
+	switch v := src.(type) {
+	case []byte:
+		raw = v
+	case string:
+		raw = []byte(v)
+	}
+	m := map[string]SyncPart{}
+	if len(raw) == 0 || json.Unmarshal(raw, &m) != nil || m == nil {
+		m = map[string]SyncPart{}
+	}
+	*p = m
+	return nil
+}
+
+// Value implements driver.Valuer.
+func (p SyncParts) Value() (driver.Value, error) {
+	b, err := p.MarshalJSON()
+	return string(b), err
+}
+
+// MarshalJSON makes a nil map render as {} instead of null.
+func (p SyncParts) MarshalJSON() ([]byte, error) {
+	if p == nil {
+		return []byte("{}"), nil
+	}
+	return json.Marshal(map[string]SyncPart(p))
 }
 
 // UpstreamGroup is a group ratio synced from an upstream.

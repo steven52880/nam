@@ -46,13 +46,15 @@ func (s *Syncer) load(ctx context.Context, id uint) (store.Upstream, Site, Adapt
 	return u, site, ad, err
 }
 
-// record stores the outcome of one sync on the upstream row.
+// record stores the outcome of one sync on the upstream row, together with the per-part
+// outcomes (sync_parts, written atomically with json_set).
 // ErrUnsupported counts as success: the operation simply does not exist for this kind.
-func (s *Syncer) record(ctx context.Context, id uint, credType string, err error) {
+func (s *Syncer) record(ctx context.Context, id uint, credType string, err error, parts ...namedPart) {
 	if errors.Is(err, ErrUnsupported) {
 		err = nil
 	}
-	upd := map[string]any{"last_sync_at": time.Now().Unix()}
+	now := time.Now()
+	upd := map[string]any{"last_sync_at": now.Unix(), "updated_at": now}
 	if err != nil {
 		msg := AuthErrorText(credType, err)
 		if r := []rune(msg); len(r) > 500 {
@@ -64,7 +66,12 @@ func (s *Syncer) record(ctx context.Context, id uint, credType string, err error
 		upd["last_sync_error"] = ""
 		upd["consecutive_fail"] = 0
 	}
-	if dbErr := s.St.DB.WithContext(context.WithoutCancel(ctx)).Model(&store.Upstream{}).Where("id = ?", id).Updates(upd).Error; dbErr != nil {
+	if len(parts) > 0 {
+		expr, args := partsExpr(parts)
+		upd["sync_parts"] = gorm.Expr(expr, args...)
+	}
+	// Table (not Model): sync_parts is read-only for gorm, so a schema-aware update would skip it.
+	if dbErr := s.St.DB.WithContext(context.WithoutCancel(ctx)).Table("upstreams").Where("id = ?", id).Updates(upd).Error; dbErr != nil {
 		slog.Warn("nam: record upstream sync", "id", id, "err", dbErr)
 	}
 }
