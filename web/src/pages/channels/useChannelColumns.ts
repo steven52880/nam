@@ -6,7 +6,7 @@ import type { ChannelsPageState } from './useChannelsPage';
 
 /** 渠道表的列：把页面状态里的回调、厂商分组、手动缓存测试、成本范围接到列定义上。 */
 export function useChannelColumns(page: ChannelsPageState) {
-  const { setModelRow, setDriftRow } = page.dialogs;
+  const { setModelRow } = page.dialogs;
   const { setToken, setVendor } = page.actions;
   // 只依赖引用稳定的 mutate，不依赖每次状态变化都会换新的 mutation 对象
   const setUpstream = page.actions.setUpstream.mutate;
@@ -33,7 +33,6 @@ export function useChannelColumns(page: ChannelsPageState) {
       buildChannelColumns({
         model,
         onOpenModels: setModelRow,
-        onOpenDrift: setDriftRow,
         onSetUpstream: (row, upstreamId) => setUpstream({ targets: [row], upstreamId }),
         onSetToken: setToken,
         onSetVendor: setVendor,
@@ -42,6 +41,6 @@ export function useChannelColumns(page: ChannelsPageState) {
         ranges,
         balanceWidths: balanceCh,
       }),
-    [model, setModelRow, setDriftRow, setUpstream, setToken, setVendor, vendorGroups, cacheTests, ranges, balanceCh],
+    [model, setModelRow, setUpstream, setToken, setVendor, vendorGroups, cacheTests, ranges, balanceCh],
   );
 }

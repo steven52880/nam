@@ -7,7 +7,6 @@ export interface RowMenuHandlers {
   openCache: (row: ChannelRow) => void;
   openInNewapi: (id: number) => void;
   copyAsNew: (row: ChannelRow) => void;
-  openDrift: (row: ChannelRow) => void;
   askDelete: (row: ChannelRow) => void;
 }
 
@@ -33,7 +32,6 @@ export function buildRowMenu(row: ChannelRow, h: RowMenuHandlers): MenuItem[] {
     },
     { key: 'newapi', label: '在 NewAPI 中打开', onSelect: () => h.openInNewapi(row.id), disabled: row.id < 0 },
     { key: 'copy', label: '复制为新渠道', onSelect: () => h.copyAsNew(row) },
-    { key: 'drift', label: '查看漂移差异', onSelect: () => h.openDrift(row), disabled: row.sync_state !== 'drift' },
     { key: 'delete', label: '删除', destructive: true, onSelect: () => h.askDelete(row) },
   ];
 }

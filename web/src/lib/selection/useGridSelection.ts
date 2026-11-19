@@ -47,6 +47,12 @@ export function useGridSelection({ containerRef, rowIds, columnIds }: GridSelect
     setFocus(null);
   }, []);
 
+  /** 程序化选中单个单元格（如从提示条定位到某一行）。 */
+  const select = useCallback((cell: CellRef) => {
+    setAnchor(cell);
+    setFocus(cell);
+  }, []);
+
   const readCell = useCallback(
     (node: Element | null): CellRef | null => {
       const root = containerRef.current;
@@ -144,5 +150,5 @@ export function useGridSelection({ containerRef, rowIds, columnIds }: GridSelect
     [anchor, focus, rowIds, columnIds, clear],
   );
 
-  return { rect, focus, isSelected, isFocus, clear, handleKey, onPointerDown };
+  return { rect, focus, isSelected, isFocus, clear, select, handleKey, onPointerDown };
 }

@@ -7,7 +7,7 @@ const all = async (...tasks: Array<Promise<void>>): Promise<void> => {
 };
 
 export const invalidate = {
-  /** 厂商定价：编辑、计算、写入、确认、采纳。写入会产生审计，一并刷新。 */
+  /** 厂商定价：编辑、撤销修改、计算、写入、确认。写入会产生审计，一并刷新。 */
   vendorPricing: (qc: QueryClient) =>
     all(
       qc.invalidateQueries({ queryKey: keys.vendorPricing.all() }),
@@ -36,7 +36,7 @@ export const invalidate = {
       qc.invalidateQueries({ queryKey: keys.prices.all() }),
       qc.invalidateQueries({ queryKey: keys.vendorPricing.all() }),
     ),
-  /** 渠道草稿、应用、漂移处理、接管。 */
+  /** 渠道草稿、应用、接管。 */
   channels: (qc: QueryClient) =>
     all(
       qc.invalidateQueries({ queryKey: keys.channels.all() }),

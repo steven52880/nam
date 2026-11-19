@@ -29,11 +29,6 @@ export function useChannelTable(page: ChannelsPageState) {
     },
     [rowById],
   );
-  const cellClassName = useCallback((row: ChannelViewRow, columnId: string) => {
-    const fields = COLUMN_FIELDS[columnId];
-    return fields?.some((f) => row.drift_fields.includes(f)) ? 'bg-destructive/15' : undefined;
-  }, []);
-
   const { setStatus } = actions;
   const openInNewapi = actions.openInNewapi.mutate;
   const copyAsNew = actions.copyAsNew.mutate;
@@ -45,11 +40,10 @@ export function useChannelTable(page: ChannelsPageState) {
         openCache: dialogs.setCacheRow,
         openInNewapi: (id) => openInNewapi(id),
         copyAsNew: (r) => copyAsNew(r),
-        openDrift: dialogs.setDriftRow,
         askDelete: dialogs.setDeleteRow,
       }),
-    [setStatus, openInNewapi, copyAsNew, dialogs.setTestRow, dialogs.setCacheRow, dialogs.setDriftRow, dialogs.setDeleteRow],
+    [setStatus, openInNewapi, copyAsNew, dialogs.setTestRow, dialogs.setCacheRow, dialogs.setDeleteRow],
   );
 
-  return { columns, groupSummary, isDirty, cellClassName, rowMenu };
+  return { columns, groupSummary, isDirty, rowMenu };
 }

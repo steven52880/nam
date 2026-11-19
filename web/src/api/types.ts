@@ -55,6 +55,21 @@ export interface UpstreamInput {
   adapter_config?: string;
 }
 
+export interface SyncPart {
+  /** ok 成功；fail 拉取失败；unsupported 该上游类型不支持；empty 成功但没有数据（只用于 model_prices）。 */
+  state: 'ok' | 'fail' | 'unsupported' | 'empty';
+  /** 同步时间（Unix 秒）。 */
+  at: number;
+  message: string;
+  /** 令牌 / 分组 / 模型价格条数；余额为 null。 */
+  count: number | null;
+}
+
+export type SyncPartKey = 'balance' | 'tokens' | 'groups' | 'model_prices';
+
+/** 缺少某一项 = 还没同步过。 */
+export type SyncParts = Partial<Record<SyncPartKey, SyncPart>>;
+
 export interface Upstream {
   id: number;
   name: string;
@@ -74,6 +89,8 @@ export interface Upstream {
   balance_at: number;
   last_sync_at: number;
   last_sync_error: string;
+  /** 各部分最近一次同步结果；老数据或还没同步过时可能为 null / 缺项。 */
+  sync_parts?: SyncParts | null;
   token_count: number;
   channel_count: number;
   created_at: string;

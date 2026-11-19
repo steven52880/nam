@@ -13,7 +13,7 @@ import { optionsOf, CHANNEL_STATUS, STATS_WINDOW_PRESETS, SYNC_STATE, statsWindo
 import { PRESET_WINDOWS, isPresetWindow } from '@/lib/statsWindow';
 
 const STATUS_FILTER_OPTIONS = optionsOf(CHANNEL_STATUS);
-const SYNC_FILTER_OPTIONS = optionsOf(SYNC_STATE, ['synced', 'draft', 'drift', 'error']);
+const SYNC_FILTER_OPTIONS = optionsOf(SYNC_STATE, ['synced', 'draft', 'error']);
 const STATS_WINDOW_OPTIONS = optionsOf(STATS_WINDOW_PRESETS, PRESET_WINDOWS);
 /** 下拉里"自定义…"这一项的值，不会作为统计时长传出去。 */
 const CUSTOM_ITEM = '__custom';

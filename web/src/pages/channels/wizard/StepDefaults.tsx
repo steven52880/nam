@@ -54,7 +54,7 @@ export function StepDefaults({ state, tokenNames, onChange }: StepDefaultsProps)
         ))}
         {vendorNames.length === 0 && <span className="text-sm text-muted-foreground">所选模型没有归属厂商</span>}
       </Field>
-      <Field label="上游分组倍率（留空表示根据上游分组倍率自动推算；填写则标记为手动）">
+      <Field label="上游分组倍率（留空 = 自动：按上游逐模型价或上游分组倍率现算，上游变化后自动跟着变；填写 = 手填，固定不变）">
         {state.tokenIds.map((id) => (
           <div key={id} className="flex items-center gap-2">
             <span className="w-40 shrink-0 truncate text-base">{tokenNames.get(id) ?? `令牌 ${id}`}</span>

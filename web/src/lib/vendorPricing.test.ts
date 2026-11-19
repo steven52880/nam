@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { VendorGroupsPlan, VendorPricingItem, VendorPricingState } from '@/api/types';
 import {
-  adoptedPrice,
   attentionCount,
   attentionSummary,
   canPreviewWrite,
   cnyPerUsd,
   currentPrice,
   groupRatioToText,
+  hasDraft,
   needsAttention,
   parseGroupRatioInput,
   parseMarkupInput,
@@ -35,10 +35,7 @@ const item = (state: VendorPricingState, extra: Partial<VendorPricingItem> = {})
   target_price: null,
   target_ratio: null,
   newapi_ratio: null,
-  last_written_price: null,
-  last_written_ratio: null,
-  last_written_at: 0,
-  pending_price: null,
+  draft_ratio: null,
   change: null,
   small_change: false,
   state,
@@ -146,11 +143,6 @@ describe('换算', () => {
     expect(targetGroupRatio(1, 7, 7)).toBe(1);
     expect(targetGroupRatio(0.5, 7.2, 7)).toBe(0.514);
   });
-  it('采纳 NewAPI 值：反算售价并保留 4 位', () => {
-    expect(adoptedPrice(0.2857, 7, 7.2)).toBe(0.2778);
-    // 倍率已经取整到 3 位，反算回来会有一点点误差
-    expect(adoptedPrice(targetGroupRatio(0.3, 7.2, 7), 7, 7.2)).toBe(0.3004);
-  });
 });
 
 describe('parseGroupRatioInput / groupRatioToText', () => {
@@ -190,28 +182,35 @@ describe('currentPrice / signedChange', () => {
     expect(currentPrice(item('synced', { mode: 'fixed', sell_price: null, target_price: null }))).toBeNull();
     expect(currentPrice(item('to_write', { mode: 'follow', sell_price: 0.1, target_price: 0.4 }))).toBe(0.4);
   });
-  it('变化带方向', () => {
-    expect(signedChange({ target_price: 0.3, last_written_price: 0.2, change: 0.5 })).toBeCloseTo(0.5, 10);
-    expect(signedChange({ target_price: 0.1, last_written_price: 0.2, change: 0.5 })).toBeCloseTo(-0.5, 10);
+  it('变化直接用后端给的带方向的值', () => {
+    expect(signedChange({ change: 0.5 })).toBe(0.5);
+    expect(signedChange({ change: -0.5 })).toBe(-0.5);
+    expect(signedChange({ change: null })).toBeNull();
   });
-  it('缺上次写入价时退回后端给的值', () => {
-    expect(signedChange({ target_price: 0.3, last_written_price: null, change: 0.4 })).toBe(0.4);
-    expect(signedChange({ target_price: null, last_written_price: 0.2, change: null })).toBeNull();
+});
+
+describe('hasDraft', () => {
+  it('固定模式有草稿倍率才算有未写入的修改', () => {
+    expect(hasDraft({ mode: 'fixed', draft_ratio: 0.3 })).toBe(true);
+    expect(hasDraft({ mode: 'fixed', draft_ratio: null })).toBe(false);
+  });
+  it('跟随模式没有草稿', () => {
+    expect(hasDraft({ mode: 'follow', draft_ratio: 0.3 })).toBe(false);
   });
 });
 
 describe('待处理统计', () => {
-  const list = [item('pending'), item('drift'), item('drift'), item('synced'), item('to_write'), item('unset')];
-  it('待确认 + 漂移', () => {
-    expect(attentionCount(list)).toBe(3);
+  const list = [item('pending'), item('pending'), item('synced'), item('to_write'), item('unset'), item('no_channel')];
+  it('只数待确认', () => {
+    expect(attentionCount(list)).toBe(2);
     expect(attentionCount([])).toBe(0);
-    expect(attentionSummary(list)).toEqual({ pending: 1, drift: 2, total: 3 });
+    expect(attentionSummary(list)).toEqual({ pending: 2 });
   });
   it('needsAttention', () => {
     expect(needsAttention('pending')).toBe(true);
-    expect(needsAttention('drift')).toBe(true);
     expect(needsAttention('to_write')).toBe(false);
     expect(needsAttention('no_channel')).toBe(false);
+    expect(needsAttention('synced')).toBe(false);
   });
 });
 

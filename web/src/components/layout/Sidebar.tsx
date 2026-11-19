@@ -9,12 +9,11 @@ export function Sidebar() {
   const channels = useChannels();
   const attention = useVendorPricingAttention();
   const pending = attention.data?.pending ?? 0;
-  const drift = attention.data?.drift ?? 0;
   const counts: Record<string, number | undefined> = {
     upstreams: upstreams.data?.length,
     channels: channels.data?.items.length,
     // 为 0 时不显示徽标
-    pricing: pending + drift > 0 ? pending + drift : undefined,
+    pricing: pending > 0 ? pending : undefined,
   };
   const draftCount = channels.data?.draft_count ?? 0;
 
@@ -50,7 +49,7 @@ export function Sidebar() {
                   {count !== undefined && (
                     <Badge
                       tone={item.badge === 'pricing' ? 'warning' : 'accent'}
-                      title={item.badge === 'pricing' ? `待确认 ${pending} + 漂移 ${drift} 个厂商` : undefined}
+                      title={item.badge === 'pricing' ? `待确认 ${pending} 个厂商` : undefined}
                     >
                       {count}
                     </Badge>

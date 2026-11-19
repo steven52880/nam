@@ -3,8 +3,8 @@
 /** 固定 = 手填售价；跟随 = 参考成本 × 加价比例。 */
 export type VendorPricingMode = 'fixed' | 'follow';
 
-/** 已同步 / 待写入 / 待确认 / 漂移 / 无可用渠道 / 未设置。 */
-export type VendorPricingState = 'synced' | 'to_write' | 'pending' | 'drift' | 'no_channel' | 'unset';
+/** 已同步 / 待写入 / 待确认 / 无可用渠道 / 未设置。 */
+export type VendorPricingState = 'synced' | 'to_write' | 'pending' | 'no_channel' | 'unset';
 
 export interface VendorRefChannel {
   id: number;
@@ -31,20 +31,18 @@ export interface VendorPricingItem {
   mode: VendorPricingMode;
   /** 加价比例，只在跟随模式有意义。 */
   markup: number | null;
-  /** 售价（原厂价的倍数），只在固定模式有意义。 */
+  /** 当前目标售价（原厂价的倍数）。 */
   sell_price: number | null;
   reference: VendorReference | null;
+  /** 待确认时显示的新售价；其他状态是当前目标售价。 */
   target_price: number | null;
   /** 厂商分组倍率（目标）。 */
   target_ratio: number | null;
   /** NewAPI 当前倍率；null = NewAPI 里还没有这个分组。 */
   newapi_ratio: number | null;
-  last_written_price: number | null;
-  last_written_ratio: number | null;
-  /** Unix 秒；接管得到、还没写过时为 null。 */
-  last_written_at: number | null;
-  pending_price: number | null;
-  /** |目标售价 − 上次写入售价| ÷ 上次写入售价。 */
+  /** 固定模式下还没写入 NewAPI 的草稿倍率；没有草稿为 null。 */
+  draft_ratio: number | null;
+  /** 目标售价相对 NewAPI 当前售价的变化（带方向）；算不出为 null。 */
   change: number | null;
   /** 变化小于最小变动：自动写入会跳过。 */
   small_change: boolean;
@@ -81,12 +79,13 @@ export interface VendorPricingUpdate {
   markup?: number;
   /** 直接指定厂商分组倍率（3 位小数）；后端会反算成售价。不要和 sell_price 一起传。 */
   group_ratio?: number;
+  /** true = 清掉固定模式的草稿倍率（撤销修改）。 */
+  discard_draft?: boolean;
 }
 
 export interface VendorWriteRequest {
   vendor_ids?: number[];
   include_groups?: boolean;
-  force?: boolean;
 }
 
 export interface VendorWriteChange {

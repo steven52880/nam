@@ -7,6 +7,7 @@ import { Field } from '@/components/form/Field';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { formatDiscount } from '@/lib/format';
 
 /** 输入文本转分数：空串为 null，非法返回 undefined。 */
 function parseFraction(text: string): number | null | undefined {
@@ -33,7 +34,7 @@ export function DiscountCell({
   channelId: number;
   model: string;
   override: number | null;
-  fallback: number;
+  fallback: number | null;
 }) {
   const mutation = useModelDiscountMutation(channelId);
   const initial = override === null ? '' : String(override);
@@ -60,7 +61,7 @@ export function DiscountCell({
       className="h-6 w-24 text-right tabular-nums"
       inputMode="decimal"
       value={text}
-      placeholder={`沿用 ${fallback}`}
+      placeholder={fallback === null ? '无法推算' : `沿用 ${formatDiscount(fallback)}`}
       disabled={mutation.isPending}
       onChange={(e) => setText(e.target.value)}
       onBlur={commit}

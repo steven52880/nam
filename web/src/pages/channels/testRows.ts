@@ -25,6 +25,8 @@ export function makeChannel(over: Partial<ChannelRow> = {}): ChannelRow {
     vendor: 'openai',
     discount: 0.8,
     discount_source: 'auto',
+    discount_reason: '',
+    upstream_group_ratio: null,
     currency_rate: 7,
     channel_cost: 5,
     balance_usd: null,
@@ -33,7 +35,6 @@ export function makeChannel(over: Partial<ChannelRow> = {}): ChannelRow {
     unit_cost_model: 'gpt-4o',
     sync_state: 'synced',
     dirty_fields: [],
-    drift_fields: [],
     ...over,
   };
 }

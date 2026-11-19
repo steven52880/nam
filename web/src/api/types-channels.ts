@@ -19,7 +19,9 @@ export interface ChannelExtFields {
   upstream_id?: number;
   token_id?: number;
   vendor?: string;
+  /** 手填倍率；和 discount_source: 'manual' 等价。 */
   discount?: number;
+  /** 'auto'（不带 discount）= 清掉手填，回到自动。 */
   discount_source?: DiscountSource;
 }
 
@@ -29,8 +31,9 @@ export interface ChannelChange {
   ext: ChannelExtFields;
 }
 
-export type DiscountSource = 'auto' | 'manual';
-export type SyncState = 'synced' | 'draft' | 'draft_create' | 'draft_delete' | 'drift' | 'error';
+/** 渠道级倍率来源：manual 手填 / auto 按上游逐模型价推算 / group 上游分组倍率 / none 算不出。 */
+export type DiscountSource = 'manual' | 'auto' | 'group' | 'none';
+export type SyncState = 'synced' | 'draft' | 'draft_create' | 'draft_delete' | 'error';
 export type DraftOp = 'create' | 'update' | 'delete';
 
 export interface ChannelRow {
@@ -54,9 +57,13 @@ export interface ChannelRow {
   token_id: number | null;
   token_name: string;
   vendor: string;
-  /** 上游分组倍率：上游对该分组请求的实际扣费是上游美元标价的多少倍（无单位，显示小数）。 */
-  discount: number;
+  /** 上游分组倍率：上游对该分组请求的实际扣费是上游美元标价的多少倍（无单位，显示小数）；算不出时为 null。 */
+  discount: number | null;
   discount_source: DiscountSource;
+  /** discount_source 为 none 时说明为什么算不出，其他来源为空串。 */
+  discount_reason: string;
+  /** 令牌所在分组在上游的分组倍率；没有时为 null。 */
+  upstream_group_ratio: number | null;
   /** 上游货币汇率（元/$）：在上游充值 1 美元额度需要的人民币。 */
   currency_rate: number | null;
   /** 上游渠道售价 = 分组倍率 × 上游货币汇率 ÷ 美元参考汇率（后端已除），值是原厂价的倍数，前端显示成百分比。 */
@@ -68,7 +75,6 @@ export interface ChannelRow {
   unit_cost_model: string;
   sync_state: SyncState;
   dirty_fields: string[];
-  drift_fields: string[];
   draft_id?: number;
   draft_op?: DraftOp;
   draft_error?: string;
@@ -108,6 +114,11 @@ export interface IssuesPayload {
   issues: ValidationIssue[];
 }
 
+/** GET /channels/issues：对所有渠道（含草稿）跑规则检查得到的问题。 */
+export interface ChannelIssueList {
+  items: ValidationIssue[];
+}
+
 export interface PlanChange {
   field: string;
   old: unknown;
@@ -145,18 +156,6 @@ export interface ApplyResponse {
   failed: number;
 }
 
-export interface DriftField {
-  field: string;
-  old: unknown;
-  new: unknown;
-}
-
-export interface DriftDetail {
-  channel_id: number;
-  name: string;
-  fields: DriftField[];
-}
-
 export interface BatchRequest {
   upstream_id: number;
   token_ids: number[];
@@ -177,6 +176,10 @@ export interface BatchSpec {
 export interface BatchPreviewItem {
   fields: ChannelFields;
   ext: ChannelExtFields;
+  /** 预览里现算的渠道倍率；后端没给（undefined）= 创建后自动；null = 无法推算。 */
+  discount?: number | null;
+  discount_source?: DiscountSource;
+  discount_reason?: string;
   name: string;
   token_name: string;
   vendor: string;
@@ -250,7 +253,6 @@ export interface Vendor {
 /** 编辑厂商的返回：厂商本身 + 本次生成的草稿数。 */
 export interface VendorUpdateResult extends Vendor {
   group_drafts: number;
-  renamed_drafts: number;
 }
 
 export interface VendorInput {

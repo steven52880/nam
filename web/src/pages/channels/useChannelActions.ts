@@ -32,7 +32,7 @@ export function useChannelActions(rows: ChannelRow[], model: string | null) {
     (rowId: string, columnId: string, value: string) => {
       if (model !== null && columnId === 'discount') return;
       const row = byId(rowId);
-      const parsed = parseCell(columnId, value);
+      const parsed = parseCell(columnId, value, row);
       if (!row) return;
       if ('error' in parsed) {
         toast.error(parsed.error);
@@ -155,8 +155,8 @@ export function useChannelActions(rows: ChannelRow[], model: string | null) {
             upstream_id: row.upstream_id ?? undefined,
             token_id: row.token_id ?? undefined,
             vendor: row.vendor,
-            discount: row.discount,
-            discount_source: row.discount_source,
+            // 只复制手填值；自动 / 分组倍率由新渠道自己现算
+            discount: row.discount_source === 'manual' && row.discount !== null ? row.discount : undefined,
           },
         },
       ]),

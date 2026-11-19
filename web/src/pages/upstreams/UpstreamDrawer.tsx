@@ -19,6 +19,7 @@ import { CredentialDialog, TestUpstreamDialog } from './tabs/CredentialDialogs';
 import { GroupsTab, ModelsTab } from './tabs/GroupsModelsTabs';
 import { TokensTab } from './tabs/TokensTab';
 import { TypeSelect } from './UpstreamForm';
+import { SupportList } from './SupportList';
 
 const PLACEHOLDER_TABS = ['公告', '同步日志'];
 
@@ -62,6 +63,7 @@ function Overview({ u, onClose }: { u: Upstream; onClose: () => void }) {
 
   return (
     <div className="grid gap-3 p-4">
+      <SupportList upstream={u} />
       <div className="grid grid-cols-4 gap-2 text-center">
         <Stat label="余额（美元）" value={formatNumber(u.balance_usd)} />
         <Stat label="折合人民币" value={formatNumber(u.balance_cny)} />

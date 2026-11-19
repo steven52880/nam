@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import type { VendorPricingItem } from '@/api/types';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { DASH, formatGroupRatio, formatNumber, formatPercent, formatRatioPercent } from '@/lib/format';
-import { cnyPerUsd, currentPrice, rawRatioTitle, signedChange } from '@/lib/vendorPricing';
+import { cnyPerUsd, rawRatioTitle, signedChange } from '@/lib/vendorPricing';
 
 
 function InfoLine({ label, children }: { label: string; children: ReactNode }) {
@@ -33,10 +33,9 @@ interface DialogProps {
   onConfirm: (row: VendorPricingItem) => void;
 }
 
-/** 待确认：写清旧售价 → 新售价和变化幅度，确认后写入 NewAPI。 */
+/** 待确认：写清新售价、相对 NewAPI 当前售价的变化幅度和倍率变化，确认后写入 NewAPI。 */
 export function ConfirmPendingDialog({ row, usdRate, protectThreshold, pending, onClose, onConfirm }: DialogProps) {
-  const newPrice = row ? (row.pending_price ?? row.target_price) : null;
-  const change = row ? signedChange({ ...row, target_price: newPrice }) : null;
+  const change = row ? signedChange(row) : null;
   return (
     <ConfirmDialog
       open={row !== null}
@@ -49,10 +48,8 @@ export function ConfirmPendingDialog({ row, usdRate, protectThreshold, pending, 
     >
       {row && (
         <div className="grid gap-1">
-          <InfoLine label="售价">
-            <PriceText price={row.last_written_price} usdRate={usdRate} />
-            <span className="mx-1.5 text-muted-foreground">→</span>
-            <span className="font-medium"><PriceText price={newPrice} usdRate={usdRate} /></span>
+          <InfoLine label="新售价">
+            <span className="font-medium"><PriceText price={row.target_price} usdRate={usdRate} /></span>
           </InfoLine>
           <InfoLine label="变化">
             <span className="font-medium text-warning">{formatPercent(change, { signed: true })}</span>
@@ -62,34 +59,6 @@ export function ConfirmPendingDialog({ row, usdRate, protectThreshold, pending, 
             <span className="mx-1.5 text-muted-foreground">→</span>
             <span className="font-medium">{formatGroupRatio(row.target_ratio)}</span>
           </InfoLine>
-        </div>
-      )}
-    </ConfirmDialog>
-  );
-}
-
-/** 漂移：以 nam 为准覆盖 NewAPI 里被改过的倍率（二次确认）。 */
-export function ForceOverwriteDialog({ row, usdRate, pending, onClose, onConfirm }: Omit<DialogProps, 'protectThreshold'>) {
-  return (
-    <ConfirmDialog
-      open={row !== null}
-      onOpenChange={(open) => { if (!open) onClose(); }}
-      title={`以 nam 为准覆盖「${row?.vendor ?? ''}」`}
-      description="NewAPI 里这个分组的倍率被人改过。覆盖后会立即把它改回 nam 的目标倍率，别人改的值会丢失。"
-      confirmLabel="确认覆盖"
-      destructive
-      pending={pending}
-      onConfirm={() => { if (row) onConfirm(row); }}
-    >
-      {row && (
-        <div className="grid gap-1">
-          <InfoLine label="厂商分组倍率">
-            <span className="text-destructive" title={rawRatioTitle(row.newapi_ratio)}>{formatGroupRatio(row.newapi_ratio)}</span>
-            <span className="mx-1.5 text-muted-foreground">→</span>
-            <span className="font-medium">{formatGroupRatio(row.target_ratio)}</span>
-          </InfoLine>
-          <InfoLine label="nam 售价"><PriceText price={currentPrice(row)} usdRate={usdRate} /></InfoLine>
-          <InfoLine label="上次写入倍率">{formatGroupRatio(row.last_written_ratio)}</InfoLine>
         </div>
       )}
     </ConfirmDialog>

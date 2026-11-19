@@ -99,6 +99,8 @@ export interface DataTableProps<T> {
   onPaste?: (range: GridRange, text: string) => void;
   isDirty?: (rowId: string, columnId: string) => boolean;
   onFocusRowChange?: (rowId: string | null) => void;
+  /** 外部要求选中某一行（seq 变一次处理一次；这一行暂时不可见时等它出现）。 */
+  focusRequest?: { rowId: string; columnId?: string; seq: number } | null;
   onSelectionChange?: (range: GridRange | null) => void;
   // 行级交互
   rowSelection?: {

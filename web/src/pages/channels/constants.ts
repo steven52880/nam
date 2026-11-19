@@ -9,7 +9,7 @@ export const GROUP_MODE_OPTIONS: Array<[GroupMode, string]> = [
   ['none', '不分组'],
 ];
 
-/** 列 id 对应的草稿 / 漂移字段名，用于高亮。 */
+/** 列 id 对应的草稿字段名，用于高亮。 */
 export const COLUMN_FIELDS: Record<string, string[]> = {
   status: ['status'],
   name: ['name'],

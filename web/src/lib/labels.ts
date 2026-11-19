@@ -1,4 +1,4 @@
-import type { CredType, FailClass, JobName, PriceStatus, StatsWindow, SyncState, UpstreamType, VendorPricingMode, VendorPricingState } from '@/api/types';
+import type { CredType, DiscountSource, EffectiveSource, FailClass, JobName, PriceStatus, StatsWindow, SyncState, UpstreamType, VendorPricingMode, VendorPricingState } from '@/api/types';
 import { parseCustomWindow } from './statsWindow';
 
 /** 徽标颜色，与 components/ui/misc.tsx 的 Badge tone 一一对应。 */
@@ -24,8 +24,24 @@ export const SYNC_STATE: Record<SyncState, LabelDef> = {
   draft: def('草稿', 'accent'),
   draft_create: def('草稿·新建', 'accent'),
   draft_delete: def('草稿·删除', 'danger'),
-  drift: def('漂移', 'warning'),
   error: def('错误', 'danger'),
+};
+
+/** 渠道级倍率（上游分组倍率列）的来源。 */
+export const DISCOUNT_SOURCE: Record<DiscountSource, LabelDef> = {
+  manual: def('手填', 'warning', '手动填写的值，不会随上游变化'),
+  auto: def('推算', 'neutral', '按上游逐模型价格推算：各模型「上游价 ÷ 原厂价」的中位数，上游变化后自动跟着变'),
+  group: def('分组倍率', 'accent', '取令牌所在分组的上游分组倍率，上游变化后自动跟着变'),
+  none: def('无法推算', 'neutral', '没有手填值，也推算不出来'),
+};
+
+/** 模型明细里每个模型生效倍率的来源。 */
+export const EFFECTIVE_SOURCE: Record<EffectiveSource, LabelDef> = {
+  override: def('模型覆盖', 'warning', '在这个模型上单独填写的倍率'),
+  manual: def('渠道手填', 'warning', '沿用渠道手填的倍率'),
+  model: def('按模型推算', 'neutral', '这个模型自己的「上游价 ÷ 原厂价」'),
+  channel: def('渠道倍率', 'neutral', '沿用渠道的推算倍率或上游分组倍率'),
+  none: def('无法推算', 'neutral', '算不出倍率，没有成本'),
 };
 
 /** 令牌状态：1 启用，其余一律「停用」（调用方先归一成 1 / 0）。 */
@@ -53,7 +69,6 @@ export const VENDOR_PRICING_STATE: Record<VendorPricingState, LabelDef> = {
   synced: def('已同步', 'success'),
   to_write: def('待写入', 'accent', '目标倍率与 NewAPI 当前倍率不同，点「预览写入」后写入'),
   pending: def('待确认', 'warning', '变化超过变化保护阈值，需要确认后才写入'),
-  drift: def('漂移', 'danger', 'NewAPI 里的倍率被人改过，与 nam 上次写入的不一致'),
   no_channel: def('无可用渠道', 'neutral', '该分组下没有启用且有上游渠道售价的渠道'),
   unset: def('未设置', 'neutral', '还没有填写售价'),
 };
@@ -149,7 +164,7 @@ export const JOB_TITLES: Record<JobName, string> = {
   announcements: '公告检查',
   pull_logs: '日志拉取',
   pricing: '定价计算',
-  consistency: '一致性检查',
+  consistency: '规则检查',
   cleanup: '数据清理',
   backup: '备份',
 };

@@ -18,7 +18,7 @@ import type {
   ChannelTestResult,
   CheckResult,
   DeriveChannel,
-  DriftDetail,
+  ChannelIssueList,
   MatchTokensRequest,
   MatchTokensResponse,
   ModelDiscountInput,
@@ -120,9 +120,7 @@ export const api = {
     request<PlanItem[]>('/channels/plan', { query: { ids: ids?.join(',') } }),
   apply: (ids?: number[]) =>
     request<ApplyResponse>('/channels/apply', { method: 'POST', body: ids ? { ids } : {} }),
-  drift: (id: number) => request<DriftDetail>(`/channels/${id}/drift`),
-  acceptDrift: (id: number) => request<null>(`/channels/${id}/drift/accept`, { method: 'POST' }),
-  overwriteDrift: (id: number) => request<null>(`/channels/${id}/drift/overwrite`, { method: 'POST' }),
+  channelIssues: () => request<ChannelIssueList>('/channels/issues'),
   testChannel: (id: number, model: string) =>
     request<ChannelTestResult>(`/channels/${id}/test`, { method: 'POST', body: { model } }),
   newapiLink: (id: number) => request<{ url: string }>(`/channels/${id}/newapi-link`),
@@ -172,8 +170,6 @@ export const api = {
     request<VendorApplyResult>('/vendor-pricing/apply', { method: 'POST', body }),
   confirmVendorPricing: (id: number) =>
     request<VendorApplyResult>(`/vendor-pricing/${id}/confirm`, { method: 'POST' }),
-  adoptVendorPricing: (id: number) =>
-    request<VendorPricingItem>(`/vendor-pricing/${id}/adopt`, { method: 'POST' }),
 
   settings: () => request<Settings>('/settings'),
   saveSettings: (body: Settings) => request<Settings>('/settings', { method: 'PUT', body }),

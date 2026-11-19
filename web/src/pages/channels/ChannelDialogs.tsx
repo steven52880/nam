@@ -1,7 +1,6 @@
 import { ApplyDialog } from '@/components/entities/ApplyDialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { CacheTestDialog } from './CacheTestDialog';
-import { DriftDialog } from './DriftDialog';
 import { ModelEditorDialog } from './ModelEditorDialog';
 import { TestChannelDialog } from './TestChannelDialog';
 import type { ChannelsPageState } from './useChannelsPage';
@@ -13,7 +12,6 @@ export function ChannelDialogs({ page }: { page: ChannelsPageState }) {
   return (
     <>
       <ModelEditorDialog row={d.modelRow} onClose={() => d.setModelRow(null)} onSave={actions.saveModels} />
-      <DriftDialog row={d.driftRow} onClose={() => d.setDriftRow(null)} />
       <CacheTestDialog row={d.cacheRow} onClose={() => d.setCacheRow(null)} />
       <TestChannelDialog row={d.testRow} onClose={() => d.setTestRow(null)} />
       <ApplyDialog open={d.applyOpen} onOpenChange={d.setApplyOpen} />

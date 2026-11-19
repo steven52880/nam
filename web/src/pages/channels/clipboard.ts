@@ -42,7 +42,7 @@ export function planPaste(rows: ChannelRow[], columnIds: string[], text: string,
     copyable.forEach((columnId, index) => {
       const value = cells.length === 1 ? cells[0] : cells[index];
       if (value === undefined) return;
-      const parsed = parseCell(columnId, value);
+      const parsed = parseCell(columnId, value, row);
       if ('error' in parsed) {
         if (!skipped.includes(columnId)) skipped.push(columnId);
         return;

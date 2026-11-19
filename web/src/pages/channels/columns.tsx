@@ -14,6 +14,7 @@ import { CHANNEL_PRICE_HINT } from '@/lib/usdRate';
 import { CHANNEL_STATUS, labelOf, SYNC_STATE } from '@/lib/labels';
 import { cn } from '@/lib/utils';
 import { TokenCell, UpstreamCell, VendorCell } from './EditableCells';
+import { ChannelDiscountCell } from './ChannelDiscountCell';
 import { copyText, validateCell } from './edits';
 import type { ChannelRanges, ChannelViewRow } from './viewModel';
 import { buildStatColumns } from './statColumns';
@@ -22,7 +23,9 @@ import { buildStatColumns } from './statColumns';
 function noEditor(): void {
   return undefined;
 }
-const DISCOUNT_HINT = '上游对这个分组请求的实际扣费，是上游模型美元标价的多少倍（假设标价 = 原厂价）。例：0.35 表示按标价的 35% 扣费';
+const DISCOUNT_HINT =
+  '上游对这个分组请求的实际扣费，是上游模型美元标价的多少倍（假设标价 = 原厂价）。例：0.35 表示按标价的 35% 扣费。' +
+  '来源：手填 / 推算（按上游逐模型价）/ 分组倍率（上游分组倍率）；输入数字 = 手填，手填时清空 = 回到自动';
 const CURRENCY_RATE_HINT = '在上游充值 1 美元额度需要多少人民币，单位 元/$。例：0.5 表示 0.5 元充 1 美元额度';
 
 type Row = ChannelViewRow;
@@ -32,7 +35,6 @@ interface ColumnOptions {
   /** 当前选中的模型；null = 渠道汇总。 */
   model: string | null;
   onOpenModels: (row: ChannelRow) => void;
-  onOpenDrift: (row: ChannelRow) => void;
   onSetUpstream: (row: ChannelRow, upstreamId: number) => void;
   onSetToken: (row: ChannelRow, tokenId: number) => void;
   onSetVendor: (row: ChannelRow, vendor: string) => void;
@@ -46,15 +48,8 @@ interface ColumnOptions {
   balanceWidths: BalanceWidths;
 }
 
-function SyncBadge({ row, onOpenDrift }: { row: ChannelRow; onOpenDrift: (row: ChannelRow) => void }) {
+function SyncBadge({ row }: { row: ChannelRow }) {
   const badge = <StatusBadge dict={SYNC_STATE} value={row.sync_state} />;
-  if (row.sync_state === 'drift') {
-    return (
-      <button type="button" className="cursor-pointer" onClick={() => onOpenDrift(row)}>
-        {badge}
-      </button>
-    );
-  }
   if (row.sync_state === 'error') {
     return (
       <Tooltip>
@@ -101,7 +96,6 @@ function ManualCacheCell({ test }: { test: CacheTest | undefined }) {
 export function buildChannelColumns({
   model,
   onOpenModels,
-  onOpenDrift,
   onSetUpstream,
   onSetToken,
   onSetVendor,
@@ -159,26 +153,17 @@ export function buildChannelColumns({
       cell: (r) => <ModelCountCell models={r.models} />,
     }),
     numberCol<Row>('discount', '上游分组倍率', (r) => r.view.discount, {
-      width: 7.5,
+      width: 9,
       headerTitle: DISCOUNT_HINT,
       // 选了模型时显示的是模型级生效倍率，和渠道倍率不是同一个值，不允许在这里改
       editable: model === null,
       readOnlyReason: model === null ? undefined : '选了模型时这里显示该模型的生效倍率；改渠道倍率请先清除模型，改模型级倍率请在下方模型明细里改',
-      toText: (r) => formatDiscount(r.discount),
-      validate: (v) => validateCell('discount', v),
+      toText: (r) => copyText(r, 'discount'),
+      validate: (v, r) => validateCell('discount', v, r),
       cell: (r) => {
-        if (r.view.discount === null) return <Dash />;
-        // 选了模型：显示模型级生效倍率，来源徽标说的是渠道倍率，不再显示
-        return (
-          <span className="inline-flex items-center justify-end gap-1">
-            {model === null && (
-              <Badge tone={r.discount_source === 'manual' ? 'warning' : 'neutral'}>
-                {r.discount_source === 'manual' ? '手动' : '自动'}
-              </Badge>
-            )}
-            {formatDiscount(r.view.discount)}
-          </span>
-        );
+        // 选了模型：显示模型级生效倍率，来源说的是渠道倍率，不再显示
+        if (model !== null) return r.view.discount === null ? <Dash /> : formatDiscount(r.view.discount);
+        return <ChannelDiscountCell row={r} />;
       },
     }),
     numberCol<Row>('currency_rate', '上游货币汇率（元/$）', (r) => r.currency_rate, {
@@ -236,7 +221,7 @@ export function buildChannelColumns({
     textCol<Row>('sync_state', '同步状态', (r) => labelOf(SYNC_STATE, r.sync_state).label, {
       width: 6.25,
       readOnlyReason: '同步状态由系统维护，不能编辑',
-      cell: (r) => <SyncBadge row={r} onOpenDrift={onOpenDrift} />,
+      cell: (r) => <SyncBadge row={r} />,
     }),
   ];
 }

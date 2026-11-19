@@ -1,11 +1,11 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useVendorPricing } from '@/api/queries';
 import type { VendorPricingItem } from '@/api/types';
 import { DataTable } from '@/components/table';
 import { Banner } from '@/components/ui/banner';
 import { Section } from '@/components/ui/section';
 import { formatNumber, formatRatioPercent } from '@/lib/format';
-import { ConfirmPendingDialog, ForceOverwriteDialog } from './VendorDialogs';
+import { ConfirmPendingDialog } from './VendorDialogs';
 import { vendorColumns, type VendorRowActions } from './VendorColumns';
 import { useVendorPricingActions } from './useVendorPricingActions';
 
@@ -25,24 +25,14 @@ export function VendorPricingSection() {
   const q = useVendorPricing();
   const actions = useVendorPricingActions();
   const [confirmRow, setConfirmRow] = useState<VendorPricingItem | null>(null);
-  const [overrideRow, setOverrideRow] = useState<VendorPricingItem | null>(null);
 
   const o = q.data;
   const usdRate = o?.usd_rate ?? 0;
 
-  const { confirm, adopt, override } = actions;
+  const { confirm, update } = actions;
   const confirmMutate = confirm.mutate;
-  const adoptMutate = adopt.mutate;
-  const overrideMutate = override.mutate;
-  const busyId = confirm.isPending
-    ? confirm.variables
-    : adopt.isPending
-      ? adopt.variables
-      : override.isPending
-        ? override.variables
-        : null;
+  const busyId = confirm.isPending ? confirm.variables : update.isPending ? update.variables?.row.vendor_id : null;
 
-  const onAdopt = useCallback((row: VendorPricingItem) => adoptMutate(row.vendor_id), [adoptMutate]);
   const columnActions = useMemo<VendorRowActions>(
     () => ({
       usdRate,
@@ -52,10 +42,9 @@ export function VendorPricingSection() {
       onSellPrice: actions.setSellPrice,
       onGroupRatio: actions.setGroupRatio,
       onConfirm: setConfirmRow,
-      onAdopt,
-      onOverride: setOverrideRow,
+      onDiscard: actions.discardDraft,
     }),
-    [usdRate, busyId, actions.setMode, actions.setMarkup, actions.setSellPrice, actions.setGroupRatio, onAdopt],
+    [usdRate, busyId, actions.setMode, actions.setMarkup, actions.setSellPrice, actions.setGroupRatio, actions.discardDraft],
   );
   const columns = useMemo(() => vendorColumns(columnActions), [columnActions]);
   const tableStatus = useMemo(
@@ -106,19 +95,11 @@ export function VendorPricingSection() {
         onClose={() => setConfirmRow(null)}
         onConfirm={(row) => confirmMutate(row.vendor_id, { onSuccess: () => setConfirmRow(null) })}
       />
-      <ForceOverwriteDialog
-        row={overrideRow}
-        usdRate={usdRate}
-        pending={override.isPending}
-        onClose={() => setOverrideRow(null)}
-        onConfirm={(row) => overrideMutate(row.vendor_id, { onSuccess: () => setOverrideRow(null) })}
-      />
     </Section>
   );
 }
 
 function rowClass(r: VendorPricingItem): string | undefined {
-  if (r.state === 'drift') return 'bg-destructive/5';
   if (r.state === 'pending') return 'bg-warning/10';
   return undefined;
 }

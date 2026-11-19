@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { useChannelCosts, useChannels } from '@/api/queries';
-import type { ChannelRow, StatsWindow } from '@/api/types';
+import { useChannelCosts, useChannelIssues, useChannels } from '@/api/queries';
+import type { ChannelRow, StatsWindow, ValidationIssue } from '@/api/types';
 import type { GridRange } from '@/components/table';
 import { useLayoutSlot } from '@/lib/layout/LayoutProvider';
 import { useUrlState } from '@/lib/url-state';
@@ -13,6 +13,7 @@ import { useChannelStats } from './useChannelStats';
 import { buildChannelView, modelOptionsOf } from './viewModel';
 
 const NO_ROWS: ChannelRow[] = [];
+const NO_ISSUES: ValidationIssue[] = [];
 
 /** 渠道页的全部页面状态：网址参数、布局槽位、筛选、统计时长、各弹窗开关、选区。 */
 export function useChannelsPage() {
@@ -63,9 +64,16 @@ export function useChannelsPage() {
     [rows, range],
   );
 
+  // 外部要求选中某一行（规则问题提示条的定位）；seq 递增保证同一行也能再次触发
+  const [focusRequest, setFocusRequest] = useState<{ rowId: string; columnId: string; seq: number } | null>(null);
+  const locateChannel = useCallback(
+    (channelId: number) => setFocusRequest((cur) => ({ rowId: String(channelId), columnId: 'name', seq: (cur?.seq ?? 0) + 1 })),
+    [],
+  );
+  const issuesQuery = useChannelIssues();
+
   // 弹窗
   const [modelRow, setModelRow] = useState<ChannelRow | null>(null);
-  const [driftRow, setDriftRow] = useState<ChannelRow | null>(null);
   const [testRow, setTestRow] = useState<ChannelRow | null>(null);
   const [cacheRow, setCacheRow] = useState<ChannelRow | null>(null);
   const [deleteRow, setDeleteRow] = useState<ChannelRow | null>(null);
@@ -108,11 +116,13 @@ export function useChannelsPage() {
     view,
     focused,
     selectedRows,
+    focusRequest,
+    locateChannel,
+    issues: issuesQuery.data ?? NO_ISSUES,
     setFocusId,
     setRange,
     dialogs: {
       modelRow, setModelRow,
-      driftRow, setDriftRow,
       testRow, setTestRow,
       cacheRow, setCacheRow,
       deleteRow, setDeleteRow,

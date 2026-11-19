@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/misc';
 import { useLayoutEditable } from '@/lib/layout/LayoutProvider';
 import { isBoolean, useLocalStorageState } from '@/lib/useLocalStorageState';
 import { ChannelDialogs } from './channels/ChannelDialogs';
+import { ChannelIssuesBar } from './channels/ChannelIssuesBar';
 import { ChannelToolbar } from './channels/ChannelToolbar';
 import { rowClass } from './channels/columns';
 import { DEFAULT_SORT } from './channels/constants';
@@ -76,6 +77,7 @@ export default function ChannelsPage() {
         modelOptions={page.modelOptions}
       />
       {page.list.isError && <Banner tone="error">{page.list.error.message}</Banner>}
+      <ChannelIssuesBar issues={page.issues} onLocate={page.locateChannel} />
       {page.errorLogHint && (
         <Banner tone="warning">
           最近 7 天没有任何错误日志，NewAPI 可能没开 <code>ERROR_LOG_ENABLED</code>，成功率会偏高
@@ -105,12 +107,12 @@ export default function ChannelsPage() {
             expandAll={filters.search.trim() !== ''}
             isDirty={table.isDirty}
             rowClassName={rowClass}
-            cellClassName={table.cellClassName}
             toolbar={toolbar}
             onEdit={actions.edit}
             onCopy={actions.copy}
             onPaste={actions.paste}
             onFocusRowChange={page.setFocusId}
+            focusRequest={page.focusRequest}
             onSelectionChange={page.setRange}
             rowMenu={table.rowMenu}
             rowMenuHeader={rowMenuHeader}

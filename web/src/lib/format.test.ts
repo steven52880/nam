@@ -117,8 +117,8 @@ function legacyLeaderboardSpeed(r: { speed_p50: number | null; speed_estimated: 
   return r.speed_p50 === null ? '—' : `${legacySpeedPlain(r.speed_p50)}${r.speed_estimated ? ' 估' : ''}`;
 }
 
-// ── pages/channels/DriftDialog.tsx ──
-/** legacy: pages/channels/DriftDialog.tsx:24-29 */
+// ── components/entities/ApplyDialog.tsx ──
+/** legacy: 原 pages/channels/DriftDialog.tsx（已删除，函数现用于 ApplyDialog） */
 function legacyShowValue(v: unknown): string {
   if (v === null || v === undefined || v === '') return '（空）';
   if (Array.isArray(v)) return v.join(', ') || '（空）';
@@ -182,7 +182,7 @@ const LEGACY_JOB_TITLES = {
   announcements: '公告检查',
   pull_logs: '日志拉取',
   pricing: '定价计算',
-  consistency: '一致性检查',
+  consistency: '规则检查',
   cleanup: '数据清理',
   backup: '备份',
 };
@@ -361,7 +361,7 @@ describe('FAIL_CLASS 文字与旧 FAIL_CLASS_LABELS 一致', () => {
   });
 });
 
-describe('showValue === legacy DriftDialog.showValue', () => {
+describe('showValue === legacy showValue', () => {
   const values: unknown[] = [
     null,
     undefined,

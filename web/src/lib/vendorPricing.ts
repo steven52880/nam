@@ -102,43 +102,37 @@ export function rawRatioTitle(v: number | null): string | undefined {
   return v === null ? undefined : `原值 ${v}`;
 }
 
-/** 采纳 NewAPI 值：售价 = NewAPI 倍率 × 站点汇率 ÷ 美元参考汇率，保留 4 位小数。 */
-export function adoptedPrice(newapiRatio: number, siteRate: number, usdRate: number): number {
-  return Math.round(((newapiRatio * siteRate) / usdRate) * 10000) / 10000;
-}
-
 /** 当前售价：固定看手填值，跟随看计算出来的目标售价。 */
 export function currentPrice(item: VendorPricingItem): number | null {
   return item.mode === 'fixed' ? item.sell_price : item.target_price;
 }
 
-/** 变化的方向：目标售价相对上次写入售价；没法算时退回后端给的绝对值。 */
-export function signedChange(item: Pick<VendorPricingItem, 'target_price' | 'last_written_price' | 'change'>): number | null {
-  const { target_price: target, last_written_price: last } = item;
-  if (target !== null && last !== null && last > 0) return (target - last) / last;
+/** 变化的方向：目标售价相对 NewAPI 当前售价，后端已经算好（带正负）。 */
+export function signedChange(item: Pick<VendorPricingItem, 'change'>): number | null {
   return item.change;
 }
 
-/** 需要主人处理的厂商：待确认或漂移。 */
-export function needsAttention(state: VendorPricingState): boolean {
-  return state === 'pending' || state === 'drift';
+/** 固定模式下有还没写入 NewAPI 的修改（草稿倍率）：可以撤销。 */
+export function hasDraft(item: Pick<VendorPricingItem, 'mode' | 'draft_ratio'>): boolean {
+  return item.mode === 'fixed' && item.draft_ratio !== null;
 }
 
-/** 总览告警和导航徽标用：待确认 + 漂移的厂商数。 */
+/** 需要主人处理的厂商：只有待确认（变化超过保护阈值）。 */
+export function needsAttention(state: VendorPricingState): boolean {
+  return state === 'pending';
+}
+
+/** 总览告警和导航徽标用：待确认的厂商数。 */
 export function attentionCount(items: readonly Pick<VendorPricingItem, 'state'>[]): number {
   return items.filter((i) => needsAttention(i.state)).length;
 }
 
 export interface AttentionSummary {
   pending: number;
-  drift: number;
-  total: number;
 }
 
 export function attentionSummary(items: readonly Pick<VendorPricingItem, 'state'>[]): AttentionSummary {
-  const pending = items.filter((i) => i.state === 'pending').length;
-  const drift = items.filter((i) => i.state === 'drift').length;
-  return { pending, drift, total: pending + drift };
+  return { pending: attentionCount(items) };
 }
 
 /** 能不能点「预览写入」：NewAPI 选项能解析，并且有待写入的厂商或分组有变化。 */

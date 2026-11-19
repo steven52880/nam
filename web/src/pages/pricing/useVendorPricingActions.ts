@@ -3,7 +3,6 @@ import { api } from '@/api/endpoints';
 import { invalidate } from '@/api/invalidate';
 import type { VendorApplyResult, VendorPricingItem, VendorPricingMode, VendorPricingUpdate } from '@/api/types';
 import { useActionMutation } from '@/hooks/useActionMutation';
-import { formatRatioPercent } from '@/lib/format';
 
 /** 写入结果的提示文字。 */
 export function applyToast(r: VendorApplyResult): string {
@@ -17,27 +16,20 @@ interface UpdateVars {
   body: VendorPricingUpdate;
 }
 
-/** 厂商定价表里的提交：编辑（只写 nam）、确认、采纳、覆盖。 */
+/** 厂商定价表里的提交：编辑（只写 nam）、撤销修改、确认。 */
 export function useVendorPricingActions() {
   const update = useActionMutation<UpdateVars, VendorPricingItem>({
     mutationFn: ({ row, body }) => api.updateVendorPricing(row.vendor_id, body),
     invalidate: invalidate.vendorPricing,
-    success: (item) => (item.state === 'to_write' ? '已保存，点「预览写入」后生效' : '已保存'),
+    success: (item, { body }) => {
+      if (body.discard_draft) return '已撤销修改';
+      return item.state === 'to_write' ? '已保存为待写入，点「预览写入」后生效' : '已保存';
+    },
   });
   const confirm = useActionMutation<number, VendorApplyResult>({
     mutationFn: (id) => api.confirmVendorPricing(id),
     invalidate: invalidate.vendorPricing,
     success: applyToast,
-  });
-  const adopt = useActionMutation<number, VendorPricingItem>({
-    mutationFn: (id) => api.adoptVendorPricing(id),
-    invalidate: invalidate.vendorPricing,
-    success: (item) => `已采纳 NewAPI 的值：${item.vendor} 改为固定模式，售价 ${formatRatioPercent(item.sell_price)}`,
-  });
-  const override = useActionMutation<number, VendorApplyResult>({
-    mutationFn: (id) => api.applyVendorPricing({ vendor_ids: [id], force: true }),
-    invalidate: invalidate.vendorPricing,
-    success: (r) => (r.vendors.length > 0 ? '已用 nam 的倍率覆盖 NewAPI' : applyToast(r)),
   });
 
   const updateMutate = update.mutate;
@@ -64,7 +56,11 @@ export function useVendorPricingActions() {
     (row: VendorPricingItem, group_ratio: number) => updateMutate({ row, body: { group_ratio } }),
     [updateMutate],
   );
-  return { update, confirm, adopt, override, setMode, setMarkup, setSellPrice, setGroupRatio };
+  const discardDraft = useCallback(
+    (row: VendorPricingItem) => updateMutate({ row, body: { discard_draft: true } }),
+    [updateMutate],
+  );
+  return { update, confirm, setMode, setMarkup, setSellPrice, setGroupRatio, discardDraft };
 }
 
 /** 页头「立即计算」：触发定价任务并等它跑完，提示里带任务摘要。 */

@@ -106,6 +106,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
     onPaste,
     isDirty,
     onFocusRowChange,
+    focusRequest,
     onSelectionChange,
     rowSelection,
     onRowClick,
@@ -436,6 +437,22 @@ export function DataTable<T>(props: DataTableProps<T>) {
   useEffect(() => {
     if (sheet) emitFocusRow(focusRowId);
   }, [sheet, focusRowId, emitFocusRow]);
+
+  // 外部要求选中某一行：行可见就选中并滚到视野里，不可见（被筛选或分组折叠）时提示
+  const handledFocusSeq = useRef(focusRequest?.seq ?? 0);
+  const selectCell = sel.select;
+  useEffect(() => {
+    if (!sheet || !focusRequest || handledFocusSeq.current === focusRequest.seq) return;
+    handledFocusSeq.current = focusRequest.seq;
+    if (!rowIds.includes(focusRequest.rowId)) {
+      toast.info('这一行当前看不到，可能被筛选或所在分组已折叠');
+      return;
+    }
+    selectCell({
+      rowId: focusRequest.rowId,
+      columnId: focusRequest.columnId && dataColumnIds.includes(focusRequest.columnId) ? focusRequest.columnId : dataColumnIds[0],
+    });
+  }, [sheet, focusRequest, rowIds, dataColumnIds, selectCell]);
 
   /** 事件是否来自表格内部 DOM（右键菜单、下拉框是 portal，事件会沿 React 树冒泡上来）。 */
   const fromInside = (target: EventTarget | null): boolean =>

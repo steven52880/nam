@@ -145,7 +145,7 @@ export function formatFailClasses(
   return parts.length > 0 ? parts.join('、') : '无';
 }
 
-/** 差异对比里显示一个值：空值显示「（空）」，数组用逗号连接，对象转 JSON。 */
+/** 显示一个值（应用变更的前后对比用）：空值显示「（空）」，数组用逗号连接，对象转 JSON。 */
 export function showValue(v: unknown): string {
   if (v === null || v === undefined || v === '') return '（空）';
   if (Array.isArray(v)) return v.join(', ') || '（空）';

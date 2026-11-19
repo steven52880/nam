@@ -27,18 +27,25 @@ export interface ModelRow {
   deviates: boolean;
   reason: string;
   override: number | null;
-  effective: number;
+  /** 这个模型的生效倍率；算不出为 null（此时没有成本）。 */
+  effective: number | null;
+  effective_source: EffectiveSource;
   cost_in_per_m: number | null;
   cost_out_per_m: number | null;
   cost_per_request: number | null;
 }
 
+/** 模型级倍率来源：模型覆盖 / 渠道手填 / 按模型推算 / 渠道倍率 / 无法推算。 */
+export type EffectiveSource = 'override' | 'manual' | 'model' | 'channel' | 'none';
+
 export interface ChannelModels {
   channel_id: number;
   name: string;
   vendor: string;
-  discount: number;
+  discount: number | null;
   discount_source: DiscountSource;
+  discount_reason: string;
+  upstream_group_ratio: number | null;
   derived_median: number | null;
   currency_rate: number | null;
   test_model: string;
@@ -122,7 +129,8 @@ export interface PriceChannelUse {
   id: number;
   name: string;
   vendor: string;
-  discount: number;
+  /** 这个模型在该渠道的生效倍率；算不出为 null。 */
+  discount: number | null;
   override: number | null;
   cost_in_per_m: number | null;
   cost_out_per_m: number | null;
@@ -163,7 +171,7 @@ export interface DeriveChannel {
   channel_id: number;
   name: string;
   group: string;
-  discount: number;
+  discount: number | null;
   discount_source: DiscountSource;
   derivation: Derivation;
 }

@@ -114,11 +114,12 @@ export function useChannelPlan(open: boolean) {
   });
 }
 
-export function useChannelDrift(id: number | null) {
+export function useChannelIssues() {
   return useQuery({
-    queryKey: keys.channels.drift(id ?? 0),
-    queryFn: () => api.drift(id ?? 0),
-    enabled: id !== null,
+    queryKey: keys.channels.issues(),
+    queryFn: api.channelIssues,
+    select: (data) => data.items,
+    refetchInterval: 60_000,
   });
 }
 
@@ -203,7 +204,7 @@ export function useVendorPricing() {
   return useQuery({ queryKey: keys.vendorPricing.overview(), queryFn: api.vendorPricing, refetchInterval: 60_000 });
 }
 
-/** 导航徽标和总览告警：待确认 + 漂移的厂商。与 useVendorPricing 共用同一份缓存。 */
+/** 导航徽标和总览告警：待确认的厂商。与 useVendorPricing 共用同一份缓存。 */
 export function useVendorPricingAttention() {
   return useQuery({
     queryKey: keys.vendorPricing.overview(),

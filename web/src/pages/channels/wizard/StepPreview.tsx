@@ -6,6 +6,7 @@ import { DataTable, customCol, numberCol, textCol, type TableColumn } from '@/co
 import { Banner } from '@/components/ui/banner';
 import { Badge } from '@/components/ui/misc';
 import { DASH, formatNumber } from '@/lib/format';
+import { DISCOUNT_SOURCE } from '@/lib/labels';
 import { cn } from '@/lib/utils';
 
 const NO_ITEMS: BatchPreviewItem[] = [];
@@ -13,6 +14,34 @@ const PREVIEW_STATUS = { empty: '没有可生成的渠道' };
 
 function previewRowId(it: BatchPreviewItem): string {
   return it.name;
+}
+
+function PreviewDiscount({ it }: { it: BatchPreviewItem }) {
+  if (it.ext.discount !== undefined) {
+    return (
+      <>
+        {formatNumber(it.ext.discount, 3, { trim: true })}
+        <Badge tone="warning" className="ml-1">手填</Badge>
+      </>
+    );
+  }
+  if (it.discount === null) {
+    return (
+      <span className="text-muted-foreground" title={`${it.discount_reason || '没有手填值，也推算不出来'}；可以手动填写`}>
+        无法推算
+      </span>
+    );
+  }
+  if (it.discount === undefined) {
+    return <span className="text-muted-foreground" title="没有手填值，创建后按上游价或上游分组倍率自动算">自动</span>;
+  }
+  const def = it.discount_source ? DISCOUNT_SOURCE[it.discount_source] : undefined;
+  return (
+    <>
+      {formatNumber(it.discount, 3, { trim: true })}
+      {def && <Badge tone={def.tone} className="ml-1" title={def.hint}>{def.label}</Badge>}
+    </>
+  );
 }
 
 const PREVIEW_COLUMNS: TableColumn<BatchPreviewItem>[] = [
@@ -36,14 +65,9 @@ const PREVIEW_COLUMNS: TableColumn<BatchPreviewItem>[] = [
       <span title={it.fields.models?.join('，')}><ModelCountCell models={it.fields.models} variant="count" /></span>
     ),
   }),
-  numberCol('discount', '上游分组倍率', (it) => it.ext.discount, {
+  numberCol('discount', '上游分组倍率', (it) => it.ext.discount ?? it.discount, {
     width: 9,
-    cell: (it) => (
-      <>
-        {it.ext.discount !== undefined ? formatNumber(it.ext.discount, 3) : DASH}
-        {it.ext.discount_source === 'manual' && <Badge tone="warning" className="ml-1">手动</Badge>}
-      </>
-    ),
+    cell: (it) => <PreviewDiscount it={it} />,
   }),
   numberCol('priority', '优先级', (it) => it.fields.priority, { width: 5, cell: (it) => it.fields.priority ?? DASH }),
   numberCol('weight', '权重', (it) => it.fields.weight, { width: 4.5, cell: (it) => it.fields.weight ?? DASH }),

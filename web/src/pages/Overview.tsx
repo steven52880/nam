@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '@/api/endpoints';
 import { invalidate } from '@/api/invalidate';
-import { useAuditRecent, useJobs, useVendorPricingAttention } from '@/api/queries';
+import { useAuditRecent, useChannelIssues, useJobs, useVendorPricingAttention } from '@/api/queries';
 import { StatusBadge } from '@/components/cells/StatusBadge';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { DataTable, customCol, numberCol, textCol, type TableColumn } from '@/components/table';
@@ -129,29 +129,37 @@ function RecentAudit() {
 
 const PLACEHOLDER_CARDS = ['今日指标', '余额汇总'];
 
-/** 告警卡片：目前只有厂商定价的「待确认」和「漂移」。 */
+/** 告警卡片：厂商定价「待确认」和渠道规则问题。 */
 function AlertCard() {
   const q = useVendorPricingAttention();
+  const issues = useChannelIssues();
   const s = q.data;
-  const hot = !!s && s.total > 0;
+  const issueCount = issues.data?.length ?? 0;
+  const pending = s?.pending ?? 0;
+  const total = pending + issueCount;
+  const hot = total > 0;
+  const loading = !q.isError && !s;
   return (
-    <div className={cn('flex h-20 flex-col justify-center rounded border px-3', hot ? 'border-warning/50 bg-warning/10' : 'bg-card')}>
+    <div className={cn('flex min-h-20 flex-col justify-center rounded border px-3 py-2', hot ? 'border-warning/50 bg-warning/10' : 'bg-card')}>
       <div className="flex items-center gap-2 font-medium">
         告警
-        {hot && <Badge tone="warning">{s.total}</Badge>}
-        {hot && <Link to="/pricing" className="ml-auto text-sm font-normal text-primary hover:underline">去处理</Link>}
+        {hot && <Badge tone="warning">{total}</Badge>}
       </div>
-      <div className="text-sm text-muted-foreground">
+      <div className="flex flex-col text-sm text-muted-foreground">
         {q.isError && <span className="text-destructive">{q.error.message}</span>}
-        {!q.isError && !s && '加载中…'}
-        {s && !hot && '厂商定价没有待处理的项'}
-        {hot && (
-          <>
-            厂商定价：
-            {s.pending > 0 && <span>待确认 {s.pending} 个</span>}
-            {s.pending > 0 && s.drift > 0 && '，'}
-            {s.drift > 0 && <span className="text-destructive">漂移 {s.drift} 个</span>}
-          </>
+        {loading && '加载中…'}
+        {s && !hot && '没有待处理的项'}
+        {pending > 0 && (
+          <span className="flex items-center gap-2">
+            厂商定价：待确认 {pending} 个
+            <Link to="/pricing" className="text-primary hover:underline">去处理</Link>
+          </span>
+        )}
+        {issueCount > 0 && (
+          <span className="flex items-center gap-2">
+            <span className="text-destructive">渠道规则问题 {issueCount} 条</span>
+            <Link to="/channels" className="text-primary hover:underline">去处理</Link>
+          </span>
         )}
       </div>
     </div>
