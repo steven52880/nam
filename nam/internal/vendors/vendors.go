@@ -11,6 +11,7 @@ import (
 
 	"github.com/steven52880/nam/internal/resp"
 	"github.com/steven52880/nam/internal/store"
+	"github.com/steven52880/nam/ports"
 	"gorm.io/gorm"
 )
 
@@ -35,8 +36,36 @@ type View struct {
 	ChannelCount int      `json:"channel_count"`
 }
 
-// Service is the vendor CRUD layer.
-type Service struct{ St *store.Store }
+// Service is the vendor CRUD layer. Channels is read to count and protect vendors: a
+// vendor is in use by the NewAPI channels whose groups imply it (channel_ext no longer
+// stores a vendor). A nil Channels counts nothing.
+type Service struct {
+	St       *store.Store
+	Channels ports.ChannelStore
+}
+
+// channelCounts counts, per vendor name, the NewAPI channels whose groups imply it
+// (first vendor group in vendor order wins, see VendorOfGroups).
+func (s *Service) channelCounts(ctx context.Context, vs []store.Vendor) (map[string]int, error) {
+	out := map[string]int{}
+	if s.Channels == nil {
+		return out, nil
+	}
+	chs, err := s.Channels.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("读取 NewAPI 渠道失败：%w", err)
+	}
+	pairs := make([]VendorGroup, 0, len(vs))
+	for _, v := range vs {
+		pairs = append(pairs, VendorGroup{Name: v.Name, Group: v.GroupName})
+	}
+	for _, c := range chs {
+		if name := VendorOfGroups(pairs, c.Group); name != "" {
+			out[name]++
+		}
+	}
+	return out, nil
+}
 
 func parseModels(raw string) []string {
 	var ms []string
@@ -96,16 +125,9 @@ func (s *Service) List(ctx context.Context) ([]View, error) {
 	if err := s.St.DB.WithContext(ctx).Order("`order`, id").Find(&vs).Error; err != nil {
 		return nil, err
 	}
-	var counts []struct {
-		Vendor string
-		N      int
-	}
-	if err := s.St.DB.WithContext(ctx).Model(&store.ChannelExt{}).Select("vendor, count(*) as n").Group("vendor").Scan(&counts).Error; err != nil {
+	byName, err := s.channelCounts(ctx, vs)
+	if err != nil {
 		return nil, err
-	}
-	byName := map[string]int{}
-	for _, c := range counts {
-		byName[c.Vendor] = c.N
 	}
 	out := make([]View, 0, len(vs))
 	for _, v := range vs {
@@ -117,10 +139,14 @@ func (s *Service) List(ctx context.Context) ([]View, error) {
 	return out, nil
 }
 
-func (s *Service) channelsUsing(tx *gorm.DB, name string) (int64, error) {
-	var n int64
-	err := tx.Model(&store.ChannelExt{}).Where("vendor = ?", name).Count(&n).Error
-	return n, err
+// channelsUsing counts the channels whose groups imply vendor `name`.
+func (s *Service) channelsUsing(ctx context.Context, name string) (int, error) {
+	var vs []store.Vendor
+	if err := s.St.DB.WithContext(ctx).Order("`order`, id").Find(&vs).Error; err != nil {
+		return 0, err
+	}
+	counts, err := s.channelCounts(ctx, vs)
+	return counts[name], err
 }
 
 // checkConflicts rejects duplicate names/groups and models that another vendor already owns.
@@ -209,19 +235,23 @@ func UpdateTx(tx *gorm.DB, id uint, in Input) (old, cur store.Vendor, err error)
 	return old, cur, nil
 }
 
-// Delete removes a vendor unless a channel uses it.
+// Delete removes a vendor unless a channel uses it (a NewAPI channel carrying its group).
 func (s *Service) Delete(ctx context.Context, id uint) error {
+	var v store.Vendor
+	if err := s.St.DB.WithContext(ctx).First(&v, id).Error; err != nil {
+		return mapNotFound(err)
+	}
+	// NewAPI is read outside the transaction: the store allows a single connection.
+	n, err := s.channelsUsing(ctx, v.Name)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		return resp.Conflict(fmt.Sprintf("厂商 %s 仍有 %d 个渠道在用，不能删除", v.Name, n))
+	}
 	return s.St.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var v store.Vendor
 		if err := tx.First(&v, id).Error; err != nil {
 			return mapNotFound(err)
-		}
-		n, err := s.channelsUsing(tx, v.Name)
-		if err != nil {
-			return err
-		}
-		if n > 0 {
-			return resp.Conflict(fmt.Sprintf("厂商 %s 仍有 %d 个渠道在用，不能删除", v.Name, n))
 		}
 		if err := tx.Where("vendor_id = ?", id).Delete(&store.VendorPricing{}).Error; err != nil {
 			return err

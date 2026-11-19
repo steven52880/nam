@@ -13,44 +13,6 @@ import (
 	"github.com/steven52880/nam/ports"
 )
 
-func (s *Server) channelDrift(c *gin.Context) {
-	id, okID := parseChannelID(c)
-	if !okID {
-		return
-	}
-	d, err := s.Channels.Drift(c.Request.Context(), id)
-	if err != nil {
-		resp.FailFrom(c, err)
-		return
-	}
-	resp.OK(c, d)
-}
-
-func (s *Server) acceptDrift(c *gin.Context) {
-	id, okID := parseChannelID(c)
-	if !okID {
-		return
-	}
-	if err := s.Channels.AcceptDrift(c.Request.Context(), id); err != nil {
-		resp.FailFrom(c, err)
-		return
-	}
-	resp.OK(c, nil)
-}
-
-// POST /channels/:id/drift/overwrite creates an update draft; the user applies it via the normal flow.
-func (s *Server) overwriteDrift(c *gin.Context) {
-	id, okID := parseChannelID(c)
-	if !okID {
-		return
-	}
-	if err := s.Channels.OverwriteDrift(c.Request.Context(), id); err != nil {
-		resp.FailFrom(c, err)
-		return
-	}
-	resp.OK(c, nil)
-}
-
 func (s *Server) adoptChannel(c *gin.Context) {
 	id, okID := parseChannelID(c)
 	if !okID {

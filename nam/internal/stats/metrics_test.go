@@ -69,7 +69,7 @@ func TestWilson_fixed_values(t *testing.T) {
 
 func TestMetrics_standard_request_fixed_numbers(t *testing.T) {
 	e := newEnv(t)
-	pr, err := NewPricer(e.ctx, e.st, e.svc.Backend)
+	pr, err := NewPricer(e.ctx, e.st, e.svc.Backend, e.svc.Channels)
 	must(t, err)
 	s := mustParse(t, withID(stdLog(1, 3600), 1))
 	p := pr.Price(s)

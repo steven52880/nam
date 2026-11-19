@@ -14,6 +14,7 @@ import (
 type vendorIndex struct {
 	byName  map[string]store.Vendor
 	byGroup map[string]store.Vendor
+	pairs   []vendors.VendorGroup // vendor order
 	matcher *vendors.Matcher
 }
 
@@ -26,8 +27,14 @@ func loadVendors(ctx context.Context, st *store.Store) (*vendorIndex, error) {
 	for _, v := range vs {
 		ix.byName[v.Name] = v
 		ix.byGroup[v.GroupName] = v
+		ix.pairs = append(ix.pairs, vendors.VendorGroup{Name: v.Name, Group: v.GroupName})
 	}
 	return ix, nil
+}
+
+// vendorOf is the vendor of a channel carrying `groups` (see vendors.VendorOfGroups).
+func (ix *vendorIndex) vendorOf(groups string) string {
+	return vendors.VendorOfGroups(ix.pairs, groups)
 }
 
 // ownerOf returns the vendor a model is declared for ("" if undeclared).
@@ -96,24 +103,12 @@ func validateRows(rows []Row, changed map[int]bool, ix *vendorIndex) []Validatio
 			add("weight", "权重过大")
 		}
 		if r.Vendor != "" {
-			v, ok := ix.byName[r.Vendor]
-			switch {
-			case !ok:
-				add("vendor", "未知厂商 "+r.Vendor)
-			default:
-				gs := splitGroups(r.Group)
-				if !containsGroup(gs, v.GroupName) {
-					add("group", fmt.Sprintf("渠道分组必须包含厂商 %s 的分组 %s", v.Name, v.GroupName))
-				}
-				for _, g := range managedSubset(gs, ix.isManaged) {
-					if g != v.GroupName {
-						add("group", fmt.Sprintf("渠道分组不能包含其他厂商 %s 的分组 %s", ix.byGroup[g].Name, g))
-					}
-				}
+			if gs := managedSubset(splitGroups(r.Group), ix.isManaged); len(gs) > 1 {
+				add("group", fmt.Sprintf("渠道同时在多个厂商分组：%s", strings.Join(gs, "、")))
 			}
 		}
-		if r.Discount <= 0 && r.Managed {
-			add("discount", "上游分组折扣必须大于 0")
+		if r.manual != nil && !(*r.manual > 0) {
+			add("discount", "手填的上游分组倍率必须大于 0")
 		}
 		for _, m := range r.Models {
 			if owner := ix.ownerOf(m); owner != "" && r.Vendor != "" && owner != r.Vendor {

@@ -151,7 +151,7 @@ func (s *Service) scatter(ctx context.Context, nm names, perChannel map[int]Agg,
 	if err != nil {
 		return out, resp.Upstream(fmt.Errorf("读取渠道失败：%w", err))
 	}
-	pr, err := NewPricer(ctx, s.St, s.Backend)
+	pr, err := NewPricer(ctx, s.St, s.Backend, s.Channels)
 	if err != nil {
 		return out, err
 	}

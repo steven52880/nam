@@ -119,10 +119,9 @@ func fieldChanges(old, now ports.Channel, f Fields) []FieldChange {
 func extChanges(e store.ChannelExt, x ExtFields) []FieldChange {
 	var out []FieldChange
 	if x.Discount != nil {
-		out = append(out, FieldChange{Field: "discount", Old: e.Discount, New: *x.Discount})
-	}
-	if x.Vendor != nil {
-		out = append(out, FieldChange{Field: "vendor", Old: e.Vendor, New: *x.Vendor})
+		out = append(out, FieldChange{Field: "discount", Old: e.ManualDiscount, New: *x.Discount})
+	} else if x.DiscountSource != nil {
+		out = append(out, FieldChange{Field: "discount", Old: e.ManualDiscount, New: nil})
 	}
 	if x.UpstreamID != nil {
 		out = append(out, FieldChange{Field: "upstream_id", Old: e.UpstreamID, New: *x.UpstreamID})
@@ -258,7 +257,7 @@ func (s *Service) applyUpdate(ctx context.Context, st *state, d store.ChannelDra
 	}
 	ext, ok := st.ext[d.ChannelID]
 	if !ok {
-		ext = store.ChannelExt{ChannelID: d.ChannelID, Discount: 1, DiscountSource: store.DiscountAuto}
+		ext = store.ChannelExt{ChannelID: d.ChannelID}
 	}
 	return s.finish(ctx, d.ChannelID, d.ChannelID, applyExt(ext, body.Ext))
 }
@@ -268,20 +267,10 @@ func patchEmpty(p ports.ChannelPatch) bool {
 		p.Priority == nil && p.Weight == nil && p.Tag == nil && p.Status == nil && p.TestModel == nil
 }
 
-// finish re-reads the channel, records the applied snapshot and removes the draft.
+// finish stores the ext row and removes the draft. The managed fields are not read back:
+// nam keeps no snapshot of them any more.
 func (s *Service) finish(ctx context.Context, channelID, draftChannelID int, ext store.ChannelExt) error {
-	c, err := s.Channels.Get(ctx, channelID)
-	if err != nil {
-		return fmt.Errorf("写入成功但读回失败：%w", err)
-	}
-	sn := snapOf(c)
-	ext.AppliedHash, ext.AppliedSnap, ext.DriftFields, ext.UpdatedAt = sn.hash(), sn.json(), "", time.Now().Unix()
-	if ext.Discount <= 0 {
-		ext.Discount = 1
-	}
-	if ext.DiscountSource == "" {
-		ext.DiscountSource = store.DiscountAuto
-	}
+	ext.ChannelID, ext.UpdatedAt = channelID, time.Now().Unix()
 	return s.St.DB.WithContext(context.WithoutCancel(ctx)).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Clauses(clause.OnConflict{UpdateAll: true}).Create(&ext).Error; err != nil {
 			return err
@@ -297,14 +286,12 @@ func applyExt(e store.ChannelExt, x ExtFields) store.ChannelExt {
 	if x.TokenID != nil {
 		e.TokenID = x.TokenID
 	}
-	if x.Vendor != nil {
-		e.Vendor = *x.Vendor
-	}
-	if x.Discount != nil {
-		e.Discount = *x.Discount
-	}
-	if x.DiscountSource != nil {
-		e.DiscountSource = *x.DiscountSource
+	switch {
+	case x.Discount != nil:
+		v := *x.Discount
+		e.ManualDiscount = &v
+	case x.DiscountSource != nil && *x.DiscountSource == autoSource:
+		e.ManualDiscount = nil
 	}
 	return e
 }

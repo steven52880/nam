@@ -153,27 +153,17 @@ type UpstreamModelPrice struct {
 	UpdatedAt  int64    `json:"updated_at"`
 }
 
-// Discount sources.
-const (
-	DiscountAuto   = "auto"
-	DiscountManual = "manual"
-)
-
 // ChannelExt holds nam-only data for a NewAPI channel. Channel fields themselves live in NewAPI.
+// The channel's vendor and its discount are not stored: the vendor follows the channel's
+// groups, the discount is computed from cached upstream prices unless ManualDiscount is set.
 type ChannelExt struct {
-	ChannelID      int     `gorm:"primaryKey;autoIncrement:false" json:"channel_id"`
-	UpstreamID     *uint   `gorm:"index" json:"upstream_id"`
-	TokenID        *uint   `json:"token_id"`
-	Vendor         string  `gorm:"size:64;index" json:"vendor"`
-	Discount       float64 `gorm:"not null;default:1" json:"discount"` // 上游分组折扣
-	DiscountSource string  `gorm:"size:8;default:auto" json:"discount_source"`
-	CacheOverride  string  `json:"cache_override"` // JSON: {"read":0.1,"write":1.25}
-	ModelDiscount  string  `json:"model_discount"` // JSON: {"model":0.35}
-	ModelMapping   string  `json:"model_mapping"`  // JSON: {"model":"upstream-name"}
-	AppliedHash    string  `gorm:"size:64" json:"applied_hash"`
-	AppliedSnap    string  `json:"applied_snap"` // JSON of managed fields at last apply
-	DriftFields    string  `json:"drift_fields"` // comma separated, empty when in sync
-	UpdatedAt      int64   `json:"updated_at"`
+	ChannelID      int      `gorm:"primaryKey;autoIncrement:false" json:"channel_id"`
+	UpstreamID     *uint    `gorm:"index" json:"upstream_id"`
+	TokenID        *uint    `json:"token_id"`
+	ManualDiscount *float64 `json:"manual_discount"` // 上游分组倍率手填值；NULL = 现算
+	CacheOverride  string   `json:"cache_override"`  // JSON: {"read":0.1,"write":1.25}
+	ModelDiscount  string   `json:"model_discount"`  // JSON: {"model":0.35}
+	UpdatedAt      int64    `json:"updated_at"`
 }
 
 // Draft ops.
@@ -224,27 +214,21 @@ const (
 	PricingSynced    = "synced"     // 已同步
 	PricingToWrite   = "to_write"   // 待写入
 	PricingPending   = "pending"    // 待确认（变化超过保护阈值）
-	PricingDrift     = "drift"      // 漂移（NewAPI 倍率被改过）
 	PricingNoChannel = "no_channel" // 无可用渠道
 	PricingUnset     = "unset"      // 未设置
 )
 
-// VendorPricing is a vendor's sell price and protection state.
+// VendorPricing is a vendor's pricing settings. It stores only what NewAPI does not have.
 //
-// Prices are multiples of the official price (0.30 = 30%), not yuan. The vendor group ratio
-// written to NewAPI is SellPrice × 美元参考汇率 ÷ 站点汇率.
+// Fixed mode: the price is NewAPI's GroupRatio; DraftRatio is a change not written yet.
+// Follow mode: the price is 参考成本 × Markup. Prices are multiples of the official price
+// (0.30 = 30%); the group ratio is price × 美元参考汇率 ÷ 站点汇率.
 type VendorPricing struct {
-	VendorID         uint     `gorm:"primaryKey;autoIncrement:false" json:"vendor_id"`
-	Mode             string   `gorm:"size:8;default:fixed" json:"mode"`
-	SellPrice        *float64 `json:"sell_price"` // 售价：原厂价的倍数（固定模式）
-	Markup           *float64 `json:"markup"`     // 加价比例（跟随模式）：售价 = 参考成本 × 加价比例
-	LastWrittenPrice *float64 `json:"last_written_price"`
-	LastWrittenRatio *float64 `json:"last_written_ratio"` // 上次写入 NewAPI 的 GroupRatio，用来判定漂移
-	LastWrittenAt    int64    `json:"last_written_at"`
-	State            string   `gorm:"size:12;default:unset" json:"state"`
-	PendingPrice     *float64 `json:"pending_price"`
-	ReferenceCost    *float64 `json:"reference_cost"`
-	UpdatedAt        int64    `json:"updated_at"`
+	VendorID   uint     `gorm:"primaryKey;autoIncrement:false" json:"vendor_id"`
+	Mode       string   `gorm:"size:8;default:fixed" json:"mode"`
+	Markup     *float64 `json:"markup"`      // 加价比例（跟随模式）：售价 = 参考成本 × 加价比例
+	DraftRatio *float64 `json:"draft_ratio"` // 固定模式待写入 NewAPI 的倍率草稿；没有草稿为 NULL
+	UpdatedAt  int64    `json:"updated_at"`
 }
 
 // OfficialPrice is the official price book. USD per 1M tokens, or USD per request.

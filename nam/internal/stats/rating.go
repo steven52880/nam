@@ -122,7 +122,7 @@ func stdPrice(pr *Pricer, ch ports.Channel, mix map[string]pricing.Usage, model 
 	if !ok {
 		return nil
 	}
-	u, ok := mix[cp.ext.Vendor]
+	u, ok := mix[pr.vendorOfChannel(ch)]
 	if !ok {
 		u = pricing.StandardRequest
 	}
@@ -130,8 +130,11 @@ func stdPrice(pr *Pricer, ch ports.Channel, mix map[string]pricing.Usage, model 
 	if base == 0 {
 		return nil
 	}
-	disc := pricing.EffectiveDiscount(cp.ext.Discount, cp.disc, model)
-	v := pricing.ChannelCNY(pricing.OfficialUSD(p, u, cp.cache), disc, cp.rate) / base / pr.usdRate
+	mr := cp.disc.Model(model)
+	if mr.Discount == nil {
+		return nil // 倍率算不出：没有成本价
+	}
+	v := pricing.ChannelCNY(pricing.OfficialUSD(p, u, cp.cache), *mr.Discount, cp.rate) / base / pr.usdRate
 	return &v
 }
 
@@ -152,7 +155,7 @@ func (s *Service) rate(ctx context.Context, pr *Pricer, chans []ports.Channel, m
 		v := stdPrice(pr, ch, mix, model)
 		r.std[ch.ID] = v
 		if v != nil {
-			entries = append(entries, stdEntry{id: ch.ID, vendor: pr.channels[ch.ID].ext.Vendor, price: *v})
+			entries = append(entries, stdEntry{id: ch.ID, vendor: pr.vendorOfChannel(ch), price: *v})
 		}
 	}
 	r.tier = priceTiers(entries)

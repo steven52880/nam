@@ -84,7 +84,18 @@ func (s *Service) load(ctx context.Context) (*state, error) {
 func parseDraft(d store.ChannelDraft) draftBody {
 	var b draftBody
 	_ = json.Unmarshal([]byte(d.Diff), &b)
+	b.Ext = normExt(b.Ext)
 	return b
+}
+
+// normExt drops what a draft no longer stores: ext.vendor (the vendor follows the groups) and
+// the discount that old drafts carried next to discount_source "auto" (it is computed now).
+func normExt(x ExtFields) ExtFields {
+	x.Vendor = nil
+	if x.DiscountSource != nil && *x.DiscountSource == autoSource {
+		x.Discount = nil
+	}
+	return x
 }
 
 // effective overlays a draft on a NewAPI channel. For a live channel only the managed part
@@ -124,28 +135,18 @@ func (st *state) row(id int) Row {
 	e, managed := st.ext[id]
 	ext := ExtFields{}
 	if managed {
-		ext = ExtFields{UpstreamID: e.UpstreamID, TokenID: e.TokenID, Vendor: &e.Vendor, Discount: &e.Discount, DiscountSource: &e.DiscountSource}
+		ext = ExtFields{UpstreamID: e.UpstreamID, TokenID: e.TokenID, Discount: e.ManualDiscount}
 	}
 	ext = mergeExt(ext, body.Ext)
 	r.Managed = managed || !ext.empty()
 	r.UpstreamID, r.TokenID = ext.UpstreamID, ext.TokenID
-	if ext.Vendor != nil {
-		r.Vendor = *ext.Vendor
-	}
-	r.Discount = 1
-	if ext.Discount != nil {
-		r.Discount = *ext.Discount
-	}
-	r.DiscountSource = store.DiscountAuto
-	if ext.DiscountSource != nil && *ext.DiscountSource != "" {
-		r.DiscountSource = *ext.DiscountSource
-	}
+	r.manual = ext.Discount
+	r.Vendor = st.vendors.vendorOf(c.Group)
 	if r.UpstreamID != nil {
 		if u, ok := st.ups[*r.UpstreamID]; ok {
 			r.UpstreamName = u.Name
 			rate := u.CurrencyRate
-			cost := st.channelCost(r.Discount, rate)
-			r.CurrencyRate, r.ChannelCost = &rate, &cost
+			r.CurrencyRate = &rate
 		}
 	}
 	if r.TokenID != nil {
@@ -153,13 +154,12 @@ func (st *state) row(id int) Row {
 			r.TokenName = t.Name
 		}
 	}
-	if managed && e.DriftFields != "" {
-		r.DriftFields = splitComma(e.DriftFields)
-		r.SyncState = StateDrift
-	}
 	if hasDraft {
 		r.DraftID, r.DraftOp, r.DraftError = d.ID, d.Op, d.LastError
 		r.DirtyFields = dirtyNames(body.Fields, body.Ext)
+		if isLive && r.Vendor != st.vendors.vendorOf(live.Group) {
+			r.DirtyFields = append(r.DirtyFields, "vendor")
+		}
 		switch {
 		case d.LastError != "":
 			r.SyncState = StateError
@@ -173,9 +173,6 @@ func (st *state) row(id int) Row {
 	}
 	if r.DirtyFields == nil {
 		r.DirtyFields = []string{}
-	}
-	if r.DriftFields == nil {
-		r.DriftFields = []string{}
 	}
 	return r
 }
@@ -205,12 +202,21 @@ func (s *Service) List(ctx context.Context) ([]Row, error) {
 		return nil, err
 	}
 	rows := st.rows()
+	rs, err := s.resolver(ctx)
+	if err != nil {
+		return nil, err
+	}
+	st.priceRows(rows, rs)
+	return rows, nil
+}
+
+// resolver loads the price book and the cached upstream prices / group ratios.
+func (s *Service) resolver(ctx context.Context) (*pricing.Resolver, error) {
 	book, err := pricing.LoadBook(ctx, s.St)
 	if err != nil {
 		return nil, err
 	}
-	priceRows(rows, st, book)
-	return rows, nil
+	return pricing.LoadResolver(ctx, s.St, book)
 }
 
 // DraftCount returns the number of pending drafts.
@@ -273,14 +279,14 @@ func (s *Service) saveChanges(ctx context.Context, changes []Change) ([]Validati
 			fields.Group = &g
 		}
 		if ch.Ext.Vendor != nil && *ch.Ext.Vendor != before.Vendor {
+			if _, known := st.vendors.byName[*ch.Ext.Vendor]; !known && *ch.Ext.Vendor != "" {
+				return []ValidationIssue{{ChannelID: id, Name: before.Name, Field: "vendor", Message: "未知厂商 " + *ch.Ext.Vendor}}, nil
+			}
 			fields.Group = swapGroupForVendor(st, before, fields.Group, *ch.Ext.Vendor, pred)
 		}
 		body.Fields = mergeFields(body.Fields, fields)
-		body.Ext = mergeExt(body.Ext, ch.Ext)
-		if ch.Ext.Discount != nil && ch.Ext.DiscountSource == nil {
-			m := store.DiscountManual
-			body.Ext.DiscountSource = &m
-		}
+		body.Ext.Vendor = nil // 旧草稿里的 vendor 一律忽略；厂商由分组推出
+		body.Ext = mergeExt(body.Ext, normExt(ch.Ext))
 		if isLive {
 			body.Fields = pruneFields(live, body.Fields, st.groupPred(body.GroupDrop))
 			if body.Fields.Group == nil {
@@ -354,15 +360,12 @@ func pruneExt(e store.ChannelExt, exists bool, x ExtFields) ExtFields {
 	if x.TokenID != nil && e.TokenID != nil && *x.TokenID == *e.TokenID {
 		x.TokenID = nil
 	}
-	if x.Vendor != nil && *x.Vendor == e.Vendor {
-		x.Vendor = nil
-	}
-	if x.Discount != nil && *x.Discount == e.Discount {
+	if x.Discount != nil && e.ManualDiscount != nil && *x.Discount == *e.ManualDiscount {
 		x.Discount = nil
 		x.DiscountSource = nil
 	}
-	if x.DiscountSource != nil && *x.DiscountSource == e.DiscountSource && x.Discount == nil {
-		x.DiscountSource = nil
+	if x.Discount == nil && x.DiscountSource != nil && e.ManualDiscount == nil {
+		x.DiscountSource = nil // 本来就是自动，没有可清的手填值
 	}
 	return x
 }

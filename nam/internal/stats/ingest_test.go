@@ -92,8 +92,14 @@ func TestPull_crosses_batch_boundary(t *testing.T) {
 	}
 }
 
-func TestPull_vendor_falls_back_to_channel_ext_then_empty(t *testing.T) {
+func TestPull_vendor_falls_back_to_channel_groups_then_empty(t *testing.T) {
 	e := newEnv(t)
+	// channel 1 exists in NewAPI and carries the anthropic group: that is its vendor
+	id, err := e.fake.Create(e.ctx, ports.ChannelCreate{Name: "c1", Group: "default,anthropic", Models: []string{"test-model"}, Status: 1})
+	must(t, err)
+	if id != 1 {
+		t.Fatalf("channel id %d", id)
+	}
 	at := time.Now().Unix() - 3600
 	a := stdLog(1, at)
 	a.Group = "default"
@@ -101,11 +107,11 @@ func TestPull_vendor_falls_back_to_channel_ext_then_empty(t *testing.T) {
 	b.Group = "default"
 	e.fake.AddLog(a)
 	e.fake.AddLog(b)
-	_, err := e.svc.Pull(e.ctx)
+	_, err = e.svc.Pull(e.ctx)
 	must(t, err)
 	var rows []store.StatsHourly
 	must(t, e.st.DB.Order("channel_id").Find(&rows).Error)
-	if len(rows) != 2 || rows[0].Vendor != "ext-vendor" || rows[1].Vendor != "" {
+	if len(rows) != 2 || rows[0].Vendor != "anthropic" || rows[1].Vendor != "" {
 		t.Fatalf("rows %+v", rows)
 	}
 	if rows[1].PricedRequests != 0 || rows[1].RevenueCNY == 0 {

@@ -29,6 +29,7 @@ func costByID(t *testing.T, items []ModelCost, id int) ModelCost {
 func TestModelCostsDraftCreate(t *testing.T) {
 	e := newEnv(t)
 	seedPrices(t, e)
+	must(t, e.svc.St.DB.Create(&store.UpstreamGroup{UpstreamID: e.up.ID, Name: "a", Ratio: 1}).Error)
 	ids := e.batch(t, "test-model")
 	if len(ids) != 1 || ids[0] >= 0 {
 		t.Fatalf("temp ids: %v", ids)
@@ -58,6 +59,7 @@ func TestModelCostsDraftCreate(t *testing.T) {
 func TestModelCostsOverridesAndMissingModel(t *testing.T) {
 	e := newEnv(t)
 	seedPrices(t, e)
+	must(t, e.svc.St.DB.Create(&store.UpstreamGroup{UpstreamID: e.up.ID, Name: "a", Ratio: 1}).Error)
 	e.batch(t, "test-model")
 	_, issues, err := e.svc.Apply(e.ctx, nil)
 	must(t, err)
@@ -69,7 +71,7 @@ func TestModelCostsOverridesAndMissingModel(t *testing.T) {
 	_, err = e.svc.SaveChanges(e.ctx, []Change{{ChannelID: id, Fields: Fields{Models: &models}}})
 	must(t, err)
 	must(t, e.svc.St.DB.Model(&store.ChannelExt{}).Where("channel_id = ?", id).
-		Updates(map[string]any{"discount": 0.35, "discount_source": store.DiscountManual, "model_discount": `{"test-model-2":0.2}`}).Error)
+		Updates(map[string]any{"manual_discount": 0.35, "model_discount": `{"test-model-2":0.2}`}).Error)
 
 	// channel-level discount only
 	got, err := e.svc.ModelCosts(e.ctx, "test-model")
@@ -118,11 +120,12 @@ func TestModelCostsOverridesAndMissingModel(t *testing.T) {
 	}
 }
 
-// priceRows now goes through costInputs/unitCostCNY: List must still report the same
+// priceRows goes through the resolver and unitCostCNY: List must still report the same
 // per-request cost as before (ModelCosts on the test model agrees with it).
 func TestPriceRowsUnchangedAfterSplit(t *testing.T) {
 	e := newEnv(t)
 	seedPrices(t, e)
+	must(t, e.svc.St.DB.Create(&store.UpstreamGroup{UpstreamID: e.up.ID, Name: "a", Ratio: 1}).Error)
 	e.batch(t, "test-model")
 	_, _, err := e.svc.Apply(e.ctx, nil)
 	must(t, err)

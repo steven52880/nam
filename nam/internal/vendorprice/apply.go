@@ -16,11 +16,10 @@ import (
 // ApplyInput is the body of preview and apply.
 //
 // VendorIDs nil (omitted) = every 待写入 vendor; a non-nil list = exactly those vendors.
-// IncludeGroups nil = true. Force lets listed 漂移 vendors be overwritten with nam's price.
+// IncludeGroups nil = true.
 type ApplyInput struct {
 	VendorIDs     []uint `json:"vendor_ids"`
 	IncludeGroups *bool  `json:"include_groups"`
-	Force         bool   `json:"force"`
 }
 
 // PlanVendor is one vendor whose ratio will be (re)written.
@@ -109,14 +108,12 @@ func pct(v float64) string {
 func skipReason(vs *vendorState) string {
 	switch vs.Res.State {
 	case store.PricingPending:
-		if vs.Res.SignedChange != nil {
-			return fmt.Sprintf("变化 %s，超过变化保护阈值", pct(*vs.Res.SignedChange))
+		if vs.Res.Change != nil {
+			return fmt.Sprintf("变化 %s，超过变化保护阈值", pct(*vs.Res.Change))
 		}
 		return "变化超过变化保护阈值"
-	case store.PricingDrift:
-		return "NewAPI 中的倍率与上次写入值不一致（漂移），需要采纳 NewAPI 值或强制覆盖"
 	case store.PricingUnset:
-		if vs.Res.Target != nil && vs.Res.TargetRatio == nil {
+		if vs.Row.Mode == store.PricingFollow && vs.Row.Markup != nil {
 			return "售价过小，厂商分组倍率舍入到 3 位小数后为 0，不能写入"
 		}
 		return "还没有设置售价或加价比例"
@@ -173,12 +170,6 @@ func (s *Service) buildPlan(sn *snap, in ApplyInput, trigger string, confirmID u
 			switch vs.Res.State {
 			case store.PricingToWrite:
 				pick(vs, autoOr(ReasonManual))
-			case store.PricingDrift:
-				if explicit && in.Force {
-					pick(vs, ReasonForce)
-				} else {
-					skip(vs)
-				}
 			case store.PricingSynced:
 				if explicit {
 					skip(vs)
@@ -194,7 +185,7 @@ func (s *Service) buildPlan(sn *snap, in ApplyInput, trigger string, confirmID u
 		set[vs.V.GroupName] = *vs.Res.TargetRatio
 		p.vendors = append(p.vendors, PlanVendor{
 			VendorID: vs.V.ID, Vendor: vs.V.Name, Group: vs.V.GroupName,
-			BeforePrice: copyPtr(vs.Row.LastWrittenPrice), AfterPrice: copyPtr(vs.Res.Target),
+			BeforePrice: vs.currentPrice(sn), AfterPrice: copyPtr(vs.Res.Target),
 			BeforeRatio: copyPtr(vs.NewAPI), AfterRatio: copyPtr(vs.Res.TargetRatio),
 		})
 	}
@@ -298,7 +289,7 @@ func (s *Service) applyLocked(ctx context.Context, sn *snap, in ApplyInput, trig
 	}
 	// A GroupRatio that is not in NewAPI must not be recorded as written.
 	if !p.changes(KeyGroupRatio) || verified[KeyGroupRatio] {
-		if err := s.finish(ctx, p, p.changes(KeyGroupRatio)); err != nil && failure == nil {
+		if err := s.finish(ctx, sn, p, p.changes(KeyGroupRatio)); err != nil && failure == nil {
 			failure = err
 		}
 	}
@@ -348,9 +339,18 @@ type historyDoc struct {
 	GroupRatio *float64 `json:"group_ratio"`
 }
 
-// finish records the written vendors: price_history for every vendor whose ratio changed,
-// and vendor_pricing (last written values, state synced, pending cleared) for all of them.
-func (s *Service) finish(ctx context.Context, p *plan, wroteRatio bool) error {
+// currentPrice is the sell price NewAPI's current ratio stands for (nil when NewAPI has none).
+func (vs *vendorState) currentPrice(sn *snap) *float64 {
+	if vs.NewAPI == nil || !finitePositive(*vs.NewAPI) || !finitePositive(sn.usd) || !finitePositive(sn.site) {
+		return nil
+	}
+	p := PriceFromRatio(*vs.NewAPI, sn.usd, sn.site)
+	return &p
+}
+
+// finish records the written vendors: price_history for every vendor whose ratio changed, and
+// clears the draft ratio of the written fixed-mode vendors.
+func (s *Service) finish(ctx context.Context, sn *snap, p *plan, wroteRatio bool) error {
 	if len(p.sel) == 0 {
 		return nil
 	}
@@ -371,21 +371,21 @@ func (s *Service) finish(ctx context.Context, p *plan, wroteRatio bool) error {
 				id := vs.V.ID
 				h := store.PriceHistory{
 					At: now, Key: fmt.Sprintf("vendor:%d", id), VendorID: &id, Reason: p.reason[id], AuditID: auditID,
-					Before: audit.JSON(historyDoc{Mode: vs.Row.Mode, SellPrice: vs.Row.LastWrittenPrice, GroupRatio: vs.NewAPI}),
+					Before: audit.JSON(historyDoc{Mode: vs.Row.Mode, SellPrice: vs.currentPrice(sn), GroupRatio: vs.NewAPI}),
 					After:  audit.JSON(historyDoc{Mode: vs.Row.Mode, SellPrice: &price, GroupRatio: &ratio}),
 				}
 				if err := tx.Create(&h).Error; err != nil {
 					return err
 				}
 			}
-			vs.Row.LastWrittenPrice, vs.Row.LastWrittenRatio, vs.Row.LastWrittenAt = copyPtr(&price), copyPtr(&ratio), now
-			vs.Row.State, vs.Row.PendingPrice, vs.Row.UpdatedAt = store.PricingSynced, nil, now
-			if err := tx.Save(&vs.Row).Error; err != nil {
-				return err
+			if vs.Exists && vs.Row.DraftRatio != nil {
+				vs.Row.DraftRatio, vs.Row.UpdatedAt = nil, now
+				if err := tx.Save(&vs.Row).Error; err != nil {
+					return err
+				}
 			}
-			vs.Exists = true
 			vs.NewAPI = copyPtr(&ratio)
-			vs.Res.State, vs.Res.Pending = store.PricingSynced, nil
+			sn.evaluate(vs)
 		}
 		return nil
 	})

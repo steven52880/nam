@@ -85,7 +85,7 @@ func (e *env) channel(group string, prio int64, weight uint, discount float64, s
 		e.t.Fatal(err)
 	}
 	up := e.up
-	if err := e.st.DB.Create(&store.ChannelExt{ChannelID: id, UpstreamID: &up, Vendor: group, Discount: discount, DiscountSource: store.DiscountManual}).Error; err != nil {
+	if err := e.st.DB.Create(&store.ChannelExt{ChannelID: id, UpstreamID: &up, ManualDiscount: &discount}).Error; err != nil {
 		e.t.Fatal(err)
 	}
 	return id
@@ -190,7 +190,16 @@ func (e *env) row(id uint) store.VendorPricing {
 
 func eq(p *float64, want float64) bool { return p != nil && near(*p, want) }
 
-func TestTakeoverKeepsPrice(t *testing.T) {
+func eqTol(p *float64, want, tol float64) bool { return p != nil && math.Abs(*p-want) <= tol }
+
+func (e *env) rows() int64 {
+	e.t.Helper()
+	var n int64
+	e.st.DB.Model(&store.VendorPricing{}).Count(&n)
+	return n
+}
+
+func TestGetReadsNewAPIAndNeverWritesTheDatabase(t *testing.T) {
 	e := newEnv(t)
 	e.vendor("Anthropic", "claude")
 	e.vendor("OpenAI", "openai")
@@ -198,28 +207,28 @@ func TestTakeoverKeepsPrice(t *testing.T) {
 	writes := e.fake.Writes
 
 	it := e.item("claude")
-	if it.Mode != store.PricingFixed || !eq(it.SellPrice, 0.2857*7/7.2) || !eq(it.LastWrittenPrice, 0.2857*7/7.2) ||
-		!eq(it.LastWrittenRatio, 0.2857) || !eq(it.NewAPIRatio, 0.2857) || !eq(it.TargetRatio, 0.286) || it.State != store.PricingSynced {
-		t.Fatalf("takeover must keep the existing ratio: %+v", it)
+	if it.Mode != store.PricingFixed || !eq(it.SellPrice, 0.2857*7/7.2) || !eq(it.NewAPIRatio, 0.2857) ||
+		!eq(it.TargetRatio, 0.2857) || it.DraftRatio != nil || it.Change == nil || *it.Change != 0 || it.State != store.PricingSynced {
+		t.Fatalf("fixed mode with no draft reads NewAPI: %+v", it)
 	}
 	op := e.item("openai")
-	if op.Mode != store.PricingFixed || op.SellPrice != nil || op.LastWrittenRatio != nil || op.State != store.PricingUnset {
+	if op.Mode != store.PricingFixed || op.SellPrice != nil || op.NewAPIRatio != nil || op.DraftRatio != nil || op.State != store.PricingUnset {
 		t.Fatalf("vendor without a NewAPI ratio is unset: %+v", op)
 	}
-	if e.fake.Writes != writes {
-		t.Fatal("takeover must not write NewAPI")
+	if e.rows() != 0 || e.fake.Writes != writes {
+		t.Fatalf("GET must not write nam.db (%d rows) or NewAPI", e.rows())
 	}
-	var n int64
-	e.st.DB.Model(&store.VendorPricing{}).Count(&n)
-	if n != 2 {
-		t.Fatalf("rows: %d", n)
+	// somebody changes NewAPI by hand: there is no drift, the vendor just follows NewAPI
+	e.setOpt(KeyGroupRatio, `{"claude":0.5,"default":1}`)
+	if again := e.item("claude"); again.State != store.PricingSynced || !eq(again.SellPrice, 0.5*7/7.2) || !eq(again.NewAPIRatio, 0.5) {
+		t.Fatalf("fixed mode follows NewAPI: %+v", again)
 	}
-	if again := e.item("claude"); again.State != store.PricingSynced || !eq(again.SellPrice, *it.SellPrice) {
-		t.Fatalf("second overview: %+v", again)
+	if e.rows() != 0 {
+		t.Fatal("GET must not write nam.db")
 	}
 }
 
-func TestApplyFixedWritesOnlyVendorKeys(t *testing.T) {
+func TestFixedDraftPreviewApplyFlow(t *testing.T) {
 	e := newEnv(t)
 	id := e.vendor("Anthropic", "claude")
 	e.setOpt(KeyGroupRatio, `{"default":1,"vip":2}`)
@@ -230,17 +239,24 @@ func TestApplyFixedWritesOnlyVendorKeys(t *testing.T) {
 	if it := e.item("claude"); it.State != store.PricingUnset {
 		t.Fatalf("before pricing: %+v", it)
 	}
-	it := e.update(id, UpdateInput{Mode: sp(store.PricingFixed), SellPrice: fp(0.3)})
-	if it.State != store.PricingToWrite || !eq(it.TargetRatio, 0.309) {
+	writes := e.fake.Writes
+	it := e.update(id, UpdateInput{SellPrice: fp(0.3)})
+	if it.State != store.PricingToWrite || !eq(it.TargetRatio, 0.309) || !eq(it.DraftRatio, 0.309) || it.Mode != store.PricingFixed ||
+		!eq(it.SellPrice, 0.309*7/7.2) || it.NewAPIRatio != nil || it.Change != nil {
 		t.Fatalf("after update: %+v", it)
 	}
+	if r := e.row(id); r.DraftRatio == nil || *r.DraftRatio != 0.309 || r.Mode != store.PricingFixed {
+		t.Fatalf("draft is stored in nam: %+v", r)
+	}
+	if e.fake.Writes != writes || len(e.groupRatio()) != 2 {
+		t.Fatal("editing writes nam only")
+	}
 
-	writes := e.fake.Writes
 	pv, err := e.svc.Preview(e.ctx, ApplyInput{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(pv.Vendors) != 1 || !eq(pv.Vendors[0].AfterRatio, 0.309) || pv.Vendors[0].BeforeRatio != nil || len(pv.Options) != 3 {
+	if len(pv.Vendors) != 1 || !eq(pv.Vendors[0].AfterRatio, 0.309) || pv.Vendors[0].BeforeRatio != nil || pv.Vendors[0].BeforePrice != nil || len(pv.Options) != 3 {
 		t.Fatalf("preview: %+v", pv)
 	}
 	if got := []string{pv.Options[0].Key, pv.Options[1].Key, pv.Options[2].Key}; strings.Join(got, ",") != "GroupRatio,UserUsableGroups,AutoGroups" {
@@ -248,6 +264,9 @@ func TestApplyFixedWritesOnlyVendorKeys(t *testing.T) {
 	}
 	if e.fake.Writes != writes {
 		t.Fatal("preview must not write")
+	}
+	if e.row(id).DraftRatio == nil {
+		t.Fatal("preview must keep the draft")
 	}
 
 	res := e.apply(ApplyInput{})
@@ -278,17 +297,16 @@ func TestApplyFixedWritesOnlyVendorKeys(t *testing.T) {
 	_ = json.Unmarshal([]byte(hs[0].Before), &before)
 	_ = json.Unmarshal([]byte(hs[0].After), &after)
 	if before.Mode != store.PricingFixed || before.SellPrice != nil || before.GroupRatio != nil ||
-		after.Mode != store.PricingFixed || !eq(after.SellPrice, 0.3) || !eq(after.GroupRatio, 0.309) {
+		after.Mode != store.PricingFixed || !eq(after.SellPrice, 0.309*7/7.2) || !eq(after.GroupRatio, 0.309) {
 		t.Fatalf("history docs: %s | %s", hs[0].Before, hs[0].After)
 	}
 	if n := e.auditCount("option:GroupRatio", "set", store.ResultOK); n != 1 {
 		t.Fatalf("GroupRatio audit rows: %d", n)
 	}
-	row := e.row(id)
-	if row.State != store.PricingSynced || !eq(row.LastWrittenPrice, 0.3) || !eq(row.LastWrittenRatio, 0.309) || row.LastWrittenAt == 0 || row.PendingPrice != nil {
-		t.Fatalf("row: %+v", row)
+	if r := e.row(id); r.DraftRatio != nil {
+		t.Fatalf("the draft is cleared after the write: %+v", r)
 	}
-	if it := e.item("claude"); it.State != store.PricingSynced || it.LastWrittenAt == nil {
+	if it := e.item("claude"); it.State != store.PricingSynced || it.DraftRatio != nil || !eq(it.NewAPIRatio, 0.309) {
 		t.Fatalf("overview after apply: %+v", it)
 	}
 
@@ -298,7 +316,7 @@ func TestApplyFixedWritesOnlyVendorKeys(t *testing.T) {
 		t.Fatalf("second apply: %+v", again)
 	}
 
-	// the next change records the previous price as "before"
+	// the next change records NewAPI's value as "before"
 	e.update(id, UpdateInput{SellPrice: fp(0.35)})
 	e.apply(ApplyInput{IncludeGroups: new(bool)})
 	hs = e.histories()
@@ -306,7 +324,7 @@ func TestApplyFixedWritesOnlyVendorKeys(t *testing.T) {
 		t.Fatalf("history rows: %d", len(hs))
 	}
 	_ = json.Unmarshal([]byte(hs[1].Before), &before)
-	if !eq(before.SellPrice, 0.3) || !eq(before.GroupRatio, 0.309) {
+	if !eq(before.SellPrice, 0.309*7/7.2) || !eq(before.GroupRatio, 0.309) {
 		t.Fatalf("second history before: %s", hs[1].Before)
 	}
 	if got := e.groupRatio()["claude"]; got != 0.36 {
@@ -314,11 +332,77 @@ func TestApplyFixedWritesOnlyVendorKeys(t *testing.T) {
 	}
 }
 
+func TestDraftIsClearedWhenItEqualsNewAPIAndCanBeDiscarded(t *testing.T) {
+	e := newEnv(t)
+	id := e.vendor("A", "ga")
+	e.setOpt(KeyGroupRatio, `{"ga":0.2857}`)
+
+	it := e.update(id, UpdateInput{GroupRatio: fp(0.5)})
+	if it.State != store.PricingToWrite || !eq(it.DraftRatio, 0.5) || !eq(it.TargetRatio, 0.5) || !eq(it.NewAPIRatio, 0.2857) {
+		t.Fatalf("draft: %+v", it)
+	}
+	if it.Change == nil || *it.Change <= 0 {
+		t.Fatalf("change is relative to NewAPI's current price: %+v", it)
+	}
+	// back to (about) what NewAPI has: the draft disappears
+	it = e.update(id, UpdateInput{GroupRatio: fp(0.286)})
+	if it.State != store.PricingSynced || it.DraftRatio != nil || e.row(id).DraftRatio != nil {
+		t.Fatalf("a draft equal to NewAPI must be cleared: %+v", it)
+	}
+	it = e.update(id, UpdateInput{GroupRatio: fp(0.5)})
+	if it.DraftRatio == nil {
+		t.Fatalf("draft: %+v", it)
+	}
+	// the same through the price
+	it = e.update(id, UpdateInput{SellPrice: fp(0.2857 * 7 / 7.2)})
+	if it.State != store.PricingSynced || e.row(id).DraftRatio != nil {
+		t.Fatalf("a price that gives NewAPI's ratio clears the draft: %+v", it)
+	}
+
+	e.update(id, UpdateInput{GroupRatio: fp(0.5)})
+	it = e.update(id, UpdateInput{DiscardDraft: true})
+	if it.State != store.PricingSynced || it.DraftRatio != nil || !eq(it.NewAPIRatio, 0.2857) || e.row(id).DraftRatio != nil {
+		t.Fatalf("discard: %+v", it)
+	}
+	if e.groupRatio()["ga"] != 0.2857 {
+		t.Fatal("discard never touches NewAPI")
+	}
+	// discarding when there is nothing to discard is fine
+	e.update(id, UpdateInput{DiscardDraft: true})
+	// discard cannot be combined with other fields
+	for name, in := range map[string]UpdateInput{
+		"mode":   {DiscardDraft: true, Mode: sp(store.PricingFixed)},
+		"price":  {DiscardDraft: true, SellPrice: fp(0.3)},
+		"markup": {DiscardDraft: true, Markup: fp(1)},
+		"ratio":  {DiscardDraft: true, GroupRatio: fp(0.3)},
+	} {
+		if _, err := e.svc.Update(e.ctx, id, in); resp.Status(err) != http.StatusBadRequest {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+func TestSwitchingToFollowClearsTheDraft(t *testing.T) {
+	e := newEnv(t)
+	id := e.vendor("A", "ga")
+	e.setOpt(KeyGroupRatio, `{"ga":0.1}`)
+	e.channel("ga", 1, 1, 0.1, ports.ChannelEnabled)
+	e.update(id, UpdateInput{GroupRatio: fp(0.5)})
+	it := e.update(id, UpdateInput{Mode: sp(store.PricingFollow), Markup: fp(1)})
+	if it.DraftRatio != nil || e.row(id).DraftRatio != nil || it.Mode != store.PricingFollow {
+		t.Fatalf("follow mode has no draft: %+v", it)
+	}
+	// and back to fixed: the vendor reads NewAPI again
+	it = e.update(id, UpdateInput{Mode: sp(store.PricingFixed)})
+	if it.State != store.PricingSynced || !eq(it.TargetRatio, 0.1) {
+		t.Fatalf("back to fixed: %+v", it)
+	}
+}
+
 func TestIncludeGroupsFalseOnlyWritesGroupRatio(t *testing.T) {
 	e := newEnv(t)
 	id := e.vendor("Anthropic", "claude")
 	e.setOpt(KeyAutoGroups, `["default"]`)
-	e.item("claude")
 	e.update(id, UpdateInput{SellPrice: fp(0.3)})
 	res := e.apply(ApplyInput{IncludeGroups: new(bool)})
 	if strings.Join(res.Written, ",") != "GroupRatio" || e.opt(KeyAutoGroups) != `["default"]` || e.opt(KeyUserUsableGroups) != "" {
@@ -352,7 +436,6 @@ func TestInvalidOptionJSONIsNeverOverwritten(t *testing.T) {
 			e := newEnv(t)
 			id := e.vendor("Anthropic", "claude")
 			e.setOpt(KeyGroupRatio, `{"default":1}`)
-			e.item("claude")
 			e.update(id, UpdateInput{SellPrice: fp(0.3)})
 
 			e.setOpt(key, `{bad json`)
@@ -376,24 +459,28 @@ func TestInvalidOptionJSONIsNeverOverwritten(t *testing.T) {
 			if e.fake.Writes != writes || e.opt(key) != `{bad json` || len(e.histories()) != 0 {
 				t.Fatal("an unparsable option must never be written")
 			}
+			if e.row(id).DraftRatio == nil {
+				t.Fatal("the draft must survive a failed write")
+			}
 		})
 	}
 }
 
-func TestUpdateNeedsRowWhenOptionsBroken(t *testing.T) {
+func TestUpdateIsRefusedWhenOptionsAreBroken(t *testing.T) {
 	e := newEnv(t)
 	id := e.vendor("Anthropic", "claude")
 	e.setOpt(KeyGroupRatio, `{bad`)
 	if ov := e.overview(); ov.Error == "" || len(ov.Items) != 1 || ov.Items[0].State != store.PricingUnset {
 		t.Fatalf("overview with broken option: %+v", ov)
 	}
-	var n int64
-	e.st.DB.Model(&store.VendorPricing{}).Count(&n)
-	if n != 0 {
-		t.Fatalf("nothing is stored while options are unreadable: %d rows", n)
+	if e.rows() != 0 {
+		t.Fatalf("nothing is stored while options are unreadable: %d rows", e.rows())
 	}
 	if _, err := e.svc.Update(e.ctx, id, UpdateInput{SellPrice: fp(0.3)}); resp.Status(err) != http.StatusConflict {
 		t.Fatalf("update: %v", err)
+	}
+	if e.rows() != 0 {
+		t.Fatal("a refused update must not create a row")
 	}
 }
 
@@ -410,7 +497,6 @@ func (l liar) Set(ctx context.Context, k, v string) error {
 func TestReadBackMismatchIsAnErrorAndNotRecorded(t *testing.T) {
 	e := newEnvWith(t, func(o ports.OptionStore) ports.OptionStore { return liar{o} })
 	id := e.vendor("Anthropic", "claude")
-	e.item("claude")
 	e.update(id, UpdateInput{SellPrice: fp(0.3)})
 	_, err := e.svc.Apply(e.ctx, ApplyInput{}, store.TriggerManual)
 	if err == nil || !strings.Contains(err.Error(), "核对") {
@@ -419,8 +505,8 @@ func TestReadBackMismatchIsAnErrorAndNotRecorded(t *testing.T) {
 	if len(e.histories()) != 0 {
 		t.Fatal("a failed verification must not create price_history")
 	}
-	if r := e.row(id); r.State == store.PricingSynced || r.LastWrittenRatio != nil {
-		t.Fatalf("row must not look written: %+v", r)
+	if r := e.row(id); r.DraftRatio == nil || *r.DraftRatio != 0.309 {
+		t.Fatalf("the draft must stay: %+v", r)
 	}
 	if n := e.auditCount("option:GroupRatio", "verify", store.ResultFail); n != 1 {
 		t.Fatalf("failed audit rows: %d", n)
@@ -444,7 +530,6 @@ func TestPartialWriteStillRecordsGroupRatio(t *testing.T) {
 	e := newEnvWith(t, func(o ports.OptionStore) ports.OptionStore { return failSet{o, KeyUserUsableGroups} })
 	id := e.vendor("Anthropic", "claude")
 	e.setOpt(KeyAutoGroups, `["default"]`)
-	e.item("claude")
 	e.update(id, UpdateInput{SellPrice: fp(0.3)})
 	_, err := e.svc.Apply(e.ctx, ApplyInput{}, store.TriggerManual)
 	if err == nil || !strings.Contains(err.Error(), KeyUserUsableGroups) {
@@ -453,8 +538,8 @@ func TestPartialWriteStillRecordsGroupRatio(t *testing.T) {
 	if e.groupRatio()["claude"] != 0.309 || e.opt(KeyAutoGroups) != `["default"]` {
 		t.Fatalf("GroupRatio is written, AutoGroups is not: %s %s", e.opt(KeyGroupRatio), e.opt(KeyAutoGroups))
 	}
-	if len(e.histories()) != 1 || e.row(id).State != store.PricingSynced {
-		t.Fatal("what was written must be recorded")
+	if len(e.histories()) != 1 || e.row(id).DraftRatio != nil {
+		t.Fatal("what was written must be recorded and its draft cleared")
 	}
 }
 
@@ -467,9 +552,8 @@ func TestJobAutoWritesOnlyFollowModeAndSkipsSmallChange(t *testing.T) {
 	e.channel("ga", 1, 1, 0.1, ports.ChannelEnabled)
 	e.channel("gb", 1, 1, 0.1, ports.ChannelEnabled)
 	e.channel("gc", 1, 1, 0.0985, ports.ChannelEnabled)
-	e.overview() // takeover: all three synced at ratio 0.1
 	e.update(a, UpdateInput{Mode: sp(store.PricingFollow), Markup: fp(1)})
-	e.update(b, UpdateInput{Mode: sp(store.PricingFixed), SellPrice: fp(0.2)})
+	e.update(b, UpdateInput{GroupRatio: fp(0.206)})
 	e.update(c, UpdateInput{Mode: sp(store.PricingFollow), Markup: fp(1)})
 
 	items := map[string]Item{}
@@ -479,14 +563,17 @@ func TestJobAutoWritesOnlyFollowModeAndSkipsSmallChange(t *testing.T) {
 	if items["ga"].State != store.PricingToWrite || items["ga"].SmallChange || !eq(items["ga"].TargetPrice, 0.1) {
 		t.Fatalf("A: %+v", items["ga"])
 	}
-	if items["gb"].State != store.PricingToWrite || items["gc"].State != store.PricingToWrite || !items["gc"].SmallChange || !eq(items["gc"].TargetPrice, 0.0985) {
-		t.Fatalf("B/C: %+v %+v", items["gb"], items["gc"])
+	if items["gb"].State != store.PricingToWrite || items["gb"].SmallChange || !eq(items["gb"].DraftRatio, 0.206) {
+		t.Fatalf("B: %+v", items["gb"])
+	}
+	if items["gc"].State != store.PricingToWrite || !items["gc"].SmallChange || !eq(items["gc"].TargetPrice, 0.0985) {
+		t.Fatalf("C: %+v", items["gc"])
 	}
 
 	// auto-write is off by default: the job only computes
 	writes := e.fake.Writes
 	msg, err := e.svc.Job(e.ctx)
-	if err != nil || msg != "3 个厂商；写入 0；待确认 0；漂移 0；无可用渠道 0" || e.fake.Writes != writes {
+	if err != nil || msg != "3 个厂商；写入 0；待确认 0；无可用渠道 0" || e.fake.Writes != writes {
 		t.Fatalf("job (off): %q %v", msg, err)
 	}
 
@@ -494,12 +581,15 @@ func TestJobAutoWritesOnlyFollowModeAndSkipsSmallChange(t *testing.T) {
 		t.Fatal(err)
 	}
 	msg, err = e.svc.Job(e.ctx)
-	if err != nil || msg != "3 个厂商；写入 1；待确认 0；漂移 0；无可用渠道 0" {
+	if err != nil || msg != "3 个厂商；写入 1；待确认 0；无可用渠道 0" {
 		t.Fatalf("job (on): %q %v", msg, err)
 	}
 	gr := e.groupRatio()
 	if gr["ga"] != 0.103 || gr["gb"] != 0.1 || gr["gc"] != 0.1 {
 		t.Fatalf("only the follow-mode vendor with a real change is written: %v", gr)
+	}
+	if e.row(b).DraftRatio == nil {
+		t.Fatal("the job must keep the fixed-mode draft")
 	}
 	hs := e.histories()
 	if len(hs) != 1 || hs[0].Reason != ReasonAuto || hs[0].Key != fmt.Sprintf("vendor:%d", a) {
@@ -512,10 +602,47 @@ func TestJobAutoWritesOnlyFollowModeAndSkipsSmallChange(t *testing.T) {
 	if it := e.item("ga"); it.State != store.PricingSynced {
 		t.Fatalf("A after job: %+v", it)
 	}
-	// the manual preview still lists the small change and the fixed vendor
+	// the manual preview still lists the small change and the fixed draft
 	pv, err := e.svc.Preview(e.ctx, ApplyInput{})
 	if err != nil || len(pv.Vendors) != 2 {
 		t.Fatalf("preview: %+v %v", pv, err)
+	}
+}
+
+func TestFollowModeIsWrittenBackWhenNewAPIIsEditedByHand(t *testing.T) {
+	e := newEnv(t)
+	id := e.vendor("A", "ga")
+	e.setOpt(KeyGroupRatio, `{"ga":0.103}`)
+	e.channel("ga", 1, 1, 0.1, ports.ChannelEnabled)
+	e.update(id, UpdateInput{Mode: sp(store.PricingFollow), Markup: fp(1)})
+	if it := e.item("ga"); it.State != store.PricingSynced || !eq(it.TargetRatio, 0.103) {
+		t.Fatalf("synced: %+v", it)
+	}
+	if err := e.st.SetKV(e.ctx, store.KeyPricingAutoWrite, "true"); err != nil {
+		t.Fatal(err)
+	}
+	e.setOpt(KeyGroupRatio, `{"ga":0.11}`) // somebody edits NewAPI
+	it := e.item("ga")
+	if it.State != store.PricingToWrite || it.SmallChange || !eq(it.NewAPIRatio, 0.11) || it.Change == nil || *it.Change >= 0 {
+		t.Fatalf("hand edit: %+v", it)
+	}
+	msg, err := e.svc.Job(e.ctx)
+	if err != nil || msg != "1 个厂商；写入 1；待确认 0；无可用渠道 0" || e.groupRatio()["ga"] != 0.103 {
+		t.Fatalf("job: %q %v %s", msg, err, e.opt(KeyGroupRatio))
+	}
+	if it := e.item("ga"); it.State != store.PricingSynced {
+		t.Fatalf("after write back: %+v", it)
+	}
+	// a hand edit beyond the protection threshold waits for a confirmation
+	e.setOpt(KeyGroupRatio, `{"ga":0.5}`)
+	if it := e.item("ga"); it.State != store.PricingPending {
+		t.Fatalf("protected: %+v", it)
+	}
+	if msg, err := e.svc.Job(e.ctx); err != nil || msg != "1 个厂商；写入 0；待确认 1；无可用渠道 0" || e.groupRatio()["ga"] != 0.5 {
+		t.Fatalf("job: %q %v", msg, err)
+	}
+	if _, err := e.svc.Confirm(e.ctx, id); err != nil || e.groupRatio()["ga"] != 0.103 {
+		t.Fatalf("confirm: %v %s", err, e.opt(KeyGroupRatio))
 	}
 }
 
@@ -526,7 +653,6 @@ func TestPendingConfirmAndClearing(t *testing.T) {
 	e.setOpt(KeyGroupRatio, `{"gd":0.1,"ge":0.1}`)
 	e.channel("gd", 1, 1, 0.1, ports.ChannelEnabled)
 	chE := e.channel("ge", 1, 1, 0.1, ports.ChannelEnabled)
-	e.overview()
 	idE := e.item("ge").VendorID
 	e.update(d, UpdateInput{Mode: sp(store.PricingFollow), Markup: fp(2)})
 	e.update(idE, UpdateInput{Mode: sp(store.PricingFollow), Markup: fp(2)})
@@ -535,15 +661,12 @@ func TestPendingConfirmAndClearing(t *testing.T) {
 	}
 
 	it := e.item("gd")
-	if it.State != store.PricingPending || !eq(it.PendingPrice, 0.2) || it.Change == nil || *it.Change < 1.05 {
+	if it.State != store.PricingPending || !eq(it.TargetPrice, 0.2) || it.Change == nil || *it.Change < 1.05 {
 		t.Fatalf("pending: %+v", it)
-	}
-	if r := e.row(d); r.State != store.PricingPending || !eq(r.PendingPrice, 0.2) {
-		t.Fatalf("pending must be stored: %+v", r)
 	}
 	writes := e.fake.Writes
 	msg, err := e.svc.Job(e.ctx)
-	if err != nil || msg != "2 个厂商；写入 0；待确认 2；漂移 0；无可用渠道 0" || e.fake.Writes != writes {
+	if err != nil || msg != "2 个厂商；写入 0；待确认 2；无可用渠道 0" || e.fake.Writes != writes {
 		t.Fatalf("job: %q %v", msg, err)
 	}
 	pv, err := e.svc.Preview(e.ctx, ApplyInput{})
@@ -552,18 +675,19 @@ func TestPendingConfirmAndClearing(t *testing.T) {
 		t.Fatalf("preview: %+v %v", pv, err)
 	}
 
-	// the change falls back inside the threshold: pending is cleared
-	if err := e.st.DB.Model(&store.ChannelExt{}).Where("channel_id = ?", chE).Update("discount", 0.06).Error; err != nil {
+	// the change falls back inside the threshold: pending clears by itself
+	if err := e.st.DB.Model(&store.ChannelExt{}).Where("channel_id = ?", chE).Update("manual_discount", 0.06).Error; err != nil {
 		t.Fatal(err)
 	}
-	if it := e.item("ge"); it.State != store.PricingToWrite || it.PendingPrice != nil {
+	if it := e.item("ge"); it.State != store.PricingToWrite {
 		t.Fatalf("pending should clear: %+v", it)
 	}
-	if r := e.row(idE); r.PendingPrice != nil || r.State != store.PricingToWrite {
-		t.Fatalf("row after clearing: %+v", r)
+	// confirm only works on a pending vendor
+	if _, err := e.svc.Confirm(e.ctx, idE); resp.Status(err) != http.StatusConflict {
+		t.Fatalf("confirm on a to_write vendor: %v", err)
 	}
 
-	// confirm writes the pending price
+	// confirm writes the current target
 	res, err := e.svc.Confirm(e.ctx, d)
 	if err != nil || len(res.Vendors) != 1 || strings.Join(res.Written, ",") != "GroupRatio,UserUsableGroups,AutoGroups" {
 		t.Fatalf("confirm: %+v %v", res, err)
@@ -575,8 +699,8 @@ func TestPendingConfirmAndClearing(t *testing.T) {
 	if len(hs) != 1 || hs[0].Reason != ReasonConfirm {
 		t.Fatalf("history: %+v", hs)
 	}
-	if r := e.row(d); r.State != store.PricingSynced || r.PendingPrice != nil || !eq(r.LastWrittenPrice, 0.2) {
-		t.Fatalf("row after confirm: %+v", r)
+	if it := e.item("gd"); it.State != store.PricingSynced {
+		t.Fatalf("after confirm: %+v", it)
 	}
 	if _, err := e.svc.Confirm(e.ctx, d); resp.Status(err) != http.StatusConflict {
 		t.Fatalf("confirm on a synced vendor: %v", err)
@@ -586,84 +710,10 @@ func TestPendingConfirmAndClearing(t *testing.T) {
 	}
 }
 
-func TestDriftForceAndAdopt(t *testing.T) {
-	e := newEnv(t)
-	f := e.vendor("F", "gf")
-	e.setOpt(KeyGroupRatio, `{"gf":0.1}`)
-	if it := e.item("gf"); it.State != store.PricingSynced {
-		t.Fatalf("takeover: %+v", it)
-	}
-	if err := e.st.SetKV(e.ctx, store.KeyPricingAutoWrite, "true"); err != nil {
-		t.Fatal(err)
-	}
-	e.setOpt(KeyGroupRatio, `{"gf":0.5}`) // somebody edits NewAPI by hand
-	if it := e.item("gf"); it.State != store.PricingDrift {
-		t.Fatalf("drift: %+v", it)
-	}
-	writes := e.fake.Writes
-	if msg, err := e.svc.Job(e.ctx); err != nil || msg != "1 个厂商；写入 0；待确认 0；漂移 1；无可用渠道 0" || e.fake.Writes != writes {
-		t.Fatalf("job: %q %v", msg, err)
-	}
-	// neither "all" nor a listed vendor without force touches a drifted vendor
-	for name, in := range map[string]ApplyInput{
-		"all":             {IncludeGroups: new(bool)},
-		"listed":          {VendorIDs: []uint{f}, IncludeGroups: new(bool)},
-		"force, not list": {Force: true, IncludeGroups: new(bool)},
-	} {
-		res := e.apply(in)
-		if len(res.Vendors) != 0 || len(res.Skipped) != 1 || res.Skipped[0].State != store.PricingDrift || e.fake.Writes != writes {
-			t.Fatalf("%s: %+v", name, res)
-		}
-	}
-	// force + listed overwrites with nam's value
-	res := e.apply(ApplyInput{VendorIDs: []uint{f}, Force: true, IncludeGroups: new(bool)})
-	if len(res.Vendors) != 1 || e.groupRatio()["gf"] != 0.1 {
-		t.Fatalf("force: %+v, ratio %v", res, e.groupRatio())
-	}
-	if hs := e.histories(); len(hs) != 1 || hs[0].Reason != ReasonForce {
-		t.Fatalf("history: %+v", hs)
-	}
-	if it := e.item("gf"); it.State != store.PricingSynced {
-		t.Fatalf("after force: %+v", it)
-	}
-
-	// adopt NewAPI's value
-	e.setOpt(KeyGroupRatio, `{"gf":0.5}`)
-	writes = e.fake.Writes
-	it, err := e.svc.Adopt(e.ctx, f)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if it.State != store.PricingSynced || it.Mode != store.PricingFixed || !eq(it.SellPrice, 0.5*7/7.2) || !eq(it.LastWrittenRatio, 0.5) || e.fake.Writes != writes {
-		t.Fatalf("adopt: %+v", it)
-	}
-	if len(e.histories()) != 1 {
-		t.Fatal("adopt writes nam only")
-	}
-	if _, err := e.svc.Adopt(e.ctx, f); resp.Status(err) != http.StatusConflict {
-		t.Fatalf("adopt on a synced vendor: %v", err)
-	}
-}
-
-func TestAdoptSwitchesFollowToFixed(t *testing.T) {
-	e := newEnv(t)
-	g := e.vendor("G", "gg")
-	e.setOpt(KeyGroupRatio, `{"gg":0.1}`)
-	e.channel("gg", 1, 1, 0.1, ports.ChannelEnabled)
-	e.item("gg")
-	e.update(g, UpdateInput{Mode: sp(store.PricingFollow), Markup: fp(1)})
-	e.setOpt(KeyGroupRatio, `{"gg":0.7}`)
-	it, err := e.svc.Adopt(e.ctx, g)
-	if err != nil || it.Mode != store.PricingFixed || it.State != store.PricingSynced || !eq(it.SellPrice, 0.7*7/7.2) {
-		t.Fatalf("adopt: %+v %v", it, err)
-	}
-}
-
 func TestNoChannelAndOnlyLiveChannelsCount(t *testing.T) {
 	e := newEnv(t)
 	g := e.vendor("G", "gg")
 	e.setOpt(KeyGroupRatio, `{"default":1}`)
-	e.item("gg")
 	e.update(g, UpdateInput{Mode: sp(store.PricingFollow), Markup: fp(1.5)})
 	if it := e.item("gg"); it.State != store.PricingNoChannel || it.Reference != nil || it.TargetPrice != nil {
 		t.Fatalf("no channel at all: %+v", it)
@@ -687,8 +737,7 @@ func TestNoChannelAndOnlyLiveChannelsCount(t *testing.T) {
 		t.Fatalf("preview: %+v %v", pv, err)
 	}
 	// an unpriced channel (no upstream) does not count either
-	id, _ := e.fake.Create(e.ctx, ports.ChannelCreate{Type: 58, Name: "plain", Group: "gg", Status: ports.ChannelEnabled, Models: []string{"m"}})
-	_ = id
+	_, _ = e.fake.Create(e.ctx, ports.ChannelCreate{Type: 58, Name: "plain", Group: "gg", Status: ports.ChannelEnabled, Models: []string{"m"}})
 	if it := e.item("gg"); it.State != store.PricingNoChannel {
 		t.Fatalf("unpriced: %+v", it)
 	}
@@ -699,17 +748,19 @@ func TestNoChannelAndOnlyLiveChannelsCount(t *testing.T) {
 	if it.State != store.PricingToWrite || it.Reference == nil || it.Reference.Priority != 3 || len(it.Reference.Channels) != 1 || !eq(it.TargetPrice, 0.15) {
 		t.Fatalf("with a channel: %+v", it)
 	}
+	if it.Change != nil {
+		t.Fatalf("NewAPI has no group yet, so there is no change: %+v", it)
+	}
 }
 
 func TestUpdateGroupRatioDirectly(t *testing.T) {
 	e := newEnv(t)
 	id := e.vendor("A", "ga")
-	e.item("ga")
 
 	// fixed mode (the default of a new vendor): the target ratio is exactly the rounded input
 	it := e.update(id, UpdateInput{GroupRatio: fp(0.30949)})
-	if it.Mode != store.PricingFixed || it.State != store.PricingToWrite || it.PendingPrice != nil ||
-		it.TargetRatio == nil || *it.TargetRatio != 0.309 || !eq(it.SellPrice, 0.309*7/7.2) {
+	if it.Mode != store.PricingFixed || it.State != store.PricingToWrite || it.TargetRatio == nil || *it.TargetRatio != 0.309 ||
+		!eq(it.DraftRatio, 0.309) || !eq(it.SellPrice, 0.309*7/7.2) {
 		t.Fatalf("fixed edit: %+v", it)
 	}
 	if n := e.auditCount(fmt.Sprintf("nam:vendor_pricing:%d", id), "update", ""); n != 1 {
@@ -727,7 +778,7 @@ func TestUpdateGroupRatioDirectly(t *testing.T) {
 	if got := e.groupRatio()["ga"]; got != 0.31 {
 		t.Fatalf("written ratio: %v", got)
 	}
-	if it := e.item("ga"); it.State != store.PricingSynced {
+	if it := e.item("ga"); it.State != store.PricingSynced || it.DraftRatio != nil {
 		t.Fatalf("after apply: %+v", it)
 	}
 	for _, ratio := range []float64{0.001, 0.286, 2.16, 7.777, 10} {
@@ -740,7 +791,8 @@ func TestUpdateGroupRatioDirectly(t *testing.T) {
 	e.channel("ga", 1, 1, 0.1, ports.ChannelEnabled)
 	e.update(id, UpdateInput{Mode: sp(store.PricingFollow), Markup: fp(1)})
 	for name, in := range map[string]UpdateInput{
-		"follow mode":         {GroupRatio: fp(0.5)},
+		"follow mode ratio":   {GroupRatio: fp(0.5)},
+		"follow mode price":   {SellPrice: fp(0.5)},
 		"switching to follow": {Mode: sp(store.PricingFollow), GroupRatio: fp(0.5)},
 	} {
 		_, err := e.svc.Update(e.ctx, id, in)
@@ -748,7 +800,7 @@ func TestUpdateGroupRatioDirectly(t *testing.T) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
-	if r := e.row(id); r.Mode != store.PricingFollow {
+	if r := e.row(id); r.Mode != store.PricingFollow || r.DraftRatio != nil {
 		t.Fatalf("a rejected edit must not change the row: %+v", r)
 	}
 	// ... but the same request may switch to fixed and set the ratio
@@ -770,27 +822,26 @@ func TestUpdateGroupRatioDirectly(t *testing.T) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
-	if after := e.row(id); !eq(after.SellPrice, *before.SellPrice) || after.Mode != before.Mode {
+	if after := e.row(id); after.DraftRatio == nil || *after.DraftRatio != *before.DraftRatio || after.Mode != before.Mode {
 		t.Fatalf("rejected edits must not change the row: %+v", after)
 	}
 }
 
-func TestTakeoverStaysSyncedAndIsNotRewritten(t *testing.T) {
+func TestSyncedNewAPIRatioIsNotRewritten(t *testing.T) {
 	e := newEnv(t)
-	e.vendor("A", "ga")
+	id := e.vendor("A", "ga")
 	e.setOpt(KeyGroupRatio, `{"ga":0.2857}`)
 	e.setOpt(KeyUserUsableGroups, `{"ga":"A","auto":"自动选择"}`)
 	e.setOpt(KeyAutoGroups, `["ga"]`)
 	writes := e.fake.Writes
 	if it := e.item("ga"); it.State != store.PricingSynced || !eq(it.NewAPIRatio, 0.2857) {
-		t.Fatalf("takeover: %+v", it)
+		t.Fatalf("synced: %+v", it)
 	}
 	res := e.apply(ApplyInput{})
 	if len(res.Written) != 0 || len(res.Vendors) != 0 || e.fake.Writes != writes || e.opt(KeyGroupRatio) != `{"ga":0.2857}` {
-		t.Fatalf("an already synced takeover must not be rewritten: %+v", res)
+		t.Fatalf("an already synced vendor must not be rewritten: %+v", res)
 	}
 	// a real change is written with 3 decimals
-	id := e.item("ga").VendorID
 	e.update(id, UpdateInput{SellPrice: fp(0.3)})
 	e.apply(ApplyInput{IncludeGroups: new(bool)})
 	if got := e.groupRatio()["ga"]; got != 0.309 {
@@ -803,10 +854,9 @@ func TestFollowPriceRoundingToZeroRatioIsNotWritten(t *testing.T) {
 	id := e.vendor("A", "ga")
 	e.setOpt(KeyGroupRatio, `{"ga":0.1}`)
 	e.channel("ga", 1, 1, 0.0004, ports.ChannelEnabled) // 上游渠道售价 0.0004 → ratio 0.0004 × 7.2 ÷ 7 rounds to 0
-	e.item("ga")
 	e.update(id, UpdateInput{Mode: sp(store.PricingFollow), Markup: fp(1)})
 	it := e.item("ga")
-	if it.State != store.PricingUnset || it.TargetPrice == nil || it.TargetRatio != nil {
+	if it.State != store.PricingUnset || it.TargetRatio != nil {
 		t.Fatalf("item: %+v", it)
 	}
 	writes := e.fake.Writes
@@ -822,7 +872,6 @@ func TestFollowPriceRoundingToZeroRatioIsNotWritten(t *testing.T) {
 func TestUpdateValidation(t *testing.T) {
 	e := newEnv(t)
 	id := e.vendor("A", "ga")
-	e.item("ga")
 	bad := map[string]UpdateInput{
 		"price 0":      {SellPrice: fp(0)},
 		"price neg":    {SellPrice: fp(-1)},
@@ -841,7 +890,7 @@ func TestUpdateValidation(t *testing.T) {
 		t.Errorf("unknown vendor: %v", err)
 	}
 	it := e.update(id, UpdateInput{SellPrice: fp(10), Markup: fp(100)})
-	if !eq(it.SellPrice, 10) || !eq(it.Markup, 100) || it.Mode != store.PricingFixed {
+	if !eqTol(it.SellPrice, 10, 1e-3) || !eq(it.Markup, 100) || it.Mode != store.PricingFixed {
 		t.Fatalf("boundaries are allowed: %+v", it)
 	}
 	if n := e.auditCount(fmt.Sprintf("nam:vendor_pricing:%d", id), "update", ""); n != 1 {
@@ -875,7 +924,6 @@ func TestMarginFromStats(t *testing.T) {
 func TestConcurrentApplyWritesOnce(t *testing.T) {
 	e := newEnv(t)
 	id := e.vendor("A", "ga")
-	e.item("ga")
 	e.update(id, UpdateInput{SellPrice: fp(0.3)})
 	var wg sync.WaitGroup
 	errs := make(chan error, 8)
@@ -904,7 +952,6 @@ func TestConcurrentApplyWritesOnce(t *testing.T) {
 func TestInvalidSiteRateBlocksWrites(t *testing.T) {
 	e := newEnv(t)
 	id := e.vendor("A", "ga")
-	e.item("ga")
 	e.update(id, UpdateInput{SellPrice: fp(0.3)})
 	if err := e.st.SetKV(e.ctx, store.KeySiteRate, "0"); err != nil {
 		t.Fatal(err)

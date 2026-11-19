@@ -40,10 +40,8 @@ func (s *Service) AddCreateDrafts(ctx context.Context, specs []CreateSpec) ([]in
 			if sp.Ext.TokenID == nil || sp.Ext.UpstreamID == nil {
 				return resp.Invalid("新建渠道必须指定上游和令牌")
 			}
-			if sp.Ext.DiscountSource == nil {
-				src := store.DiscountAuto
-				sp.Ext.DiscountSource = &src
-			}
+			sp.Ext = normExt(sp.Ext)
+			sp.Ext.DiscountSource = nil // 手填值随 Discount 一起存；留空就是自动
 			raw, _ := json.Marshal(draftBody{Fields: sp.Fields, Ext: sp.Ext})
 			now := time.Now().Unix()
 			d := store.ChannelDraft{ChannelID: next, Op: store.DraftCreate, Diff: string(raw), CreatedAt: now, UpdatedAt: now}
@@ -77,7 +75,7 @@ type BatchRequest struct {
 	// TestModel per vendor; empty → cheapest model of that vendor by official price
 	// (first model when none is priced).
 	TestModel map[string]string `json:"test_model"`
-	// Discount per token id (string key, manual); empty → derived from upstream prices, else 1.
+	// Discount per token id (string key, manual); empty → computed from upstream prices / group ratio.
 	Discount map[string]float64 `json:"discount"`
 }
 
@@ -90,6 +88,10 @@ type BatchPreviewItem struct {
 	Group       string `json:"group"`
 	ChannelType int    `json:"channel_type"`
 	Duplicate   bool   `json:"duplicate"` // name already exists in NewAPI or drafts
+	// 渠道级倍率预览：Discount 为 null 表示算不出（DiscountReason 说明原因）
+	Discount       *float64 `json:"discount"`
+	DiscountSource string   `json:"discount_source"`
+	DiscountReason string   `json:"discount_reason"`
 }
 
 // BatchPreviewResult is the wizard preview: the channels to create plus what was skipped.
@@ -139,6 +141,10 @@ func (s *Service) BatchPreview(ctx context.Context, req BatchRequest) (BatchPrev
 	if err != nil {
 		return out, err
 	}
+	rs, err := pricing.LoadResolver(ctx, s.St, book)
+	if err != nil {
+		return out, err
+	}
 	unionSet := map[string]bool{}
 	for _, tid := range req.TokenIDs {
 		tok, ok := st.tokens[tid]
@@ -170,23 +176,24 @@ func (s *Service) BatchPreview(ctx context.Context, req BatchRequest) (BatchPrev
 			if test == "" {
 				test = testModelFor(book, models)
 			}
-			// 上游分组折扣: manual from the wizard, else derived from upstream prices, else 1.
-			disc, src := 1.0, store.DiscountAuto
+			// 上游分组倍率: 向导里手填的就是手填，否则按渠道现算（算不出 = null，不再兜底成 1）。
+			var manualPtr *float64
 			if hasManual {
-				disc, src = manual, store.DiscountManual
-			} else if d, err := pricing.DeriveFor(ctx, s.St, book, pricing.ChannelInput{UpstreamID: up.ID, Group: tok.Group, Models: models}); err == nil && d.Median != nil {
-				disc = pricing.RoundDiscount(*d.Median)
+				m := manual
+				manualPtr = &m
 			}
+			cr := rs.Channel(pricing.ChannelSpec{UpstreamID: &up.ID, HasToken: true, TokenGroup: tok.Group, Models: models, Manual: manualPtr})
 			typ := st.vendors.channelTypeFor(vname)
 			base := up.BaseURL
-			upID, tokID, vn, group := up.ID, tok.ID, vname, v.GroupName
+			upID, tokID, group := up.ID, tok.ID, v.GroupName
 			it := BatchPreviewItem{
 				CreateSpec: CreateSpec{
 					Fields: Fields{Name: &name, Type: &typ, BaseURL: &base, Models: &models, Group: &group,
 						Priority: &req.Priority, Weight: &req.Weight, Tag: &req.Tag, TestModel: &test, Status: ptrInt(1)},
-					Ext: ExtFields{UpstreamID: &upID, TokenID: &tokID, Vendor: &vn, Discount: &disc, DiscountSource: &src},
+					Ext: ExtFields{UpstreamID: &upID, TokenID: &tokID, Discount: manualPtr},
 				},
 				Name: name, TokenName: tok.Name, Vendor: vname, Group: group, ChannelType: typ, Duplicate: existing[name],
+				Discount: cr.Discount, DiscountSource: cr.Source, DiscountReason: cr.Reason,
 			}
 			existing[name] = true
 			out.Items = append(out.Items, it)

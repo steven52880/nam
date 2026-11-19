@@ -66,19 +66,24 @@ func TestM3PricingAndBalance(t *testing.T) {
 		t.Fatalf("official price: %+v", o)
 	}
 
-	// step 2: ratio job derives channel a = 1.5 × 2 × 0.4 ÷ 3 = 0.4 (auto)
+	// step 2: discount is computed on read: channel a = 1.5 × 2 × 0.4 ÷ 3 = 0.4 (auto), group ratio 0.4 shown
 	m.must("POST", "/jobs/ratio?wait=1", nil)
-	if r := m.row(ch["a"]); r.DiscountSource != "auto" || !near(r.Discount, 0.4, 1e-6) {
+	if msg := m.jobMessage("ratio"); strings.Contains(msg, "折扣") {
+		t.Fatalf("ratio job must not derive discounts any more: %q", msg)
+	}
+	if r := m.row(ch["a"]); r.DiscountSource != "auto" || r.Discount == nil || !near(*r.Discount, 0.4, 1e-6) ||
+		r.GroupRatio == nil || !near(*r.GroupRatio, 0.4, 1e-9) {
 		t.Fatalf("auto discount: %+v", r)
 	}
 
 	// step 3: manual 0.35 via draft → apply → ratio job again → still 0.35 manual
+	// (and "auto" without a number clears it again)
 	m.must("PATCH", "/channels/drafts", map[string]any{"changes": []map[string]any{
 		{"channel_id": ch["a"], "ext": map[string]any{"discount": 0.35}}}})
 	m.must("POST", "/channels/apply", map[string]any{})
 	m.must("POST", "/jobs/ratio?wait=1", nil)
 	r := m.row(ch["a"])
-	if r.DiscountSource != "manual" || !near(r.Discount, 0.35, 1e-9) {
+	if r.DiscountSource != "manual" || r.Discount == nil || !near(*r.Discount, 0.35, 1e-9) {
 		t.Fatalf("manual discount lost: %+v", r)
 	}
 
@@ -91,6 +96,12 @@ func TestM3PricingAndBalance(t *testing.T) {
 	}
 	if m.fake.Writes == 0 {
 		t.Fatal("apply should have written NewAPI")
+	}
+	m.must("PATCH", "/channels/drafts", map[string]any{"changes": []map[string]any{
+		{"channel_id": ch["a"], "ext": map[string]any{"discount_source": "auto"}}}})
+	m.must("POST", "/channels/apply", map[string]any{})
+	if r := m.row(ch["a"]); r.DiscountSource != "auto" || r.Discount == nil || !near(*r.Discount, 0.4, 1e-6) {
+		t.Fatalf("manual not cleared: %+v", r)
 	}
 }
 
@@ -185,12 +196,13 @@ func TestM3ModelDiscountAndCacheOverride(t *testing.T) {
 		Models []struct {
 			Model     string   `json:"model"`
 			Override  *float64 `json:"override"`
-			Effective float64  `json:"effective"`
+			Effective *float64 `json:"effective"`
+			Source    string   `json:"effective_source"`
 		} `json:"models"`
 	}
 	var md modelsDTO
 	m.must("GET", base+"/models", nil).into(t, &md)
-	if len(md.Models) != 1 || md.Models[0].Override != nil || !near(md.Models[0].Effective, 0.4, 1e-6) {
+	if len(md.Models) != 1 || md.Models[0].Override != nil || md.Models[0].Effective == nil || !near(*md.Models[0].Effective, 0.4, 1e-6) || md.Models[0].Source != "model" {
 		t.Fatalf("models before: %+v", md)
 	}
 	before := m.auditTotal("channel")
@@ -202,7 +214,7 @@ func TestM3ModelDiscountAndCacheOverride(t *testing.T) {
 	m.must("PUT", base+"/model-discount", map[string]any{"model": "test-model", "discount": 0.3})
 	md = modelsDTO{}
 	m.must("GET", base+"/models", nil).into(t, &md)
-	if md.Models[0].Override == nil || !near(*md.Models[0].Override, 0.3, 1e-9) || !near(md.Models[0].Effective, 0.3, 1e-9) {
+	if md.Models[0].Override == nil || !near(*md.Models[0].Override, 0.3, 1e-9) || md.Models[0].Effective == nil || !near(*md.Models[0].Effective, 0.3, 1e-9) || md.Models[0].Source != "override" {
 		t.Fatalf("models after: %+v", md)
 	}
 	if got := m.auditTotal("channel") - before; got != 1 {

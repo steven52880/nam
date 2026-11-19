@@ -20,7 +20,7 @@ type env struct {
 }
 
 // newEnv opens a temp nam.db with: upstream (rate 0.5), vendor anthropic (group
-// "anthropic"), channel 1 managed (discount 0.35, vendor "ext-vendor"), price for
+// "anthropic"), channel 1 managed (manual discount 0.35), price for
 // test-model 3 / 15 / cache read 0.3.
 func newEnv(t *testing.T) *env {
 	t.Helper()
@@ -40,7 +40,7 @@ func newEnv(t *testing.T) *env {
 	up := store.Upstream{Name: "up", Type: store.UpstreamNewAPI, BaseURL: "http://x", CurrencyRate: 0.5}
 	must(t, st.DB.Create(&up).Error)
 	must(t, st.DB.Create(&store.Vendor{Name: "anthropic", GroupName: "anthropic", Order: 1}).Error)
-	must(t, st.DB.Create(&store.ChannelExt{ChannelID: 1, UpstreamID: &up.ID, Vendor: "ext-vendor", Discount: 0.35}).Error)
+	must(t, st.DB.Create(&store.ChannelExt{ChannelID: 1, UpstreamID: &up.ID, ManualDiscount: f64(0.35)}).Error)
 	must(t, st.DB.Create(&store.OfficialPrice{Model: "test-model", Input: f64(3), Output: f64(15), CacheRead: f64(0.3)}).Error)
 	fake := portstest.NewFake()
 	p := fake.Ports()

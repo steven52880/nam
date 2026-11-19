@@ -9,7 +9,7 @@ import (
 	"github.com/steven52880/nam/ports"
 )
 
-// Plan §11.1 M2: upstream → sync → vendor → batch → apply → batch edit → drift → delete.
+// Plan §11.1 M2: upstream → sync → vendor → batch → apply → batch edit → rule check → delete.
 func TestM2EndToEnd(t *testing.T) {
 	m := newM2(t)
 	ctx := context.Background()
@@ -125,30 +125,62 @@ func TestM2EndToEnd(t *testing.T) {
 	if got := m.auditTotal("channel") - before; got != 3 {
 		t.Fatalf("new channel audit rows: %d", got)
 	}
-	// validation failure → 400 with issues
-	r := m.call("PATCH", "/channels/drafts", map[string]any{"changes": []map[string]any{{"channel_id": live[0].ID, "fields": map[string]any{"group": "nope"}}}})
+	// validation failure: the vendor follows the groups, so a group that is not the vendor's is fine, but
+	// two vendor groups are rejected with 400 + issues
+	m.must("POST", "/vendors", map[string]any{"name": "gemini", "group_name": "gemini", "models": []string{"gem-x"}, "channel_type": 24})
+	r := m.call("PATCH", "/channels/drafts", map[string]any{"changes": []map[string]any{{"channel_id": live[0].ID, "fields": map[string]any{"group": "anthropic,gemini"}}}})
 	if r.Code != 400 || !strings.Contains(r.Raw, `"issues"`) {
 		t.Fatalf("validation: %d %s", r.Code, r.Raw)
 	}
 
-	// drift: direct NewAPI edit, consistency job flags it, nothing is written back
+	// no drift any more: a direct NewAPI edit is just shown, the rule check reports no issue,
+	// and nothing is written back
 	w := uint(9)
 	if err := m.fake.Update(ctx, live[0].ID, ports.ChannelPatch{Weight: &w}); err != nil {
 		t.Fatal(err)
 	}
 	writes := m.fake.Writes
 	m.must("POST", "/jobs/consistency?wait=1", nil)
-	var drifted bool
 	for _, row := range m.channels() {
-		if row.ID == live[0].ID && row.SyncState == "drift" && len(row.DriftFields) == 1 && row.DriftFields[0] == "weight" {
-			drifted = true
+		if row.SyncState != "synced" {
+			t.Fatalf("row %d state %s", row.ID, row.SyncState)
+		}
+		if row.ID == live[0].ID && row.Weight != 9 {
+			t.Fatalf("weight: %+v", row)
 		}
 	}
-	if !drifted || m.fake.Writes != writes {
-		t.Fatalf("drift=%v writes %d→%d", drifted, writes, m.fake.Writes)
+	if m.fake.Writes != writes {
+		t.Fatalf("rule check must not write: %d→%d", writes, m.fake.Writes)
 	}
-	if c, _ := m.fake.Get(ctx, live[0].ID); c.Weight != 9 {
-		t.Fatalf("drift check must not change NewAPI: %d", c.Weight)
+	var jobs []struct {
+		Name string `json:"name"`
+		Msg  string `json:"last_message"`
+	}
+	m.must("GET", "/jobs", nil).into(t, &jobs)
+	var summary string
+	for _, j := range jobs {
+		if j.Name == "consistency" {
+			summary = j.Msg
+		}
+	}
+	if summary != "检查 3 个渠道，规则问题 0 条，自动禁用 0 个" {
+		t.Fatalf("consistency summary: %q", summary)
+	}
+	var iss struct {
+		Items []struct {
+			ChannelID int    `json:"channel_id"`
+			Field     string `json:"field"`
+		} `json:"items"`
+	}
+	m.must("GET", "/channels/issues", nil).into(t, &iss)
+	if iss.Items == nil || len(iss.Items) != 0 {
+		t.Fatalf("issues: %+v", iss)
+	}
+	// the three drift routes are gone
+	for _, rt := range [][2]string{{"GET", "/drift"}, {"POST", "/drift/accept"}, {"POST", "/drift/overwrite"}} {
+		if r := m.call(rt[0], "/channels/"+strconv.Itoa(live[0].ID)+rt[1], nil); r.Code != 404 {
+			t.Fatalf("%s drift route: %d", rt[1], r.Code)
+		}
 	}
 	if r := m.must("GET", "/channels/"+strconv.Itoa(live[0].ID)+"/newapi-link", nil); !strings.Contains(r.Raw, "/console/channel?id=") {
 		t.Fatalf("link: %s", r.Raw)

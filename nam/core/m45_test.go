@@ -181,13 +181,19 @@ func TestM45StatsByModelAndCosts(t *testing.T) {
 	}
 	for _, c := range costs.Items {
 		row := m.row(c.ChannelID)
-		if !c.HasModel || c.Discount == nil || *c.Discount != row.Discount || c.UnitCost == nil || row.UnitCost == nil || *c.UnitCost != *row.UnitCost {
+		if c.ChannelID != a && c.ChannelID != b {
+			// token group c has no price or ratio upstream: 倍率 null → every cost field null, with a reason
+			if !c.HasModel || c.Discount != nil || c.ChannelCost != nil || c.UnitCost != nil ||
+				row.Discount != nil || row.DiscountSource != "none" || row.DiscountReason == "" || row.ChannelCost != nil || row.UnitCost != nil {
+				t.Fatalf("channel %d without a discount: %+v vs row %+v", c.ChannelID, c, row)
+			}
+			continue
+		}
+		if !c.HasModel || c.Discount == nil || row.Discount == nil || *c.Discount != *row.Discount || c.UnitCost == nil || row.UnitCost == nil || *c.UnitCost != *row.UnitCost {
 			t.Fatalf("channel %d: %+v vs row %+v", c.ChannelID, c, row)
 		}
-		if c.ChannelID == a || c.ChannelID == b {
-			if !near(*c.ChannelCost, 0.175/7.2, 1e-9) { // discount 0.35 × upstream rate 0.5 ÷ 美元参考汇率 7.2
-				t.Fatalf("channel %d cost: %v", c.ChannelID, *c.ChannelCost)
-			}
+		if !near(*c.ChannelCost, 0.175/7.2, 1e-9) { // discount 0.35 × upstream rate 0.5 ÷ 美元参考汇率 7.2
+			t.Fatalf("channel %d cost: %v", c.ChannelID, *c.ChannelCost)
 		}
 	}
 	m.must("GET", "/channels/costs?model=mystery", nil).into(t, &costs)

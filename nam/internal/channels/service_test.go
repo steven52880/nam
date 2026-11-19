@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/steven52880/nam/internal/crypto"
@@ -67,6 +68,7 @@ func (e *env) batch(t *testing.T, models ...string) []int {
 
 func TestBatchSplitsByVendorAndApplies(t *testing.T) {
 	e := newEnv(t)
+	must(t, e.svc.St.DB.Create(&store.UpstreamGroup{UpstreamID: e.up.ID, Name: "a", Ratio: 1}).Error)
 	prev, err := e.svc.BatchPreview(e.ctx, BatchRequest{UpstreamID: e.up.ID, TokenIDs: []uint{e.tok.ID},
 		TokenModels: map[string][]string{fmt.Sprint(e.tok.ID): {"test-model", "gem-x", "mystery"}}})
 	must(t, err)
@@ -102,7 +104,7 @@ func TestBatchSplitsByVendorAndApplies(t *testing.T) {
 		if r.SyncState != StateSynced || !r.Managed || r.UpstreamName != "mock-a" || r.TokenName != "a" {
 			t.Fatalf("row after apply: %+v", r)
 		}
-		if r.ChannelCost == nil || !near(*r.ChannelCost, 0.5/store.DefaultUSDCNYRate) { // discount 1 × rate 0.5 ÷ 7.2
+		if r.ChannelCost == nil || !near(*r.ChannelCost, 0.5/store.DefaultUSDCNYRate) { // group ratio 1 × rate 0.5 ÷ 7.2
 			t.Fatalf("cost: %v", r.ChannelCost)
 		}
 	}
@@ -123,7 +125,7 @@ func TestEditPruneAndApplyUpdate(t *testing.T) {
 		t.Fatal(issues)
 	}
 	r := mustRow(t, e, id)
-	if r.SyncState != StateDraft || r.Priority != 5 || r.Discount != 0.35 || r.DiscountSource != store.DiscountManual {
+	if r.SyncState != StateDraft || r.Priority != 5 || r.Discount == nil || *r.Discount != 0.35 || r.DiscountSource != "manual" {
 		t.Fatalf("draft row: %+v", r)
 	}
 	plan, _ := e.svc.Plan(e.ctx, nil)
@@ -144,7 +146,7 @@ func TestEditPruneAndApplyUpdate(t *testing.T) {
 	if c, _ := e.fake.Get(e.ctx, id); c.Priority != 5 {
 		t.Fatalf("priority not written: %d", c.Priority)
 	}
-	if r := mustRow(t, e, id); r.SyncState != StateSynced || r.Discount != 0.35 {
+	if r := mustRow(t, e, id); r.SyncState != StateSynced || r.Discount == nil || *r.Discount != 0.35 {
 		t.Fatalf("after: %+v", r)
 	}
 }
@@ -176,45 +178,61 @@ func TestValidation(t *testing.T) {
 	}
 }
 
-func TestDriftDetectAcceptOverwrite(t *testing.T) {
+func TestCheckReportsRuleIssuesAndAutoDisabled(t *testing.T) {
 	e := newEnv(t)
 	e.batch(t, "test-model")
 	_, _, _ = e.svc.Apply(e.ctx, nil)
 	id := mustRows(t, e)[0].ID
-	// direct edit in NewAPI; auto-disable must NOT count as drift
-	must(t, e.fake.Update(e.ctx, id, ports.ChannelPatch{Weight: p(uint(9)), Status: p(ports.ChannelAutoDisabled)}))
-	rep, err := e.svc.CheckDrift(e.ctx)
+	rep, err := e.svc.Check(e.ctx)
 	must(t, err)
-	if len(rep.Drifted) != 1 || len(rep.AutoDisabled) != 1 {
-		t.Fatalf("report: %+v", rep)
+	if rep.Checked != 1 || len(rep.Issues) != 0 || len(rep.AutoDisabled) != 0 || rep.Issues == nil {
+		t.Fatalf("clean: %+v", rep)
 	}
-	r := mustRow(t, e, id)
-	if r.SyncState != StateDrift || len(r.DriftFields) != 1 || r.DriftFields[0] != "weight" {
-		t.Fatalf("drift row: %+v", r)
+	// edits made directly in NewAPI are not "drift" any more: the row simply shows them
+	must(t, e.fake.Update(e.ctx, id, ports.ChannelPatch{Weight: p(uint(9)), Status: p(ports.ChannelAutoDisabled)}))
+	rep, err = e.svc.Check(e.ctx)
+	must(t, err)
+	if len(rep.Issues) != 0 || len(rep.AutoDisabled) != 1 {
+		t.Fatalf("auto-disabled only: %+v", rep)
 	}
-	if c, _ := e.fake.Get(e.ctx, id); c.Weight != 9 {
-		t.Fatal("drift check must not write NewAPI")
+	if r := mustRow(t, e, id); r.SyncState != StateSynced || r.Weight != 9 {
+		t.Fatalf("row: %+v", r)
 	}
-	d, _ := e.svc.Drift(e.ctx, id)
-	if len(d.Fields) != 1 || d.Fields[0].Old != uint(1) || d.Fields[0].New != uint(9) {
-		t.Fatalf("detail: %+v", d)
+	// a model of another vendor and a second vendor group are rule issues, found without any edit
+	must(t, e.fake.Update(e.ctx, id, ports.ChannelPatch{Models: &[]string{"test-model", "gem-x"}, Group: p("anthropic,gemini")}))
+	other := e.liveChannel(t, "plain", "default")
+	rep, err = e.svc.Check(e.ctx)
+	must(t, err)
+	var fields []string
+	for _, is := range rep.Issues {
+		if is.ChannelID != id {
+			t.Fatalf("unrelated channel %d flagged: %+v", other, is)
+		}
+		fields = append(fields, is.Field)
 	}
-	must(t, e.svc.OverwriteDrift(e.ctx, id))
-	res, _, _ := e.svc.Apply(e.ctx, nil)
-	if len(res) != 1 || !res[0].OK {
-		t.Fatal(res)
+	if rep.Checked != 2 || len(rep.Issues) < 2 || !slices.Contains(fields, "group") || !slices.Contains(fields, "models") {
+		t.Fatalf("issues: %+v", rep)
 	}
-	if c, _ := e.fake.Get(e.ctx, id); c.Weight != 1 {
-		t.Fatalf("overwrite: weight=%d", c.Weight)
-	}
-	must(t, e.fake.Update(e.ctx, id, ports.ChannelPatch{Tag: p("x")}))
-	_, _ = e.svc.CheckDrift(e.ctx)
-	must(t, e.svc.AcceptDrift(e.ctx, id))
-	if r := mustRow(t, e, id); r.SyncState != StateSynced {
-		t.Fatalf("accept: %+v", r)
+	got, err := e.svc.Issues(e.ctx)
+	must(t, err)
+	if len(got) != len(rep.Issues) {
+		t.Fatalf("Issues() = %d, Check = %d", len(got), len(rep.Issues))
 	}
 }
 
+func TestAdoptStoresNoSnapshot(t *testing.T) {
+	e := newEnv(t)
+	id := e.liveChannel(t, "old", "default", "test-model")
+	must(t, e.svc.Adopt(e.ctx, id, ExtFields{UpstreamID: &e.up.ID, TokenID: &e.tok.ID, Discount: p(0.3)}))
+	var ext store.ChannelExt
+	must(t, e.svc.St.DB.First(&ext, "channel_id = ?", id).Error)
+	if ext.ManualDiscount == nil || *ext.ManualDiscount != 0.3 || ext.UpstreamID == nil || ext.TokenID == nil {
+		t.Fatalf("ext: %+v", ext)
+	}
+	if r := mustRow(t, e, id); !r.Managed || r.DiscountSource != "manual" {
+		t.Fatalf("row: %+v", r)
+	}
+}
 func TestDeleteAndFailureKeepsDraft(t *testing.T) {
 	e := newEnv(t)
 	ids := e.batch(t, "test-model")

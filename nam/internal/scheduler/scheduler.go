@@ -21,7 +21,7 @@ const (
 	JobAnnouncements = "announcements" // 公告检查
 	JobPullLogs      = "pull_logs"     // 拉取 NewAPI 日志
 	JobPricing       = "pricing"       // 定价计算并写入
-	JobConsistency   = "consistency"   // 渠道一致性检查
+	JobConsistency   = "consistency"   // 渠道规则检查
 	JobCleanup       = "cleanup"       // 清理日志
 	JobBackup        = "backup"        // 备份 nam.db
 )

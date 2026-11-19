@@ -29,7 +29,7 @@ func (e *env) linkUpstream(t *testing.T, baseURL string) {
 	if err := e.st.DB.Create(&tok).Error; err != nil {
 		t.Fatal(err)
 	}
-	ext := store.ChannelExt{ChannelID: e.ch, UpstreamID: &up.ID, TokenID: &tok.ID, Discount: 1}
+	ext := store.ChannelExt{ChannelID: e.ch, UpstreamID: &up.ID, TokenID: &tok.ID}
 	if err := e.st.DB.WithContext(ctx).Create(&ext).Error; err != nil {
 		t.Fatal(err)
 	}

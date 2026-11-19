@@ -47,10 +47,10 @@ func Open(path string) (*Store, error) {
 	if err := db.AutoMigrate(AllModels()...); err != nil {
 		return nil, fmt.Errorf("migrate nam.db: %w", err)
 	}
-	// Pre-M5 vendor_pricing rows used a different meaning (元 / 美元) and state set; M5 re-takes
-	// over every vendor from NewAPI, so drop them.
-	if err := db.Where("state IN ? OR (state = ? AND last_written_ratio IS NULL)",
-		[]string{"ok", "no_price"}, PricingPending).Delete(&VendorPricing{}).Error; err != nil {
+	if err := migrateChannelExt(db); err != nil {
+		return nil, fmt.Errorf("migrate channel_ext: %w", err)
+	}
+	if err := migrateVendorPricing(db); err != nil {
 		return nil, fmt.Errorf("migrate vendor_pricing: %w", err)
 	}
 	return &Store{DB: db, path: path}, nil

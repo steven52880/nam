@@ -22,10 +22,8 @@ func (s *Server) registerChannelRoutes(p *gin.RouterGroup) {
 	p.POST("/channels/delete", s.markDelete)
 	p.GET("/channels/plan", s.channelPlan)
 	p.GET("/channels/costs", s.channelCosts)
+	p.GET("/channels/issues", s.channelIssues)
 	p.POST("/channels/apply", s.applyChannels)
-	p.GET("/channels/:id/drift", s.channelDrift)
-	p.POST("/channels/:id/drift/accept", s.acceptDrift)
-	p.POST("/channels/:id/drift/overwrite", s.overwriteDrift)
 	p.POST("/channels/:id/adopt", s.adoptChannel)
 	p.POST("/channels/:id/test", s.testChannel)
 	p.GET("/channels/:id/newapi-link", s.channelLink)
@@ -42,6 +40,16 @@ func parseChannelID(c *gin.Context) (int, bool) {
 		return 0, false
 	}
 	return id, true
+}
+
+// GET /channels/issues: rule problems of every channel (drafts overlaid).
+func (s *Server) channelIssues(c *gin.Context) {
+	items, err := s.Channels.Issues(c.Request.Context())
+	if err != nil {
+		resp.FailFrom(c, err)
+		return
+	}
+	resp.OK(c, gin.H{"items": items})
 }
 
 // GET /channels/costs?model= (required): every channel's cost on one model.

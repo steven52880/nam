@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/steven52880/nam/internal/pricing"
 	"github.com/steven52880/nam/internal/resp"
 	"github.com/steven52880/nam/internal/store"
 	"gorm.io/gorm"
@@ -105,17 +104,9 @@ func (s *Server) putAliases(c *gin.Context) {
 	resp.OK(c, gin.H{"official": official, "aliases": aliases})
 }
 
-// DeriveChannel is one channel's derivation preview.
-type DeriveChannel struct {
-	ChannelID  int                `json:"channel_id"`
-	Name       string             `json:"name"`
-	Group      string             `json:"group"`
-	Discount   float64            `json:"discount"`        // 当前折扣
-	Source     string             `json:"discount_source"` // auto / manual
-	Derivation pricing.Derivation `json:"derivation"`
-}
-
 // POST /upstreams/:id/derive → per-channel derivation preview (writes nothing).
+// data = {upstream_id, channels: [{channel_id, name, group, discount, discount_source,
+// discount_reason, upstream_group_ratio, derivation}]}.
 func (s *Server) deriveUpstream(c *gin.Context) {
 	id, okID := parseID(c)
 	if !okID {
@@ -126,41 +117,10 @@ func (s *Server) deriveUpstream(c *gin.Context) {
 		resp.FailFrom(c, err)
 		return
 	}
-	inputs, err := s.Channels.PricingInputs(ctx)
+	out, err := s.Channels.Derivations(ctx, id)
 	if err != nil {
 		resp.FailFrom(c, err)
 		return
 	}
-	rows, err := s.Channels.List(ctx)
-	if err != nil {
-		resp.FailFrom(c, err)
-		return
-	}
-	byID := map[int]int{}
-	for i, r := range rows {
-		byID[r.ID] = i
-	}
-	book, err := pricing.LoadBook(ctx, s.Store)
-	if err != nil {
-		resp.FailFrom(c, err)
-		return
-	}
-	out := []DeriveChannel{}
-	for _, in := range inputs {
-		if in.UpstreamID != id {
-			continue
-		}
-		d, err := pricing.DeriveFor(ctx, s.Store, book, in)
-		if err != nil {
-			resp.FailFrom(c, err)
-			return
-		}
-		dc := DeriveChannel{ChannelID: in.ChannelID, Group: in.Group, Derivation: d}
-		if i, ok := byID[in.ChannelID]; ok {
-			dc.Name, dc.Discount, dc.Source = rows[i].Name, rows[i].Discount, rows[i].DiscountSource
-		}
-		out = append(out, dc)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ChannelID < out[j].ChannelID })
 	resp.OK(c, gin.H{"upstream_id": id, "channels": out})
 }

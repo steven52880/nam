@@ -2,6 +2,10 @@
 // NewAPI (GroupRatio, UserUsableGroups, AutoGroups).
 //
 // Prices are multiples of the official price (0.30 = 30%). compute.go is pure: no I/O.
+//
+// nam does not keep what NewAPI already has. Fixed mode reads NewAPI's GroupRatio (plus an
+// optional draft ratio that is not written yet); follow mode computes the price from the
+// reference cost and overwrites whatever is in NewAPI (nam wins).
 package vendorprice
 
 import (
@@ -14,14 +18,12 @@ import (
 )
 
 const (
-	// DriftTolerance: NewAPI's ratio differs from the last written one by more than this = 漂移.
-	DriftTolerance = 1e-6
 	// RatioPlaces is the number of decimals of a written group ratio.
 	RatioPlaces = 3
 	// SyncTolerance: a ratio is "already in NewAPI" when it is within half a write step
 	// (ratios are written with 3 decimals, so 5e-4), plus a tiny margin against float noise at
-	// the boundary. This also makes taking over a NewAPI ratio that is not a 3-decimal number
-	// (e.g. 0.2857) count as synced: taking over must never change a price.
+	// the boundary. So a NewAPI ratio that is not a 3-decimal number (e.g. 0.2857) counts as
+	// synced with its rounded value 0.286.
 	SyncTolerance = 5e-4 + 1e-9
 )
 
@@ -102,22 +104,13 @@ func ReferenceCost(chs []ChannelInput) *Reference {
 	return ref
 }
 
-// TargetSellPrice is the sell price a vendor should have: the fixed price, or in follow mode
-// 参考成本 × 加价比例 rounded to 4 decimals. Nil when it cannot be computed.
-func TargetSellPrice(mode string, sellPrice, markup *float64, ref *Reference) *float64 {
-	var v float64
-	switch mode {
-	case store.PricingFollow:
-		if markup == nil || ref == nil {
-			return nil
-		}
-		v = Round(ref.Cost**markup, 4)
-	default:
-		if sellPrice == nil {
-			return nil
-		}
-		v = *sellPrice
+// FollowPrice is the sell price of a follow-mode vendor: 参考成本 × 加价比例 rounded to 4
+// decimals. Nil when it cannot be computed.
+func FollowPrice(markup *float64, ref *Reference) *float64 {
+	if markup == nil || ref == nil {
+		return nil
 	}
+	v := Round(ref.Cost**markup, 4)
 	if !finitePositive(v) {
 		return nil
 	}
@@ -142,92 +135,94 @@ func GroupRatio(sell, usdRate, siteRate float64) (float64, error) {
 var ErrRatioRoundsToZero = errors.New("厂商分组倍率舍入到 3 位小数后为 0（售价过小）")
 
 // PriceFromRatio is the inverse of GroupRatio: ratio × 站点汇率 ÷ 美元参考汇率. It does no
-// rounding, so adopting an existing ratio (or a ratio typed by the user) keeps it exactly.
+// rounding, so a ratio read from NewAPI (or typed by the user) is kept exactly.
 func PriceFromRatio(ratio, usdRate, siteRate float64) float64 { return ratio * siteRate / usdRate }
-
-// Facts are the inputs of Classify.
-type Facts struct {
-	Mode         string
-	Configured   bool // fixed: sell price set; follow: markup set
-	HasRef       bool // a reference cost exists (follow mode)
-	Target       *float64
-	TargetRatio  *float64
-	NewAPIRatio  *float64 // current GroupRatio of the vendor group in NewAPI
-	LastRatio    *float64 // GroupRatio nam wrote last
-	Change       *float64 // |target − last price| ÷ last price
-	ProtectLimit float64  // 变化保护阈值
-}
-
-// Classify returns the state: 未设置 → 无可用渠道 → 漂移 → 待确认 → 待写入 → 已同步.
-func Classify(f Facts) string {
-	switch {
-	case !f.Configured:
-		return store.PricingUnset
-	case f.Mode == store.PricingFollow && !f.HasRef:
-		return store.PricingNoChannel
-	case f.Target == nil || f.TargetRatio == nil:
-		return store.PricingUnset
-	case f.LastRatio != nil && (f.NewAPIRatio == nil || math.Abs(*f.NewAPIRatio-*f.LastRatio) > DriftTolerance):
-		return store.PricingDrift
-	case f.Mode == store.PricingFollow && f.Change != nil && *f.Change > f.ProtectLimit:
-		return store.PricingPending
-	case f.NewAPIRatio == nil || math.Abs(*f.NewAPIRatio-*f.TargetRatio) >= SyncTolerance:
-		return store.PricingToWrite
-	}
-	return store.PricingSynced
-}
 
 // Input is everything Evaluate needs about one vendor.
 type Input struct {
-	Mode                 string
-	SellPrice, Markup    *float64
-	Ref                  *Reference
-	USDRate, SiteRate    float64
-	ProtectLimit         float64 // 变化保护阈值
-	MinChange            float64 // 最小变动
-	NewAPIRatio          *float64
-	LastPrice, LastRatio *float64
+	Mode              string
+	Markup            *float64 // follow mode
+	DraftRatio        *float64 // fixed mode: change not written yet
+	Ref               *Reference
+	USDRate, SiteRate float64
+	ProtectLimit      float64 // 变化保护阈值
+	MinChange         float64 // 最小变动
+	NewAPIRatio       *float64
 }
 
 // Result is the computed state of one vendor.
 type Result struct {
-	Target       *float64
-	TargetRatio  *float64
-	Change       *float64 // absolute relative change vs the last written price
-	SignedChange *float64
-	SmallChange  bool
-	Pending      *float64 // pending price (state pending only)
-	State        string
+	Target      *float64 // 目标售价
+	TargetRatio *float64 // 目标倍率
+	Change      *float64 // (目标售价 − NewAPI 当前售价) ÷ NewAPI 当前售价，带方向；NewAPI 没有该分组时 nil
+	SmallChange bool     // follow mode: |Change| < 最小变动
+	State       string
 }
 
 // Evaluate computes target price/ratio, change, small-change flag and state.
+//
+// Fixed: target ratio = draft ?? NewAPI's ratio; nothing at all → unset; a draft that differs
+// from NewAPI → to_write; otherwise synced.
+// Follow: unset (no markup) → no_channel (no reference cost) → pending (|change| above the
+// protection limit) → to_write (target ratio differs from NewAPI) → synced.
 func Evaluate(in Input) Result {
 	var r Result
-	configured := in.SellPrice != nil
-	if in.Mode == store.PricingFollow {
-		configured = in.Markup != nil
+	ratesOK := finitePositive(in.USDRate) && finitePositive(in.SiteRate)
+	var newapi *float64
+	if in.NewAPIRatio != nil && finitePositive(*in.NewAPIRatio) {
+		v := *in.NewAPIRatio
+		newapi = &v
 	}
-	r.Target = TargetSellPrice(in.Mode, in.SellPrice, in.Markup, in.Ref)
-	if r.Target != nil {
-		if ratio, err := GroupRatio(*r.Target, in.USDRate, in.SiteRate); err == nil {
-			r.TargetRatio = &ratio
+
+	if in.Mode == store.PricingFollow {
+		switch {
+		case in.Markup == nil:
+			r.State = store.PricingUnset
+			return r
+		case in.Ref == nil:
+			r.State = store.PricingNoChannel
+			return r
+		}
+		r.Target = FollowPrice(in.Markup, in.Ref)
+		if r.Target != nil && ratesOK {
+			if ratio, err := GroupRatio(*r.Target, in.USDRate, in.SiteRate); err == nil {
+				r.TargetRatio = &ratio
+			}
+		}
+	} else {
+		var ratio *float64
+		switch {
+		case in.DraftRatio != nil && finitePositive(*in.DraftRatio):
+			v := *in.DraftRatio
+			ratio = &v
+		case newapi != nil:
+			ratio = newapi
+		}
+		if ratio != nil && ratesOK {
+			price := PriceFromRatio(*ratio, in.USDRate, in.SiteRate)
+			r.Target, r.TargetRatio = &price, ratio
 		}
 	}
-	if r.Target != nil && in.LastPrice != nil && *in.LastPrice > 0 {
-		signed := (*r.Target - *in.LastPrice) / *in.LastPrice
-		abs := math.Abs(signed)
-		r.SignedChange, r.Change = &signed, &abs
-		r.SmallChange = abs < in.MinChange
+	if r.Target == nil || r.TargetRatio == nil {
+		r.State = store.PricingUnset
+		return r
 	}
-	r.State = Classify(Facts{
-		Mode: in.Mode, Configured: configured, HasRef: in.Ref != nil,
-		Target: r.Target, TargetRatio: r.TargetRatio,
-		NewAPIRatio: in.NewAPIRatio, LastRatio: in.LastRatio,
-		Change: r.Change, ProtectLimit: in.ProtectLimit,
-	})
-	if r.State == store.PricingPending {
-		p := *r.Target
-		r.Pending = &p
+
+	var abs float64
+	if newapi != nil && ratesOK {
+		cur := PriceFromRatio(*newapi, in.USDRate, in.SiteRate)
+		signed := (*r.Target - cur) / cur
+		abs = math.Abs(signed)
+		r.Change = &signed
+		r.SmallChange = in.Mode == store.PricingFollow && abs < in.MinChange
+	}
+	switch {
+	case in.Mode == store.PricingFollow && r.Change != nil && abs > in.ProtectLimit:
+		r.State = store.PricingPending
+	case newapi == nil || math.Abs(*newapi-*r.TargetRatio) >= SyncTolerance:
+		r.State = store.PricingToWrite
+	default:
+		r.State = store.PricingSynced
 	}
 	return r
 }

@@ -3,6 +3,7 @@ package channels
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/steven52880/nam/internal/resp"
@@ -49,7 +50,7 @@ func TestVendorGroupRenameCreatesDrafts(t *testing.T) {
 	writes := e.fake.Writes
 	out, err := e.svc.UpdateVendor(e.ctx, v.ID, in)
 	must(t, err)
-	if out.GroupDrafts != 4 || out.RenamedDrafts != 0 || out.GroupName != "claude" {
+	if out.GroupDrafts != 4 || out.GroupName != "claude" {
 		t.Fatalf("result: %+v", out)
 	}
 	if e.fake.Writes != writes {
@@ -95,7 +96,7 @@ func TestVendorGroupRenameCreatesDrafts(t *testing.T) {
 	}
 }
 
-func TestVendorNameRenameUpdatesExtAndDrafts(t *testing.T) {
+func TestVendorNameRenameNeedsNoMigration(t *testing.T) {
 	e := newEnv(t)
 	a := e.liveChannel(t, "bound", "default,anthropic", "test-model")
 	e.bind(t, a, "anthropic")
@@ -112,25 +113,25 @@ func TestVendorNameRenameUpdatesExtAndDrafts(t *testing.T) {
 	writes := e.fake.Writes
 	out, err := e.svc.UpdateVendor(e.ctx, v.ID, in)
 	must(t, err)
-	if out.RenamedDrafts != 1 || out.GroupDrafts != 0 || out.Name != "claude-ai" {
+	if out.GroupDrafts != 0 || out.Name != "claude-ai" {
 		t.Fatalf("result: %+v", out)
 	}
 	if e.fake.Writes != writes {
 		t.Fatal("UpdateVendor must not write NewAPI")
 	}
-	var ext store.ChannelExt
-	must(t, e.svc.St.DB.Where("channel_id = ?", a).First(&ext).Error)
-	if ext.Vendor != "claude-ai" {
-		t.Fatalf("ext vendor: %q", ext.Vendor)
-	}
+	// the vendor follows the groups: both rows show the new name, the draft keeps only the group change
 	if r := mustRow(t, e, f); r.Vendor != "claude-ai" || r.SyncState != StateDraft {
 		t.Fatalf("draft row: %+v", r)
 	}
 	if r := mustRow(t, e, a); r.Vendor != "claude-ai" {
 		t.Fatalf("bound row: %+v", r)
 	}
+	var d store.ChannelDraft
+	must(t, e.svc.St.DB.Where("channel_id = ?", f).First(&d).Error)
+	if parseDraft(d).Ext.Vendor != nil || strings.Contains(d.Diff, `"vendor"`) {
+		t.Fatalf("vendor must not be stored in the draft: %s", d.Diff)
+	}
 }
-
 func TestVendorRenameConflict(t *testing.T) {
 	e := newEnv(t)
 	a := e.liveChannel(t, "bound", "default,anthropic", "test-model")

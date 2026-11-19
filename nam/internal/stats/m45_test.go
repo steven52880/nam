@@ -30,9 +30,9 @@ func newModelEnv(t *testing.T) *modelEnv {
 	must(t, e.st.DB.Where("1 = 1").Delete(&store.ChannelExt{}).Error)
 	me := &modelEnv{env: e}
 	mk := func(name string, disc float64, override string, models ...string) int {
-		id, err := e.fake.Create(e.ctx, ports.ChannelCreate{Name: name, Models: models})
+		id, err := e.fake.Create(e.ctx, ports.ChannelCreate{Name: name, Models: models, Group: "anthropic"})
 		must(t, err)
-		must(t, e.st.DB.Create(&store.ChannelExt{ChannelID: id, UpstreamID: &up.ID, Vendor: "ext-vendor", Discount: disc, ModelDiscount: override}).Error)
+		must(t, e.st.DB.Create(&store.ChannelExt{ChannelID: id, UpstreamID: &up.ID, ManualDiscount: &disc, ModelDiscount: override}).Error)
 		return id
 	}
 	me.ch1 = mk("c1", 0.35, `{"test-model":0.2}`, "test-model", "other")
@@ -141,7 +141,7 @@ func TestChannelStats_model_latest_window(t *testing.T) {
 
 func TestRate_model_restricts_channels(t *testing.T) {
 	m := newModelEnv(t)
-	pr, err := NewPricer(m.ctx, m.st, m.fake.Ports().Backend)
+	pr, err := NewPricer(m.ctx, m.st, m.fake.Ports().Backend, m.fake)
 	must(t, err)
 	chans, err := m.svc.Channels.List(m.ctx)
 	must(t, err)

@@ -1,92 +1,6 @@
 package channels
 
-import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
-	"sort"
-
-	"github.com/steven52880/nam/ports"
-)
-
-// snapshot is the set of NewAPI fields nam manages; drift = NewAPI value differs from the
-// snapshot taken at nam's last apply. Key is excluded (never read back reliably).
-type snapshot struct {
-	Models    []string `json:"models"`
-	Group     string   `json:"group"`
-	Priority  int64    `json:"priority"`
-	Weight    uint     `json:"weight"`
-	Tag       string   `json:"tag"`
-	Status    int      `json:"status"`
-	TestModel string   `json:"test_model"`
-	BaseURL   string   `json:"base_url"`
-}
-
-func snapOf(c ports.Channel) snapshot {
-	m := append([]string(nil), c.Models...)
-	sort.Strings(m)
-	return snapshot{Models: m, Group: c.Group, Priority: c.Priority, Weight: c.Weight, Tag: c.Tag,
-		Status: normStatus(c.Status), TestModel: c.TestModel, BaseURL: c.BaseURL}
-}
-
-// normStatus folds auto-disabled (3) into enabled (1): NewAPI flips 1↔3 by itself, which
-// is reported as its own state, not as drift.
-func normStatus(s int) int {
-	if s == ports.ChannelAutoDisabled {
-		return ports.ChannelEnabled
-	}
-	return s
-}
-
-func (s snapshot) hash() string {
-	b, _ := json.Marshal(s)
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:])
-}
-
-func (s snapshot) json() string {
-	b, _ := json.Marshal(s)
-	return string(b)
-}
-
-func parseSnap(raw string) (snapshot, bool) {
-	var s snapshot
-	if raw == "" || json.Unmarshal([]byte(raw), &s) != nil {
-		return s, false
-	}
-	return s, true
-}
-
-// diffSnap lists managed fields that differ between the applied snapshot and NewAPI.
-// Only managed groups are compared, judged by the current vendor set.
-func diffSnap(applied, now snapshot, isManaged func(string) bool) []string {
-	var out []string
-	if !equalStrings(applied.Models, now.Models) {
-		out = append(out, "models")
-	}
-	if !sameGroupSet(managedSubset(splitGroups(applied.Group), isManaged), managedSubset(splitGroups(now.Group), isManaged)) {
-		out = append(out, "group")
-	}
-	if applied.Priority != now.Priority {
-		out = append(out, "priority")
-	}
-	if applied.Weight != now.Weight {
-		out = append(out, "weight")
-	}
-	if applied.Tag != now.Tag {
-		out = append(out, "tag")
-	}
-	if applied.Status != now.Status {
-		out = append(out, "status")
-	}
-	if applied.TestModel != now.TestModel {
-		out = append(out, "test_model")
-	}
-	if applied.BaseURL != now.BaseURL {
-		out = append(out, "base_url")
-	}
-	return out
-}
+import "github.com/steven52880/nam/ports"
 
 func equalStrings(a, b []string) bool {
 	if len(a) != len(b) {
@@ -177,17 +91,23 @@ func mergeExt(a, b ExtFields) ExtFields {
 	if b.TokenID != nil {
 		a.TokenID = b.TokenID
 	}
-	if b.Vendor != nil {
-		a.Vendor = b.Vendor
-	}
-	if b.Discount != nil {
-		a.Discount = b.Discount
-	}
-	if b.DiscountSource != nil {
-		a.DiscountSource = b.DiscountSource
+	// Vendor never enters a draft: it was already turned into a group change.
+	switch {
+	case b.Discount != nil:
+		m := manualSource
+		a.Discount, a.DiscountSource = b.Discount, &m
+	case b.DiscountSource != nil && *b.DiscountSource == autoSource:
+		au := autoSource
+		a.Discount, a.DiscountSource = nil, &au // 清掉手填，回到自动
 	}
 	return a
 }
+
+// Discount sources a draft can carry: a number sets the manual value, "auto" clears it.
+const (
+	manualSource = "manual"
+	autoSource   = "auto"
+)
 
 // pruneFields drops fields whose value already equals NewAPI's (so a draft that was edited
 // back to the original disappears).
@@ -242,7 +162,6 @@ func dirtyNames(f Fields, e ExtFields) []string {
 	add(f.TestModel != nil, "test_model")
 	add(e.UpstreamID != nil, "upstream_id")
 	add(e.TokenID != nil, "token_id")
-	add(e.Vendor != nil, "vendor")
-	add(e.Discount != nil, "discount")
+	add(e.Discount != nil || e.DiscountSource != nil, "discount")
 	return out
 }

@@ -17,7 +17,6 @@ func (s *Server) registerVendorPricingRoutes(p *gin.RouterGroup) {
 	p.POST("/vendor-pricing/apply", s.applyVendorPricing)
 	p.PUT("/vendor-pricing/:id", s.updateVendorPricing)
 	p.POST("/vendor-pricing/:id/confirm", s.confirmVendorPricing)
-	p.POST("/vendor-pricing/:id/adopt", s.adoptVendorPricing)
 }
 
 func (s *Server) getVendorPricing(c *gin.Context) {
@@ -93,17 +92,4 @@ func (s *Server) confirmVendorPricing(c *gin.Context) {
 		return
 	}
 	resp.OK(c, out)
-}
-
-func (s *Server) adoptVendorPricing(c *gin.Context) {
-	id, okID := parseID(c)
-	if !okID {
-		return
-	}
-	it, err := s.VendorPrice.Adopt(c.Request.Context(), id)
-	if err != nil {
-		resp.FailFrom(c, err)
-		return
-	}
-	resp.OK(c, it)
 }

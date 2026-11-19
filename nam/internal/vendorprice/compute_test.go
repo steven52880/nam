@@ -86,25 +86,19 @@ func TestReferenceCostNoCandidates(t *testing.T) {
 	}
 }
 
-func TestTargetSellPrice(t *testing.T) {
+func TestFollowPrice(t *testing.T) {
 	ref := &Reference{Cost: 0.0243055556}
-	if got := TargetSellPrice(store.PricingFixed, fp(0.3), fp(2), ref); got == nil || *got != 0.3 {
-		t.Fatalf("fixed: %v", got)
-	}
-	if got := TargetSellPrice(store.PricingFixed, nil, fp(2), ref); got != nil {
-		t.Fatalf("fixed unset: %v", *got)
-	}
-	// follow: reference × markup, 4 decimals
-	if got := TargetSellPrice(store.PricingFollow, nil, fp(1.5), ref); got == nil || *got != 0.0365 {
+	// reference × markup, 4 decimals
+	if got := FollowPrice(fp(1.5), ref); got == nil || *got != 0.0365 {
 		t.Fatalf("follow: %v", got)
 	}
-	if TargetSellPrice(store.PricingFollow, fp(0.3), nil, ref) != nil {
+	if FollowPrice(nil, ref) != nil {
 		t.Fatal("follow without markup")
 	}
-	if TargetSellPrice(store.PricingFollow, fp(0.3), fp(1.5), nil) != nil {
+	if FollowPrice(fp(1.5), nil) != nil {
 		t.Fatal("follow without reference")
 	}
-	if TargetSellPrice(store.PricingFollow, nil, fp(0.001), &Reference{Cost: 0.01}) != nil {
+	if FollowPrice(fp(0.001), &Reference{Cost: 0.01}) != nil {
 		t.Fatal("price that rounds to 0 is not valid")
 	}
 }
@@ -157,86 +151,132 @@ func TestGroupRatioRoundsToThreeDecimals(t *testing.T) {
 			t.Errorf("round trip %v: got %v, %v", ratio, got, err)
 		}
 	}
-	if SyncTolerance < 5e-4 || SyncTolerance > 5.1e-4 || DriftTolerance != 1e-6 {
-		t.Errorf("tolerances: %v %v", SyncTolerance, DriftTolerance)
+	if SyncTolerance < 5e-4 || SyncTolerance > 5.1e-4 {
+		t.Errorf("tolerance: %v", SyncTolerance)
 	}
 }
 
-func TestClassifyPriority(t *testing.T) {
-	base := Facts{
-		Mode: store.PricingFollow, Configured: true, HasRef: true, Target: fp(0.3), TargetRatio: fp(0.3),
-		NewAPIRatio: fp(0.2), LastRatio: fp(0.2), Change: fp(0.1), ProtectLimit: 0.5,
+func fixedIn() Input {
+	return Input{Mode: store.PricingFixed, USDRate: 7.2, SiteRate: 7, ProtectLimit: 0.5, MinChange: 0.02}
+}
+
+func followIn() Input {
+	return Input{
+		Mode: store.PricingFollow, Markup: fp(1), Ref: &Reference{Cost: 0.1}, USDRate: 7.2, SiteRate: 7,
+		ProtectLimit: 0.5, MinChange: 0.02, NewAPIRatio: fp(0.1),
 	}
+}
+
+func TestEvaluateFixed(t *testing.T) {
 	tests := []struct {
-		name string
-		mod  func(*Facts)
-		want string
+		name  string
+		mod   func(*Input)
+		state string
+		ratio *float64
 	}{
-		{"to write", func(f *Facts) {}, store.PricingToWrite},
-		{"synced", func(f *Facts) { f.NewAPIRatio, f.LastRatio = fp(0.3), fp(0.3) }, store.PricingSynced},
-		{"synced within half step", func(f *Facts) { f.NewAPIRatio, f.LastRatio = fp(0.3000003), fp(0.3000003) }, store.PricingSynced},
-		{"unset beats everything", func(f *Facts) { f.Configured = false; f.HasRef = false; f.NewAPIRatio = fp(9) }, store.PricingUnset},
-		{"no channel beats drift", func(f *Facts) { f.HasRef = false; f.NewAPIRatio = fp(9) }, store.PricingNoChannel},
-		{"fixed mode does not need a reference", func(f *Facts) { f.Mode = store.PricingFixed; f.HasRef = false }, store.PricingToWrite},
-		{"drift beats pending", func(f *Facts) { f.NewAPIRatio = fp(0.9); f.Change = fp(2) }, store.PricingDrift},
-		{"drift when group missing in NewAPI", func(f *Facts) { f.NewAPIRatio = nil }, store.PricingDrift},
-		{"drift tolerance 1e-6 is not drift", func(f *Facts) { f.NewAPIRatio = fp(0.2000009) }, store.PricingToWrite},
-		{"pending beats to write", func(f *Facts) { f.Change = fp(0.51) }, store.PricingPending},
-		{"exactly at threshold is not pending", func(f *Facts) { f.Change = fp(0.5) }, store.PricingToWrite},
-		{"fixed mode is never pending", func(f *Facts) { f.Mode = store.PricingFixed; f.Change = fp(5) }, store.PricingToWrite},
-		{"first write: no NewAPI ratio, no last", func(f *Facts) { f.NewAPIRatio, f.LastRatio, f.Change = nil, nil, nil }, store.PricingToWrite},
-		{"no target ratio", func(f *Facts) { f.TargetRatio = nil }, store.PricingUnset},
-		{"takeover of a non-3-decimal ratio is synced", func(f *Facts) {
-			f.NewAPIRatio, f.LastRatio, f.TargetRatio = fp(0.2857), fp(0.2857), fp(0.286)
-		}, store.PricingSynced},
-		{"half step boundary is synced", func(f *Facts) {
-			f.NewAPIRatio, f.LastRatio, f.TargetRatio = fp(0.2855), fp(0.2855), fp(0.286)
-		}, store.PricingSynced},
-		{"beyond half step is to write", func(f *Facts) {
-			f.NewAPIRatio, f.LastRatio, f.TargetRatio = fp(0.2854), fp(0.2854), fp(0.286)
-		}, store.PricingToWrite},
-		{"drift tolerance is still 1e-6", func(f *Facts) {
-			f.NewAPIRatio, f.LastRatio, f.TargetRatio = fp(0.2857), fp(0.285702), fp(0.2857)
-		}, store.PricingDrift},
-		{"drift is not softened by the sync tolerance", func(f *Facts) {
-			f.NewAPIRatio, f.LastRatio, f.TargetRatio = fp(0.3002), fp(0.3), fp(0.3)
-		}, store.PricingDrift},
+		{"nothing at all", func(in *Input) {}, store.PricingUnset, nil},
+		{"NewAPI value, no draft", func(in *Input) { in.NewAPIRatio = fp(0.3) }, store.PricingSynced, fp(0.3)},
+		{"NewAPI not a 3 decimal number stays synced", func(in *Input) { in.NewAPIRatio = fp(0.2857) }, store.PricingSynced, fp(0.2857)},
+		{"draft differs", func(in *Input) { in.NewAPIRatio, in.DraftRatio = fp(0.3), fp(0.4) }, store.PricingToWrite, fp(0.4)},
+		{"draft without NewAPI group", func(in *Input) { in.DraftRatio = fp(0.4) }, store.PricingToWrite, fp(0.4)},
+		{"draft equal to NewAPI", func(in *Input) { in.NewAPIRatio, in.DraftRatio = fp(0.3), fp(0.3) }, store.PricingSynced, fp(0.3)},
+		{"draft within half a step", func(in *Input) { in.NewAPIRatio, in.DraftRatio = fp(0.2857), fp(0.286) }, store.PricingSynced, fp(0.286)},
+		{"draft beyond half a step", func(in *Input) { in.NewAPIRatio, in.DraftRatio = fp(0.2854), fp(0.286) }, store.PricingToWrite, fp(0.286)},
+		{"fixed is never pending", func(in *Input) { in.NewAPIRatio, in.DraftRatio = fp(0.1), fp(5) }, store.PricingToWrite, fp(5)},
+		{"invalid NewAPI ratio is ignored", func(in *Input) { in.NewAPIRatio = fp(0) }, store.PricingUnset, nil},
 	}
 	for _, tc := range tests {
-		f := base
-		tc.mod(&f)
-		if got := Classify(f); got != tc.want {
-			t.Errorf("%s: got %s, want %s", tc.name, got, tc.want)
+		in := fixedIn()
+		tc.mod(&in)
+		r := Evaluate(in)
+		if r.State != tc.state {
+			t.Errorf("%s: state %s, want %s", tc.name, r.State, tc.state)
 		}
+		if (tc.ratio == nil) != (r.TargetRatio == nil) || (tc.ratio != nil && !near(*r.TargetRatio, *tc.ratio)) {
+			t.Errorf("%s: target ratio %v, want %v", tc.name, r.TargetRatio, tc.ratio)
+		}
+		if r.SmallChange {
+			t.Errorf("%s: fixed mode has no small change", tc.name)
+		}
+	}
+	// the price is the target ratio × site rate ÷ usd rate
+	in := fixedIn()
+	in.NewAPIRatio = fp(0.309)
+	if r := Evaluate(in); r.Target == nil || !near(*r.Target, 0.309*7/7.2) {
+		t.Fatalf("price: %v", r.Target)
 	}
 }
 
-func TestEvaluateChangeSmallAndPending(t *testing.T) {
-	in := Input{
-		Mode: store.PricingFollow, Markup: fp(1), Ref: &Reference{Cost: 0.1}, USDRate: 7.2, SiteRate: 7,
-		ProtectLimit: 0.5, MinChange: 0.02, NewAPIRatio: fp(0.1), LastPrice: fp(0.0972), LastRatio: fp(0.1),
-	}
-	r := Evaluate(in)
-	if r.State != store.PricingToWrite || r.Change == nil || !near(*r.Change, (0.1-0.0972)/0.0972) || r.SmallChange {
+func TestEvaluateFollow(t *testing.T) {
+	// 0.1 × 1 → ratio 0.103, NewAPI has 0.1 (price 0.0972): +2.9%, above the minimum
+	r := Evaluate(followIn())
+	if r.State != store.PricingToWrite || r.Change == nil || !near(*r.Change, (0.1-0.1*7/7.2)/(0.1*7/7.2)) || r.SmallChange {
 		t.Fatalf("normal: %+v", r)
 	}
 	if r.TargetRatio == nil || *r.TargetRatio != 0.103 {
 		t.Fatalf("target ratio: %v", r.TargetRatio)
 	}
 
-	in.LastPrice = fp(0.0995) // 0.5% away
+	// NewAPI edited by hand: nam wins, the vendor is to_write again (still protected)
+	in := followIn()
+	in.NewAPIRatio = fp(0.105)
+	if r = Evaluate(in); r.State != store.PricingToWrite || r.Change == nil || *r.Change >= 0 {
+		t.Fatalf("hand edit: %+v", r)
+	}
+
+	// small change: below the minimum, still to_write
+	in = followIn()
+	in.NewAPIRatio = fp(0.1022)
 	if r = Evaluate(in); !r.SmallChange || r.State != store.PricingToWrite {
 		t.Fatalf("small change: %+v", r)
 	}
 
-	in.LastPrice = fp(0.04) // +150%
-	r = Evaluate(in)
-	if r.State != store.PricingPending || r.Pending == nil || *r.Pending != 0.1 || r.SignedChange == nil || *r.SignedChange < 1.49 {
-		t.Fatalf("pending: %+v", r)
+	// already there
+	in = followIn()
+	in.NewAPIRatio = fp(0.103)
+	if r = Evaluate(in); r.State != store.PricingSynced {
+		t.Fatalf("synced: %+v", r)
 	}
 
-	in.LastPrice = nil
-	if r = Evaluate(in); r.Change != nil || r.SmallChange {
-		t.Fatalf("no last price: %+v", r)
+	// +150% (NewAPI is far below): pending; a decrease beyond the limit is pending too
+	in = followIn()
+	in.NewAPIRatio = fp(0.04)
+	if r = Evaluate(in); r.State != store.PricingPending || r.Change == nil || *r.Change < 1.49 {
+		t.Fatalf("pending up: %+v", r)
+	}
+	in.NewAPIRatio = fp(0.5)
+	if r = Evaluate(in); r.State != store.PricingPending || r.Change == nil || *r.Change > -0.5 {
+		t.Fatalf("pending down: %+v", r)
+	}
+
+	// no NewAPI group: to_write, no change
+	in = followIn()
+	in.NewAPIRatio = nil
+	if r = Evaluate(in); r.State != store.PricingToWrite || r.Change != nil || r.SmallChange {
+		t.Fatalf("no group: %+v", r)
+	}
+
+	// unset and no_channel
+	in = followIn()
+	in.Markup = nil
+	if r = Evaluate(in); r.State != store.PricingUnset {
+		t.Fatalf("no markup: %+v", r)
+	}
+	in = followIn()
+	in.Ref = nil
+	if r = Evaluate(in); r.State != store.PricingNoChannel {
+		t.Fatalf("no reference: %+v", r)
+	}
+	in = followIn()
+	in.Markup, in.Ref = nil, nil
+	if r = Evaluate(in); r.State != store.PricingUnset {
+		t.Fatalf("unset beats no channel: %+v", r)
+	}
+
+	// a price whose ratio rounds to 0 is unset (never written)
+	in = followIn()
+	in.Ref = &Reference{Cost: 0.0004}
+	if r = Evaluate(in); r.State != store.PricingUnset || r.Target == nil || r.TargetRatio != nil {
+		t.Fatalf("rounds to zero: %+v", r)
 	}
 }

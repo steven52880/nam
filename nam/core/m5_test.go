@@ -22,22 +22,20 @@ type vpRef struct {
 }
 
 type vpItem struct {
-	VendorID         uint     `json:"vendor_id"`
-	Vendor           string   `json:"vendor"`
-	Group            string   `json:"group"`
-	Mode             string   `json:"mode"`
-	Markup           *float64 `json:"markup"`
-	SellPrice        *float64 `json:"sell_price"`
-	Reference        *vpRef   `json:"reference"`
-	TargetPrice      *float64 `json:"target_price"`
-	TargetRatio      *float64 `json:"target_ratio"`
-	NewAPIRatio      *float64 `json:"newapi_ratio"`
-	LastWrittenPrice *float64 `json:"last_written_price"`
-	LastWrittenRatio *float64 `json:"last_written_ratio"`
-	PendingPrice     *float64 `json:"pending_price"`
-	Change           *float64 `json:"change"`
-	SmallChange      bool     `json:"small_change"`
-	State            string   `json:"state"`
+	VendorID    uint     `json:"vendor_id"`
+	Vendor      string   `json:"vendor"`
+	Group       string   `json:"group"`
+	Mode        string   `json:"mode"`
+	Markup      *float64 `json:"markup"`
+	SellPrice   *float64 `json:"sell_price"`
+	Reference   *vpRef   `json:"reference"`
+	TargetPrice *float64 `json:"target_price"`
+	TargetRatio *float64 `json:"target_ratio"`
+	NewAPIRatio *float64 `json:"newapi_ratio"`
+	DraftRatio  *float64 `json:"draft_ratio"`
+	Change      *float64 `json:"change"`
+	SmallChange bool     `json:"small_change"`
+	State       string   `json:"state"`
 }
 
 type vpOverview struct {
@@ -193,7 +191,8 @@ func TestM5FixedAndFollowFlow(t *testing.T) {
 		t.Fatalf("overview header: %+v", ov)
 	}
 	it := m.vpItem()
-	if it.Vendor != "anthropic" || it.Group != "anthropic" || it.State != "unset" || it.Mode != "fixed" || it.SellPrice != nil {
+	if it.Vendor != "anthropic" || it.Group != "anthropic" || it.State != "unset" || it.Mode != "fixed" || it.SellPrice != nil ||
+		it.DraftRatio != nil || it.NewAPIRatio != nil || it.Change != nil {
 		t.Fatalf("initial item: %+v", it)
 	}
 	if it.Reference == nil || len(it.Reference.Channels) != 1 || !near(it.Reference.Cost, cost, 1e-9) || it.Reference.Channels[0].Weight != 1 {
@@ -204,12 +203,13 @@ func TestM5FixedAndFollowFlow(t *testing.T) {
 	}
 	id := it.VendorID
 
-	// ── 固定模式：售价 0.35 → GroupRatio = 0.35 × 7.2 ÷ 7 = 0.36
+	// ── 固定模式：售价 0.35 → 草稿倍率 0.35 × 7.2 ÷ 7 = 0.36
 	it = m.putVP(id, map[string]any{"mode": "fixed", "sell_price": 0.35})
-	if it.State != "to_write" {
+	if it.State != "to_write" || it.NewAPIRatio != nil {
 		t.Fatalf("after PUT: %+v", it)
 	}
 	wantNear(t, "target ratio", it.TargetRatio, 0.36)
+	wantNear(t, "draft ratio", it.DraftRatio, 0.36)
 	if msg := m.pricingJob(); !strings.Contains(msg, "写入 0") || m.groupRatio("anthropic") != 0 {
 		t.Fatalf("the job never writes a fixed-mode vendor: %q %s", msg, m.opt("GroupRatio"))
 	}
@@ -220,6 +220,9 @@ func TestM5FixedAndFollowFlow(t *testing.T) {
 		t.Fatalf("preview: %+v", pv)
 	}
 	wantNear(t, "preview after_ratio", pv.Vendors[0].AfterRatio, 0.36)
+	if m.vpItem().DraftRatio == nil {
+		t.Fatal("preview keeps the draft")
+	}
 
 	priceAudits := m.auditTotal("price")
 	var ap vpApply
@@ -242,14 +245,14 @@ func TestM5FixedAndFollowFlow(t *testing.T) {
 	if after := m.auditTotal("price"); after != priceAudits+1 {
 		t.Fatalf("one GroupRatio audit row expected: %d → %d", priceAudits, after)
 	}
-	if it = m.vpItem(); it.State != "synced" || !near(*it.LastWrittenRatio, 0.36, 1e-9) {
+	if it = m.vpItem(); it.State != "synced" || it.DraftRatio != nil || it.NewAPIRatio == nil || !near(*it.NewAPIRatio, 0.36, 1e-9) {
 		t.Fatalf("after apply: %+v", it)
 	}
 
-	// ── 跟随模式：0.0243 × 1.5 → 0.0365，比上次的 0.35 低 89.6%，超过阈值 → 待确认
+	// ── 跟随模式：0.0243 × 1.5 → 0.0365，比 NewAPI 当前的 0.35 低 89.6%，超过阈值 → 待确认
 	it = m.putVP(id, map[string]any{"mode": "follow", "markup": 1.5})
 	wantNear(t, "target price", it.TargetPrice, 0.0365)
-	if it.State != "pending" || it.Change == nil || *it.Change < 0.89 || it.PendingPrice == nil {
+	if it.State != "pending" || it.Change == nil || *it.Change > -0.89 || it.DraftRatio != nil {
 		t.Fatalf("pending: %+v", it)
 	}
 	m.must("PUT", "/settings", map[string]string{"pricing_auto_write": "true"})
@@ -264,14 +267,14 @@ func TestM5FixedAndFollowFlow(t *testing.T) {
 	if len(ap.Written) != 1 || ap.Written[0] != "GroupRatio" || m.groupRatio("anthropic") != 0.038 {
 		t.Fatalf("confirm: %+v ratio %v", ap, m.groupRatio("anthropic"))
 	}
-	if it = m.vpItem(); it.State != "synced" || it.PendingPrice != nil {
+	if it = m.vpItem(); it.State != "synced" {
 		t.Fatalf("after confirm: %+v", it)
 	}
 	if r := m.call("POST", "/vendor-pricing/"+itoa(id)+"/confirm", nil); r.Code != 409 {
 		t.Fatalf("confirm on a synced vendor: %d %s", r.Code, r.Raw)
 	}
 
-	// ── 正常变化（+6.6%）：自动写入已开启，定价任务直接写
+	// ── 正常变化（+5.3%）：自动写入已开启，定价任务直接写
 	m.putVP(id, map[string]any{"markup": 1.6})
 	if msg := m.pricingJob(); !strings.Contains(msg, "写入 1") || m.groupRatio("anthropic") != 0.040 { // 0.0389 × 7.2 ÷ 7 = 0.040011
 		t.Fatalf("auto write: %q ratio %v", msg, m.groupRatio("anthropic"))
@@ -288,47 +291,87 @@ func TestM5FixedAndFollowFlow(t *testing.T) {
 	if len(pv.Vendors) != 1 {
 		t.Fatalf("preview includes small changes: %+v", pv)
 	}
+
+	// ── 跟随模式下有人在 NewAPI 里手改倍率：以 nam 为准，下次写回
+	m.setOpt("GroupRatio", `{"default":1,"anthropic":0.045}`)
+	if it = m.vpItem(); it.State != "to_write" || it.SmallChange || it.NewAPIRatio == nil || *it.NewAPIRatio != 0.045 {
+		t.Fatalf("hand edit: %+v", it)
+	}
+	if msg := m.pricingJob(); !strings.Contains(msg, "写入 1") || m.groupRatio("anthropic") != 0.041 { // 0.0394 × 7.2 ÷ 7 = 0.040526
+		t.Fatalf("hand edit must be written back: %q ratio %v", msg, m.groupRatio("anthropic"))
+	}
+	if it = m.vpItem(); it.State != "synced" {
+		t.Fatalf("after write back: %+v", it)
+	}
 	m.modelOptionsUntouched()
 }
 
-func TestM5DriftForceAdoptAndSafety(t *testing.T) {
+func TestM5DraftDiscardAndNewAPIFollowing(t *testing.T) {
+	m := m5Fixture(t)
+	id := m.vpItem().VendorID
+	m.setOpt("GroupRatio", `{"default":1,"anthropic":0.2857}`)
+
+	// 固定模式没有草稿：直接读 NewAPI 当前值，GET 不写库
+	it := m.vpItem()
+	wantNear(t, "price from NewAPI", it.SellPrice, 0.2857*7/7.2)
+	if it.State != "synced" || it.Mode != "fixed" || it.DraftRatio != nil || it.NewAPIRatio == nil || *it.NewAPIRatio != 0.2857 {
+		t.Fatalf("fixed mode reads NewAPI: %+v", it)
+	}
+	wantNear(t, "target ratio", it.TargetRatio, 0.2857)
+
+	// 有人在 NewAPI 里改倍率：固定模式没有漂移，直接跟着变
+	m.setOpt("GroupRatio", `{"default":1,"anthropic":0.5}`)
+	if it = m.vpItem(); it.State != "synced" || it.NewAPIRatio == nil || *it.NewAPIRatio != 0.5 {
+		t.Fatalf("hand edit in fixed mode: %+v", it)
+	}
+	// 改美元参考汇率：倍率还是 NewAPI 的，不用写入
+	writes := m.fake.Writes
+	m.must("PUT", "/settings", map[string]string{"usd_cny_rate": "7.5"})
+	it = m.vpItem()
+	wantNear(t, "price after usd rate change", it.SellPrice, 0.5*7/7.5)
+	if it.State != "synced" || m.fake.Writes != writes {
+		t.Fatalf("after usd rate change: %+v", it)
+	}
+	m.must("PUT", "/settings", map[string]string{"usd_cny_rate": "7.2"})
+
+	// 草稿：改倍率不写 NewAPI
+	it = m.putVP(id, map[string]any{"group_ratio": 0.7})
+	if it.State != "to_write" || it.DraftRatio == nil || *it.DraftRatio != 0.7 || m.groupRatio("anthropic") != 0.5 || m.fake.Writes != writes {
+		t.Fatalf("draft: %+v", it)
+	}
+	// 改回 NewAPI 当前值：草稿自动清掉
+	it = m.putVP(id, map[string]any{"group_ratio": 0.5})
+	if it.State != "synced" || it.DraftRatio != nil {
+		t.Fatalf("back to NewAPI's value: %+v", it)
+	}
+	// 撤销修改
+	m.putVP(id, map[string]any{"group_ratio": 0.7})
+	it = m.putVP(id, map[string]any{"discard_draft": true})
+	if it.State != "synced" || it.DraftRatio != nil || m.groupRatio("anthropic") != 0.5 {
+		t.Fatalf("discard: %+v", it)
+	}
+	// discard_draft 和其它值一起给 → 400
+	if r := m.call("PUT", "/vendor-pricing/"+itoa(id), map[string]any{"discard_draft": true, "markup": 1.5}); r.Code != 400 {
+		t.Fatalf("discard with other fields: %d %s", r.Code, r.Raw)
+	}
+	// 改成跟随模式会清掉草稿
+	m.putVP(id, map[string]any{"sell_price": 0.2})
+	it = m.putVP(id, map[string]any{"mode": "follow", "markup": 1})
+	if it.DraftRatio != nil || it.Mode != "follow" {
+		t.Fatalf("follow clears the draft: %+v", it)
+	}
+	// 已经被接管的路由不存在了
+	if r := m.call("POST", "/vendor-pricing/"+itoa(id)+"/adopt", nil); r.Code != 404 {
+		t.Fatalf("adopt is gone: %d", r.Code)
+	}
+}
+
+func TestM5SafetyAndValidation(t *testing.T) {
 	m := m5Fixture(t)
 	id := m.vpItem().VendorID
 	m.putVP(id, map[string]any{"mode": "fixed", "sell_price": 0.35})
 	m.must("POST", "/vendor-pricing/apply", map[string]any{})
 	m.must("PUT", "/settings", map[string]string{"pricing_auto_write": "true"})
-
-	// 有人在 NewAPI 里手动改了倍率 → 漂移，自动写入跳过
-	m.setOpt("GroupRatio", `{"default":1,"anthropic":0.9}`)
-	if it := m.vpItem(); it.State != "drift" {
-		t.Fatalf("drift: %+v", it)
-	}
-	if msg := m.pricingJob(); !strings.Contains(msg, "漂移 1") || m.groupRatio("anthropic") != 0.9 {
-		t.Fatalf("job: %q", msg)
-	}
-	var ap vpApply
-	writes := m.fake.Writes
-	m.must("POST", "/vendor-pricing/apply", map[string]any{"vendor_ids": []uint{id}, "include_groups": false}).into(t, &ap)
-	if len(ap.Skipped) != 1 || ap.Skipped[0].State != "drift" || m.fake.Writes != writes {
-		t.Fatalf("drift without force: %+v", ap)
-	}
-	// 以 nam 为准覆盖
-	m.must("POST", "/vendor-pricing/apply", map[string]any{"vendor_ids": []uint{id}, "force": true}).into(t, &ap)
-	if len(ap.Vendors) != 1 || m.groupRatio("anthropic") != 0.36 {
-		t.Fatalf("force: %+v ratio %v", ap, m.groupRatio("anthropic"))
-	}
-	// 采纳 NewAPI 值
-	m.setOpt("GroupRatio", `{"default":1,"anthropic":0.9}`)
-	writes = m.fake.Writes
-	var it vpItem
-	m.must("POST", "/vendor-pricing/"+itoa(id)+"/adopt", nil).into(t, &it)
-	wantNear(t, "adopted price", it.SellPrice, 0.9*7/7.2)
-	if it.State != "synced" || it.Mode != "fixed" || m.fake.Writes != writes || m.groupRatio("anthropic") != 0.9 {
-		t.Fatalf("adopt: %+v", it)
-	}
-	if r := m.call("POST", "/vendor-pricing/"+itoa(id)+"/adopt", nil); r.Code != 409 {
-		t.Fatalf("adopt on a synced vendor: %d", r.Code)
-	}
 
 	// 选项不是合法 JSON：报告错误，绝不写入
 	m.putVP(id, map[string]any{"sell_price": 0.4})
@@ -336,11 +379,14 @@ func TestM5DriftForceAdoptAndSafety(t *testing.T) {
 	if ov := m.vp(); ov.Error == "" || !strings.Contains(ov.Error, "AutoGroups") {
 		t.Fatalf("error: %q", ov.Error)
 	}
-	writes = m.fake.Writes
+	writes := m.fake.Writes
 	for _, p := range []string{"/vendor-pricing/apply", "/vendor-pricing/preview"} {
 		if r := m.call("POST", p, map[string]any{}); r.Code != 409 {
 			t.Fatalf("%s with a broken option: %d %s", p, r.Code, r.Raw)
 		}
+	}
+	if r := m.call("PUT", "/vendor-pricing/"+itoa(id), map[string]any{"sell_price": 0.5}); r.Code != 409 {
+		t.Fatalf("edit with a broken option: %d %s", r.Code, r.Raw)
 	}
 	if m.fake.Writes != writes || m.opt("AutoGroups") != `{broken` {
 		t.Fatal("a broken option must be left alone")
@@ -376,10 +422,11 @@ func TestM5EditGroupRatioDirectly(t *testing.T) {
 
 	// 固定模式（新厂商默认）：直接改倍率，目标倍率恰好等于输入（舍入到 3 位）
 	it := m.putVP(id, map[string]any{"group_ratio": 0.3101})
-	if it.Mode != "fixed" || it.State != "to_write" || it.PendingPrice != nil {
+	if it.Mode != "fixed" || it.State != "to_write" {
 		t.Fatalf("after PUT group_ratio: %+v", it)
 	}
 	wantNear(t, "target ratio", it.TargetRatio, 0.31)
+	wantNear(t, "draft ratio", it.DraftRatio, 0.31)
 	wantNear(t, "sell price", it.SellPrice, 0.31*7/7.2)
 	writes := m.fake.Writes
 	if m.groupRatio("anthropic") != 0 || m.fake.Writes != writes {
@@ -389,11 +436,15 @@ func TestM5EditGroupRatioDirectly(t *testing.T) {
 	if got := m.groupRatio("anthropic"); got != 0.31 {
 		t.Fatalf("written ratio: %v", got)
 	}
+	if it = m.vpItem(); it.State != "synced" || it.DraftRatio != nil {
+		t.Fatalf("after apply: %+v", it)
+	}
 
 	// 跟随模式：400，说明原因
 	m.putVP(id, map[string]any{"mode": "follow", "markup": 1.5})
 	for name, body := range map[string]map[string]any{
 		"follow mode":         {"group_ratio": 0.5},
+		"follow mode price":   {"sell_price": 0.5},
 		"switching to follow": {"mode": "follow", "group_ratio": 0.5},
 	} {
 		r := m.call("PUT", "/vendor-pricing/"+itoa(id), body)
@@ -421,33 +472,6 @@ func TestM5EditGroupRatioDirectly(t *testing.T) {
 		}
 	}
 	wantNear(t, "ratio unchanged after bad edits", m.vpItem().TargetRatio, 0.5)
-}
-
-func TestM5TakeoverKeepsPriceAndUSDRateChange(t *testing.T) {
-	m := newM2(t)
-	m.must("POST", "/vendors", map[string]any{"name": "anthropic", "group_name": "anthropic", "models": []string{"test-model"}})
-	m.setOpt("GroupRatio", `{"anthropic":0.2857,"default":1}`)
-	writes := m.fake.Writes
-
-	it := m.vpItem()
-	wantNear(t, "taken-over price", it.SellPrice, 0.2857*7/7.2)
-	if it.Mode != "fixed" || it.State != "synced" || it.NewAPIRatio == nil || *it.NewAPIRatio != 0.2857 || m.fake.Writes != writes {
-		t.Fatalf("takeover must keep the price and write nothing: %+v", it)
-	}
-	wantNear(t, "target ratio", it.TargetRatio, 0.286) // 0.2857 rounded to 3 decimals; still synced
-
-	// 改美元参考汇率：售价不变，目标倍率变了，固定模式也要手动写入
-	m.must("PUT", "/settings", map[string]string{"usd_cny_rate": "7.5"})
-	it = m.vpItem()
-	if it.State != "to_write" || m.fake.Writes != writes {
-		t.Fatalf("after usd rate change: %+v", it)
-	}
-	wantNear(t, "sell price unchanged", it.SellPrice, 0.2857*7/7.2)
-	wantNear(t, "new target ratio", it.TargetRatio, 0.298)
-	m.must("POST", "/vendor-pricing/apply", map[string]any{"include_groups": false})
-	if got := m.groupRatio("anthropic"); got != 0.298 {
-		t.Fatalf("ratio: %v", got)
-	}
 }
 
 func TestM5SettingsAndJob(t *testing.T) {
@@ -484,7 +508,7 @@ func TestM5SettingsAndJob(t *testing.T) {
 			t.Fatalf("pricing job interval: %d", j.IntervalS)
 		}
 	}
-	if msg := m.pricingJob(); msg != "0 个厂商；写入 0；待确认 0；漂移 0；无可用渠道 0" {
+	if msg := m.pricingJob(); msg != "0 个厂商；写入 0；待确认 0；无可用渠道 0" {
 		t.Fatalf("empty job: %q", msg)
 	}
 }

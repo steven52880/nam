@@ -80,8 +80,11 @@ func (m *m2) setupChannels() (uint, map[string]int) {
 
 type m3Row struct {
 	ID             int      `json:"id"`
-	Discount       float64  `json:"discount"`
+	Discount       *float64 `json:"discount"`
 	DiscountSource string   `json:"discount_source"`
+	DiscountReason string   `json:"discount_reason"`
+	GroupRatio     *float64 `json:"upstream_group_ratio"`
+	ChannelCost    *float64 `json:"channel_cost"`
 	BalanceUSD     *float64 `json:"balance_usd"`
 	BalanceCNY     *float64 `json:"balance_cny"`
 	UnitCost       *float64 `json:"unit_cost"`

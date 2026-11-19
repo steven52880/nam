@@ -64,7 +64,7 @@ func (s *Service) Pull(ctx context.Context) (string, error) {
 		return "", err
 	}
 	since, fromRebuild := s.pullSince(ctx, cur, hasCur)
-	pr, err := NewPricer(ctx, s.St, s.Backend)
+	pr, err := NewPricer(ctx, s.St, s.Backend, s.Channels)
 	if err != nil {
 		return "", err
 	}

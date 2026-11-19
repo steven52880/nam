@@ -8,6 +8,8 @@ import (
 
 	"github.com/steven52880/nam/internal/resp"
 	"github.com/steven52880/nam/internal/store"
+	"github.com/steven52880/nam/ports"
+	"github.com/steven52880/nam/ports/portstest"
 	"gorm.io/gorm"
 )
 
@@ -85,24 +87,34 @@ func TestUniquenessAndModelOverlap(t *testing.T) {
 
 func TestInUseVendorIsProtected(t *testing.T) {
 	s := newSvc(t)
+	fake := portstest.NewFake()
+	s.Channels = fake
 	ctx := context.Background()
 	v, _ := s.Create(ctx, Input{Name: "anthropic", GroupName: "anthropic"})
-	s.St.DB.Create(&store.ChannelExt{ChannelID: 7, Vendor: "anthropic"})
+	id, err := fake.Create(ctx, ports.ChannelCreate{Type: 58, Name: "c1", Group: "default,anthropic", Status: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if vs, _ := s.List(ctx); len(vs) != 1 || vs[0].ChannelCount != 1 {
+		t.Errorf("channel count follows the channel groups: %+v", vs)
+	}
 	if err := s.Delete(ctx, v.ID); resp.Status(err) != 409 {
 		t.Errorf("delete in use: %v", err)
 	}
 	if _, err := update(s, v.ID, Input{Name: "renamed", GroupName: "anthropic"}); err != nil {
-		t.Errorf("rename in use is allowed (channels migrate it): %v", err)
+		t.Errorf("rename in use is allowed: %v", err)
 	}
 	if _, err := update(s, v.ID, Input{Name: "renamed", GroupName: "anthropic", Models: []string{"m"}}); err != nil {
 		t.Errorf("editing models in use is fine: %v", err)
 	}
-	// channels.Service.UpdateVendor migrates channel_ext.vendor; emulate it here
-	s.St.DB.Model(&store.ChannelExt{}).Where("channel_id = ?", 7).Update("vendor", "renamed")
 	if err := s.Delete(ctx, v.ID); resp.Status(err) != 409 {
 		t.Errorf("delete in use after rename: %v", err)
 	}
-	s.St.DB.Where("channel_id = ?", 7).Delete(&store.ChannelExt{})
+	// dropping the vendor group from the channel frees the vendor
+	g := "default"
+	if err := fake.Update(ctx, id, ports.ChannelPatch{Group: &g}); err != nil {
+		t.Fatal(err)
+	}
 	if err := s.Delete(ctx, v.ID); err != nil {
 		t.Errorf("delete unused: %v", err)
 	}
@@ -111,6 +123,17 @@ func TestInUseVendorIsProtected(t *testing.T) {
 	}
 }
 
+func TestVendorOfGroups(t *testing.T) {
+	vs := []VendorGroup{{"a", "ga"}, {"b", "gb"}}
+	for in, want := range map[string]string{
+		"": "", "x,y": "", "gb": "b", "x, gb ,y": "b",
+		"gb,ga": "a", // vendor order decides, not group order
+	} {
+		if got := VendorOfGroups(vs, in); got != want {
+			t.Errorf("%q → %q, want %q", in, got, want)
+		}
+	}
+}
 func TestReorder(t *testing.T) {
 	s := newSvc(t)
 	ctx := context.Background()

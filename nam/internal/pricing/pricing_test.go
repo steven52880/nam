@@ -104,35 +104,3 @@ func TestDeriveMedianAndDeviation(t *testing.T) {
 		t.Fatalf("no upstream: %+v", e)
 	}
 }
-
-func TestRefreshAutoKeepsManual(t *testing.T) {
-	st := openStore(t)
-	seedBook(t, st)
-	ctx := context.Background()
-	up := uint(1)
-	st.DB.Create(&store.UpstreamModelPrice{UpstreamID: up, Group: "a", Model: "test-model", Input: f(1.2)})
-	st.DB.Create(&store.ChannelExt{ChannelID: 10, UpstreamID: &up, Discount: 1, DiscountSource: store.DiscountAuto})
-	st.DB.Create(&store.ChannelExt{ChannelID: 11, UpstreamID: &up, Discount: 0.35, DiscountSource: store.DiscountManual})
-	chs := []ChannelInput{
-		{ChannelID: 10, UpstreamID: up, Group: "a", Models: []string{"test-model"}},
-		{ChannelID: 11, UpstreamID: up, Group: "a", Models: []string{"test-model"}},
-	}
-	res, changes, err := RefreshAuto(ctx, st, chs)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(res.Updated) != 1 || res.Manual != 1 || len(changes) != 1 || !near(changes[0].New, 0.4) {
-		t.Fatalf("res=%+v changes=%+v", res, changes)
-	}
-	var e10, e11 store.ChannelExt
-	st.DB.First(&e10, 10)
-	st.DB.First(&e11, 11)
-	if !near(e10.Discount, 0.4) || e10.DiscountSource != store.DiscountAuto || e11.Discount != 0.35 {
-		t.Fatalf("e10=%+v e11=%+v", e10, e11)
-	}
-	// second run: no churn
-	res, changes, _ = RefreshAuto(ctx, st, chs)
-	if len(res.Updated) != 0 || len(changes) != 0 {
-		t.Fatalf("churn: %+v", res)
-	}
-}

@@ -73,6 +73,14 @@ components:
         tags: { type: string, description: 逗号分隔 }
         remark: { type: string }
         adapter_config: { type: string, description: JSON 字符串，仅 generic }
+    SyncPart:
+      type: object
+      description: 上游某一部分最近一次同步的结果
+      properties:
+        state: { type: string, enum: [ok, fail, unsupported, empty], description: ok 成功 / fail 拉取失败 / unsupported 该上游类型不支持 / empty 成功但没有数据（仅 model_prices） }
+        at: { type: integer, description: 同步时间（Unix 秒） }
+        message: { type: string }
+        count: { type: integer, nullable: true, description: 令牌数 / 分组数 / 模型价格条数；balance 为 null }
     Upstream:
       type: object
       properties:
@@ -92,6 +100,14 @@ components:
         balance_at: { type: integer }
         last_sync_at: { type: integer }
         last_sync_error: { type: string }
+        sync_parts:
+          type: object
+          description: 各部分最近一次同步结果；缺少某一项 = 还没同步过。model_prices 随 groups 一起更新。
+          properties:
+            balance: { $ref: '#/components/schemas/SyncPart' }
+            tokens: { $ref: '#/components/schemas/SyncPart' }
+            groups: { $ref: '#/components/schemas/SyncPart' }
+            model_prices: { $ref: '#/components/schemas/SyncPart' }
         cred_updated_at: { type: integer, description: 凭证最后修改时间（Unix 秒）；API 写入或自动续期写回时更新 }
         cred_expires_at: { type: integer, description: cookie 凭证的预计过期时间（Unix 秒，签发时间 + 30 天）；其他类型或未知为 0 }
         token_count: { type: integer }
@@ -147,7 +163,8 @@ components:
       type: object
       description: |
         一个厂商的定价。价格都是<u>原厂价的倍数</u>（0.3 = 30%）。厂商分组倍率 = 售价 × 美元参考汇率 ÷ 站点汇率（四舍五入到 3 位小数；舍入后为 0 的售价不能写入）。
-        sell_price 只在固定模式有意义；markup 只在跟随模式有意义。数值字段可为 null。
+        nam 不存 NewAPI 已有的值：固定模式的目标倍率 = draft_ratio（还没写入的修改），没有草稿时 = NewAPI 当前的 GroupRatio；跟随模式的目标售价 = 参考成本 × 加价比例，NewAPI 里被手改过也以 nam 为准写回。
+        markup 只在跟随模式有意义。数值字段可为 null。
       properties:
         vendor_id: { type: integer }
         vendor: { type: string }
@@ -155,7 +172,7 @@ components:
         order: { type: integer }
         mode: { type: string, enum: [fixed, follow] }
         markup: { type: number, nullable: true, description: 加价比例：跟随模式售价 = 参考成本 × 加价比例（4 位小数） }
-        sell_price: { type: number, nullable: true }
+        sell_price: { type: number, nullable: true, description: 当前目标售价 = 目标倍率 × 站点汇率 ÷ 美元参考汇率（固定模式；跟随模式等于 target_price） }
         reference:
           type: object
           nullable: true
@@ -166,19 +183,18 @@ components:
             channels:
               type: array
               items: { type: object, properties: { id: { type: integer }, name: { type: string }, weight: { type: integer }, channel_cost: { type: number } } }
-        target_price: { type: number, nullable: true }
-        target_ratio: { type: number, nullable: true, description: 目标厂商分组倍率（3 位小数）。NewAPI 里的倍率与它相差不到半个写入步长（5e-4）即视为已同步，所以接管时不是 3 位小数的现有倍率（如 0.2857）也是已同步 }
-        newapi_ratio: { type: number, nullable: true, description: NewAPI 里该分组当前的倍率 }
-        last_written_price: { type: number, nullable: true }
-        last_written_ratio: { type: number, nullable: true }
-        last_written_at: { type: integer, nullable: true }
-        pending_price: { type: number, nullable: true, description: 仅待确认状态有值 }
-        change: { type: number, nullable: true, description: '|目标售价 − 上次写入售价| ÷ 上次写入售价' }
-        small_change: { type: boolean, description: change 小于最小变动；定时任务不写，手动写入仍包含 }
+        target_price: { type: number, nullable: true, description: 目标售价（固定模式 = sell_price；跟随模式 = 参考成本 × 加价比例；待确认时是将要写入的新售价） }
+        target_ratio: { type: number, nullable: true, description: 目标厂商分组倍率（3 位小数；固定模式无草稿时是 NewAPI 的原值）。NewAPI 里的倍率与它相差不到半个写入步长（5e-4）即视为已同步，所以不是 3 位小数的现有倍率（如 0.2857）也是已同步 }
+        newapi_ratio: { type: number, nullable: true, description: NewAPI 里该分组当前的倍率；null = NewAPI 里还没有这个分组 }
+        draft_ratio: { type: number, nullable: true, description: 固定模式下还没写入 NewAPI 的草稿倍率；没有草稿（或草稿已等于 NewAPI 当前值）为 null }
+        change: { type: number, nullable: true, description: '(目标售价 − NewAPI 当前售价) ÷ NewAPI 当前售价，带方向；NewAPI 没有该分组或算不出为 null' }
+        small_change: { type: boolean, description: 跟随模式下 |change| 小于最小变动；定时任务不写，手动写入仍包含 }
         state:
           type: string
-          enum: [synced, to_write, pending, drift, no_channel, unset]
-          description: 优先级：unset 未设置 → no_channel 无可用渠道 → drift 漂移（NewAPI 倍率与上次写入值相差 > 1e-6）→ pending 待确认（跟随模式变化 > 变化保护阈值）→ to_write 待写入 → synced 已同步
+          enum: [synced, to_write, pending, no_channel, unset]
+          description: |
+            固定模式：unset（没有草稿且 NewAPI 没有该分组）→ to_write（有草稿且与 NewAPI 当前值相差 ≥ 5e-4）→ synced。
+            跟随模式：unset（没有加价比例或售价过小）→ no_channel（没有参考成本）→ pending（|change| > 变化保护阈值）→ to_write（目标倍率与 NewAPI 当前值相差 ≥ 5e-4，含被手改的）→ synced。
         revenue_7d: { type: number }
         cost_7d: { type: number }
         margin_7d: { type: number, nullable: true, description: (收入 − 成本) ÷ 收入；没有收入时为 null }
@@ -198,14 +214,13 @@ components:
             auto_groups: { type: object, properties: { current: { type: array, items: { type: string } }, target: { type: array, items: { type: string } } } }
             user_usable_groups: { type: object, properties: { current: { type: object, additionalProperties: { type: string } }, target: { type: object, additionalProperties: { type: string } } } }
             changed: { type: boolean }
-        error: { type: string, description: 非空 = NewAPI 选项读取或解析失败（或站点汇率无效），此时不能写入，也不会接管厂商 }
+        error: { type: string, description: 非空 = NewAPI 选项读取或解析失败（或站点汇率无效），此时不能写入也不能编辑 }
     VendorPricingApplyInput:
       type: object
       description: 服务端重新计算，不信任客户端的数值
       properties:
-        vendor_ids: { type: array, items: { type: integer }, description: 省略 = 所有待写入厂商（含 small_change）；给出（含空数组）= 恰好这些厂商。待确认、未设置、无可用渠道一律跳过；漂移只有 force 且明确列出时才写 }
+        vendor_ids: { type: array, items: { type: integer }, description: 省略 = 所有待写入厂商（含 small_change）；给出（含空数组）= 恰好这些厂商。待确认、未设置、无可用渠道一律跳过 }
         include_groups: { type: boolean, default: true, description: 同时写 UserUsableGroups 和 AutoGroups（只写有变化的） }
-        force: { type: boolean, default: false, description: 以 nam 为准覆盖列出的漂移厂商 }
     VendorPricingPlan:
       type: object
       description: preview 与 apply 的响应。preview 含 options；apply 含 written。
@@ -341,9 +356,9 @@ components:
       properties:
         upstream_id: { type: integer }
         token_id: { type: integer }
-        vendor: { type: string }
-        discount: { type: number, exclusiveMinimum: true, minimum: 0, description: 上游分组折扣 }
-        discount_source: { type: string, enum: [auto, manual] }
+        vendor: { type: string, description: '只在提交时有效：转成换分组的草稿，不存进草稿 / ext；渠道的厂商由分组推出' }
+        discount: { type: number, exclusiveMinimum: true, minimum: 0, description: 设为手填的上游分组倍率 }
+        discount_source: { type: string, enum: [auto], description: '"auto" 且不带 discount = 清掉手填，回到自动' }
     Change:
       type: object
       required: [channel_id]
@@ -381,18 +396,19 @@ components:
         upstream_name: { type: string }
         token_id: { type: integer, nullable: true }
         token_name: { type: string }
-        vendor: { type: string }
-        discount: { type: number }
-        discount_source: { type: string, enum: [auto, manual] }
+        vendor: { type: string, description: 渠道分组（草稿叠加后）里按厂商顺序第一个属于厂商的分组对应的厂商；没有为空 }
+        discount: { type: number, nullable: true, description: '渠道级上游分组倍率；discount_source 为 none 时为 null' }
+        discount_source: { type: string, enum: [manual, auto, group, none], description: 'manual 手填；auto 渠道各模型 上游价 ÷ 原厂价 的中位数；group 令牌所在分组的上游分组倍率；none 算不出' }
+        discount_reason: { type: string, description: 'none 时说明原因（未关联上游 / 未关联令牌 / 令牌没有分组 / 上游没有这个分组的价格和倍率），其它为空' }
+        upstream_group_ratio: { type: number, nullable: true, description: 令牌所在分组的上游分组倍率（≤ 0 或没有为 null） }
         currency_rate: { type: number, nullable: true }
-        channel_cost: { type: number, nullable: true, description: 上游渠道售价 = 分组倍率 × 上游货币汇率 ÷ usd_cny_rate，原厂价的倍数，无单位；渠道没有上游时为 null }
+        channel_cost: { type: number, nullable: true, description: 上游渠道售价 = 分组倍率 × 上游货币汇率 ÷ usd_cny_rate，原厂价的倍数，无单位；没有汇率或倍率为 null 时为 null }
         balance_usd: { type: number, nullable: true, description: 上游余额（美元） }
         balance_cny: { type: number, nullable: true, description: 上游余额折合人民币（× 上游货币汇率） }
-        unit_cost: { type: number, nullable: true, description: '单次成本（元）：标准请求 1000 输入（200 缓存）+ 500 输出；缺价时为空' }
+        unit_cost: { type: number, nullable: true, description: '单次成本（元）：标准请求 1000 输入（200 缓存）+ 500 输出；缺价或倍率为 null 时为空' }
         unit_cost_model: { type: string, description: 计算单次成本所用模型（测试模型，缺价则取最便宜的有价模型） }
-        sync_state: { type: string, enum: [synced, draft, draft_create, draft_delete, drift, error] }
+        sync_state: { type: string, enum: [synced, draft, draft_create, draft_delete, error] }
         dirty_fields: { type: array, items: { type: string } }
-        drift_fields: { type: array, items: { type: string } }
         draft_id: { type: integer }
         draft_op: { type: string, enum: [create, update, delete] }
         draft_error: { type: string }
@@ -445,7 +461,7 @@ components:
         weight: { type: integer }
         tag: { type: string }
         test_model: { type: object, additionalProperties: { type: string }, description: 厂商名 → 测试模型 }
-        discount: { type: object, additionalProperties: { type: number }, description: 令牌 id → 上游分组折扣 }
+        discount: { type: object, additionalProperties: { type: number }, description: 令牌 id → 手填的上游分组倍率；留空 = 自动（现算） }
     BatchPreviewItem:
       allOf:
         - { $ref: '#/components/schemas/CreateSpec' }
@@ -457,6 +473,9 @@ components:
             group: { type: string }
             channel_type: { type: integer }
             duplicate: { type: boolean, description: 名称已存在于 NewAPI 或草稿 }
+            discount: { type: number, nullable: true, description: 预览算出的渠道级倍率；null = 无法推算 }
+            discount_source: { type: string, enum: [manual, auto, group, none] }
+            discount_reason: { type: string }
     BatchPreview:
       type: object
       properties:
@@ -533,24 +552,16 @@ components:
         official: { type: string }
         price: { allOf: [{ $ref: '#/components/schemas/OfficialPrice' }], nullable: true }
         upstream_input: { type: number, nullable: true }
-        derived: { type: number, nullable: true, description: 由上游价推算的折扣 }
-        deviation: { type: number, nullable: true }
-        deviates: { type: boolean }
-        reason: { type: string }
-        override: { type: number, nullable: true, description: 模型级折扣覆盖 }
-        effective: { type: number }
+        derived: { type: number, nullable: true, description: 这个模型自己的 上游价 ÷ 原厂价（按次计费用按次价相除；模型名先找原名再找别名） }
+        deviation: { type: number, nullable: true, description: 相对基准的偏离；基准 = 上游分组倍率（有的话），否则渠道中位数 }
+        deviates: { type: boolean, description: '偏离 > 1%：上游给这个模型的标价和原厂价不一致' }
+        reason: { type: string, description: derived 为 null 的原因 }
+        override: { type: number, nullable: true, description: 模型级倍率覆盖 }
+        effective: { type: number, nullable: true, description: 这个模型实际使用的倍率；null = 算不出，成本字段为 null }
+        effective_source: { type: string, enum: [override, manual, model, channel, none], description: 'override 模型级覆盖；manual 渠道手填；model 模型自己的上游价 ÷ 原厂价；channel 渠道级 auto / group；none 算不出' }
         cost_in_per_m: { type: number, nullable: true }
         cost_out_per_m: { type: number, nullable: true }
         cost_per_request: { type: number, nullable: true }
-    DriftDetail:
-      type: object
-      properties:
-        channel_id: { type: integer }
-        name: { type: string }
-        fields:
-          type: array
-          description: old = nam 上次应用的值；new = NewAPI 现在的值
-          items: { $ref: '#/components/schemas/FieldChange' }
     StatsMetrics:
       type: object
       description: 统计指标。比率都是 0–1 的小数，可空字段无数据时为 null。
@@ -599,8 +610,9 @@ components:
       type: object
       properties:
         channel_id: { type: integer }
-        has_model: { type: boolean, description: 渠道的模型列表是否含该模型；false 时下面三项都为 null }
-        discount: { type: number, nullable: true, description: 该模型的有效折扣（模型级折扣优先于渠道折扣） }
+        has_model: { type: boolean, description: 渠道的模型列表是否含该模型；false 时下面的数字都为 null }
+        discount: { type: number, nullable: true, description: 该模型实际使用的倍率（override → manual → model → channel）；null = 算不出，成本字段也为 null }
+        discount_source: { type: string, enum: [override, manual, model, channel, none] }
         channel_cost: { type: number, nullable: true, description: 上游渠道售价 = 分组倍率 × 上游货币汇率 ÷ usd_cny_rate，原厂价的倍数，无单位 }
         unit_cost: { type: number, nullable: true, description: 该模型一次标准请求的成本（元）；没有汇率或价格库没有该模型时为 null }
     ModelCostList:
@@ -824,7 +836,7 @@ paths:
       responses: { '200': { description: ok }, '404': { description: 不存在 }, '409': { description: 仍有渠道使用 } }
   /vendor-pricing:
     get:
-      summary: 厂商定价总览。厂商还没有定价行时在这里自动接管：NewAPI 已有该分组倍率 → 固定模式，售价按现有倍率反算（不改价）；没有 → 未设置
+      summary: 厂商定价总览。只读，不写 nam.db：没有定价行的厂商视为固定模式、无草稿，目标倍率读 NewAPI 当前的 GroupRatio（没有则 unset）
       responses: { '200': { description: data = VendorPricingOverview } }
   /vendor-pricing/preview:
     post:
@@ -834,28 +846,24 @@ paths:
   /vendor-pricing/apply:
     post:
       summary: |
-        写入 NewAPI。流程：读三个选项并解析（任一非法 JSON 则报错且不写）→ 计算并校验倍率有限且 > 0 → 只写有变化的选项（GroupRatio → UserUsableGroups → AutoGroups，只改厂商分组键）→ 读回按解析值核对 → 每个改了倍率的厂商记一条 price_history，更新 vendor_pricing。写入串行化（与定价任务互斥）。
+        写入 NewAPI。流程：读三个选项并解析（任一非法 JSON 则报错且不写）→ 计算并校验倍率有限且 > 0 → 只写有变化的选项（GroupRatio → UserUsableGroups → AutoGroups，只改厂商分组键）→ 读回按解析值核对 → 每个改了倍率的厂商记一条 price_history，写完的固定模式厂商清掉 draft_ratio。写入串行化（与定价任务互斥）。
       requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/VendorPricingApplyInput' } } } }
       responses: { '200': { description: data = VendorPricingPlan（written、vendors、skipped） }, '409': { description: NewAPI 选项解析失败或站点汇率无效，不能写入 }, '502': { description: 写入或读回核对失败；message 说明在哪一步 } }
   /vendor-pricing/{id}:
     parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
     put:
       summary: |
-        修改模式、售价、加价比例，或直接修改厂商分组倍率（缺省字段不改）。只写 nam；清空 pending_price。
-        group_ratio 只在固定模式下允许（请求里 mode 为 fixed，或厂商当前是固定模式且请求没改 mode），不能和 sell_price 同时给。
-        服务端先把它四舍五入到 3 位小数，再换算 sell_price = group_ratio × 站点汇率 ÷ 美元参考汇率（不再舍入，目标倍率恰好等于输入），换算后的售价仍要满足 0 < x ≤ 10。
-      requestBody: { content: { application/json: { schema: { type: object, properties: { mode: { type: string, enum: [fixed, follow] }, sell_price: { type: number, description: 0 < x ≤ 10 }, markup: { type: number, description: 0 < x ≤ 100 }, group_ratio: { type: number, description: 厂商分组倍率；舍入到 3 位后必须 > 0；只在固定模式下可用，不能和 sell_price 同时给 } } } } } }
-      responses: { '200': { description: data = VendorPricingItem }, '400': { description: 校验失败（含：跟随模式给了 group_ratio、同时给了 group_ratio 和 sell_price、倍率舍入后 ≤ 0、售价舍入出的倍率为 0） }, '404': { description: 厂商不存在 }, '409': { description: NewAPI 选项异常，厂商尚未接管 } }
+        修改模式、加价比例，或（固定模式）存草稿倍率（缺省字段不改）。只写 nam，不写 NewAPI；写入要走 preview / apply。
+        固定模式下 sell_price 换算成 3 位倍率（售价 × 美元参考汇率 ÷ 站点汇率）、group_ratio 取整 3 位，存为 draft_ratio；与 NewAPI 当前值相差 < 5e-4 时清掉草稿。
+        group_ratio 折合的售价仍要满足 0 < x ≤ 10。sell_price / group_ratio 只在固定模式下允许（请求里 mode 为 fixed，或厂商当前是固定模式且请求没改 mode），不能同时给。
+        discard_draft: true 清掉草稿，不能和其它字段同时给。改成跟随模式会清掉草稿。
+      requestBody: { content: { application/json: { schema: { type: object, properties: { mode: { type: string, enum: [fixed, follow] }, sell_price: { type: number, description: 0 < x ≤ 10；只在固定模式下可用 }, markup: { type: number, description: 0 < x ≤ 100 }, group_ratio: { type: number, description: 厂商分组倍率；舍入到 3 位后必须 > 0；只在固定模式下可用，不能和 sell_price 同时给 }, discard_draft: { type: boolean, description: true = 清掉固定模式的草稿倍率（撤销修改） } } } } } }
+      responses: { '200': { description: data = VendorPricingItem }, '400': { description: 校验失败（含：跟随模式给了 sell_price 或 group_ratio、同时给了 group_ratio 和 sell_price、discard_draft 和其它字段同时给、倍率舍入后 ≤ 0、售价舍入出的倍率为 0） }, '404': { description: 厂商不存在 }, '409': { description: NewAPI 选项或站点汇率异常，暂时不能编辑 } }
   /vendor-pricing/{id}/confirm:
     parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
     post:
-      summary: 确认写入待确认厂商的目标售价（只对 pending 状态）
+      summary: 确认写入待确认厂商当前的目标值（只对 pending 状态）
       responses: { '200': { description: data = VendorPricingPlan（written、vendors、skipped） }, '404': { description: 厂商不存在 }, '409': { description: 不是待确认状态，或 NewAPI 选项异常 }, '502': { description: 写入或读回核对失败 } }
-  /vendor-pricing/{id}/adopt:
-    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
-    post:
-      summary: 采纳 NewAPI 的倍率（只对 drift 状态）：转固定模式，售价按 NewAPI 倍率反算，只写 nam
-      responses: { '200': { description: data = VendorPricingItem }, '404': { description: 厂商不存在 }, '409': { description: 不是漂移状态，或 NewAPI 里没有该分组倍率 } }
   /channels:
     get:
       summary: 渠道表（NewAPI 渠道 + 待创建草稿，叠加未应用的草稿值）
@@ -910,6 +918,10 @@ paths:
       summary: 应用预览
       parameters: [{ name: ids, in: query, schema: { type: string }, description: 逗号分隔的渠道 id；省略 = 全部草稿 }]
       responses: { '200': { description: 'data = PlanItem[]（先删除，再更新，最后创建）' } }
+  /channels/issues:
+    get:
+      summary: 规则检查：对所有渠道（含草稿叠加）跑校验规则（名称、模型属于别的厂商、模型同时在多个厂商分组、渠道在多个厂商分组、手填倍率 ≤ 0）
+      responses: { '200': { description: 'data = {items: ValidationIssue[]}（没有问题时 items 为空数组）' } }
   /channels/costs:
     get:
       summary: 每个渠道在指定模型上的折扣与成本（行集合与 GET /channels 相同，含负数 id 的草稿新建渠道）
@@ -925,25 +937,10 @@ paths:
       responses:
         '200': { description: 'data = {results: Result[], success, failed}' }
         '400': { description: 'data = {issues: ValidationIssue[]}，校验失败时一条都不写' }
-  /channels/{id}/drift:
-    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
-    get:
-      summary: 漂移明细（nam 上次应用的值 vs NewAPI 现在的值）
-      responses: { '200': { description: data = DriftDetail }, '404': { description: 渠道不存在 } }
-  /channels/{id}/drift/accept:
-    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
-    post:
-      summary: 接受 NewAPI 的当前值（只更新 nam 的记录，不写 NewAPI）
-      responses: { '200': { description: ok }, '404': { description: 渠道不存在或未被管理 } }
-  /channels/{id}/drift/overwrite:
-    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
-    post:
-      summary: 生成「写回 nam 记录值」的更新草稿；仍需「应用」
-      responses: { '200': { description: ok }, '400': { description: 没有上次应用的记录 }, '404': { description: 渠道不存在 } }
   /channels/{id}/adopt:
     parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
     post:
-      summary: 纳入管理现有 NewAPI 渠道（记录当前值作为基线，不写 NewAPI）
+      summary: 纳入管理现有 NewAPI 渠道（只建 nam 的扩展行，不存快照，不写 NewAPI）
       requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/ExtFields' } } } }
       responses: { '200': { description: ok }, '404': { description: 渠道不存在 } }
   /channels/{id}/test:
@@ -960,8 +957,8 @@ paths:
   /channels/{id}/models:
     parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
     get:
-      summary: 渠道的模型明细（原厂价、推算折扣、模型级覆盖、成本）
-      responses: { '200': { description: 'data = {channel_id, name, vendor, discount, discount_source, derived_median, currency_rate, test_model, models: ChannelModelRow[]}' }, '404': { description: 渠道不存在 } }
+      summary: 渠道的模型明细（原厂价、上游价、倍率及来源、偏离、成本）
+      responses: { '200': { description: 'data = {channel_id, name, vendor, discount, discount_source, discount_reason, upstream_group_ratio, derived_median, currency_rate, test_model, models: ChannelModelRow[]}' }, '404': { description: 渠道不存在 } }
   /channels/{id}/model-discount:
     parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
     put:
@@ -990,7 +987,7 @@ paths:
     parameters: [{ name: model, in: path, required: true, schema: { type: string } }]
     get:
       summary: 模型明细：原厂价、价格库行、手动覆盖、指向它的别名、使用它的渠道及成本
-      responses: { '200': { description: 'data = {model, official_name, official, book, override, aliases, channels: [{id, name, vendor, discount, override, cost_in_per_m, cost_out_per_m, cost_per_request}]}' } }
+      responses: { '200': { description: 'data = {model, official_name, official, book, override, aliases, channels: [{id, name, vendor, discount, discount_source, override, cost_in_per_m, cost_out_per_m, cost_per_request}]}。discount 为该模型实际倍率，null = 算不出' } }
   /prices/{model}/override:
     parameters: [{ name: model, in: path, required: true, schema: { type: string } }]
     put:
@@ -1013,8 +1010,8 @@ paths:
   /upstreams/{id}/derive:
     parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
     post:
-      summary: 折扣推算预览：该上游每个渠道的上游分组折扣推算结果，不写任何东西
-      responses: { '200': { description: 'data = {upstream_id, channels: [{channel_id, name, group, discount, discount_source, derivation: {median, models: ModelDiscount[]}}]}' }, '404': { description: 上游不存在 } }
+      summary: 倍率预览：每个渠道现算的倍率（来源、原因、上游分组倍率）和逐模型推算，不写任何东西
+      responses: { '200': { description: 'data = {upstream_id, channels: [{channel_id, name, group, discount, discount_source, discount_reason, upstream_group_ratio, derivation: {median, models: ModelDiscount[]}}]}' }, '404': { description: 上游不存在 } }
   /upstreams/{id}/credential:
     parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
     get:

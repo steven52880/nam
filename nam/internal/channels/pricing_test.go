@@ -23,8 +23,8 @@ func TestBatchDerivesDiscountAndRowsShowCost(t *testing.T) {
 		TokenModels: map[string][]string{fmt.Sprint(e.tok.ID): {"test-model"}}, Weight: 1})
 	must(t, err)
 	items := prev.Items
-	if len(items) != 1 || !near(*items[0].Ext.Discount, 0.4) || *items[0].Ext.DiscountSource != store.DiscountAuto {
-		t.Fatalf("derived discount: %+v", items[0].Ext)
+	if len(items) != 1 || items[0].Discount == nil || !near(*items[0].Discount, 0.4) || items[0].DiscountSource != "auto" || items[0].Ext.Discount != nil {
+		t.Fatalf("derived discount (preview shows it, nothing is stored): %+v", items[0])
 	}
 	if *items[0].Fields.TestModel != "test-model" {
 		t.Fatalf("test model = %s", *items[0].Fields.TestModel)
@@ -50,8 +50,7 @@ func TestBatchDerivesDiscountAndRowsShowCost(t *testing.T) {
 		t.Fatalf("balance: %v %v", row.BalanceUSD, row.BalanceCNY)
 	}
 
-	must(t, e.svc.St.DB.Model(&store.ChannelExt{}).Where("channel_id = ?", row.ID).
-		Updates(map[string]any{"discount": 0.35, "discount_source": store.DiscountManual}).Error)
+	must(t, e.svc.St.DB.Model(&store.ChannelExt{}).Where("channel_id = ?", row.ID).Update("manual_discount", 0.35).Error)
 	row = mustRow(t, e, row.ID)
 	if row.UnitCost == nil || !near(*row.UnitCost, 0.001743) {
 		t.Fatalf("unit cost (manual): %v", row.UnitCost)
@@ -73,10 +72,10 @@ func TestBatchDerivesDiscountAndRowsShowCost(t *testing.T) {
 	if !m1.Deviates || !m2.Deviates || m3.Reason != "缺原厂价" || m3.Price != nil {
 		t.Fatalf("deviation flags: %+v %+v %+v", m1, m2, m3)
 	}
-	if m2.Override == nil || m2.Effective != 0.2 || !near(*m2.CostInPerM, 1*0.2*0.5) || !near(*m2.CostOutPerM, 4*0.2*0.5) {
+	if m2.Override == nil || m2.Effective == nil || *m2.Effective != 0.2 || m2.EffectiveSource != "override" || !near(*m2.CostInPerM, 1*0.2*0.5) || !near(*m2.CostOutPerM, 4*0.2*0.5) {
 		t.Fatalf("override cost: %+v", m2)
 	}
-	if m1.Effective != 0.35 || !near(*m1.CostInPerM, 3*0.35*0.5) {
+	if m1.Effective == nil || *m1.Effective != 0.35 || m1.EffectiveSource != "manual" || !near(*m1.CostInPerM, 3*0.35*0.5) {
 		t.Fatalf("channel discount cost: %+v", m1)
 	}
 }

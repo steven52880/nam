@@ -87,7 +87,7 @@ func (s *Service) refreshLatest(ctx context.Context, prev map[int]latestEntry) (
 		}
 		return a.at.Before(b.at)
 	})
-	pr, err := NewPricer(ctx, s.St, s.Backend)
+	pr, err := NewPricer(ctx, s.St, s.Backend, s.Channels)
 	if err != nil {
 		return nil, err
 	}

@@ -1,8 +1,9 @@
 // Package channels implements nam's channel layer on top of NewAPI: per-channel extension
-// data, drafts, apply, batch creation and drift detection.
+// data, drafts, apply, batch creation and the rule check.
 //
 // NewAPI stays the source of truth for channel fields. nam stores only channel_ext
-// (upstream, token, vendor, discount) plus a snapshot of the managed fields at last apply.
+// (upstream, token, manual discount, per-model overrides). The channel's vendor follows its
+// NewAPI groups and its discount is computed from cached upstream prices (pricing.Resolver).
 package channels
 
 import "github.com/steven52880/nam/internal/store"
@@ -29,15 +30,17 @@ func (f Fields) empty() bool {
 
 // ExtFields are nam-only fields (never written to NewAPI).
 type ExtFields struct {
-	UpstreamID     *uint    `json:"upstream_id,omitempty"`
-	TokenID        *uint    `json:"token_id,omitempty"`
-	Vendor         *string  `json:"vendor,omitempty"`
+	UpstreamID *uint `json:"upstream_id,omitempty"`
+	TokenID    *uint `json:"token_id,omitempty"`
+	// Vendor is accepted on submit only: it is turned into a group change and never stored.
+	Vendor *string `json:"vendor,omitempty"`
+	// Discount sets the manual 上游分组倍率. DiscountSource "auto" without Discount clears it.
 	Discount       *float64 `json:"discount,omitempty"`
 	DiscountSource *string  `json:"discount_source,omitempty"`
 }
 
 func (e ExtFields) empty() bool {
-	return e.UpstreamID == nil && e.TokenID == nil && e.Vendor == nil && e.Discount == nil && e.DiscountSource == nil
+	return e.UpstreamID == nil && e.TokenID == nil && e.Discount == nil && e.DiscountSource == nil
 }
 
 // Change is one edit submitted by the UI. ChannelID > 0 is an existing NewAPI channel,
@@ -61,8 +64,7 @@ type draftBody struct {
 // edit created or changed.
 type VendorUpdate struct {
 	store.Vendor
-	GroupDrafts   int `json:"group_drafts"`
-	RenamedDrafts int `json:"renamed_drafts"`
+	GroupDrafts int `json:"group_drafts"`
 }
 
 // Sync states shown in the channel table.
@@ -71,7 +73,6 @@ const (
 	StateDraft       = "draft"
 	StateDraftCreate = "draft_create"
 	StateDraftDelete = "draft_delete"
-	StateDrift       = "drift"
 	StateError       = "error"
 )
 
@@ -97,23 +98,29 @@ type Row struct {
 	UpstreamName   string   `json:"upstream_name"`
 	TokenID        *uint    `json:"token_id"`
 	TokenName      string   `json:"token_name"`
-	Vendor         string   `json:"vendor"`
-	Discount       float64  `json:"discount"`        // 上游分组折扣
-	DiscountSource string   `json:"discount_source"` // auto / manual
-	CurrencyRate   *float64 `json:"currency_rate"`   // 上游货币汇率
-	ChannelCost    *float64 `json:"channel_cost"`    // 上游渠道售价 = 分组倍率 × 上游货币汇率 ÷ 美元参考汇率，原厂价的倍数，无单位
-	BalanceUSD     *float64 `json:"balance_usd"`     // 上游余额（美元）
-	BalanceCNY     *float64 `json:"balance_cny"`     // 折合人民币
-	UnitCost       *float64 `json:"unit_cost"`       // 单次成本（元）：标准请求 1000 输入（200 缓存）+ 500 输出
-	UnitCostModel  string   `json:"unit_cost_model"` // 计算单次成本所用模型
+	Vendor         string   `json:"vendor"`               // 渠道分组里（按厂商顺序）第一个厂商分组对应的厂商
+	Discount       *float64 `json:"discount"`             // 渠道级上游分组倍率；none 时为 null
+	DiscountSource string   `json:"discount_source"`      // manual / auto / group / none
+	DiscountReason string   `json:"discount_reason"`      // none 时说明原因，其它为空
+	GroupRatio     *float64 `json:"upstream_group_ratio"` // 令牌所在分组的上游分组倍率
+	CurrencyRate   *float64 `json:"currency_rate"`        // 上游货币汇率
+	ChannelCost    *float64 `json:"channel_cost"`         // 上游渠道售价 = 分组倍率 × 上游货币汇率 ÷ 美元参考汇率，原厂价的倍数，无单位；倍率为 null 时为 null
+	BalanceUSD     *float64 `json:"balance_usd"`          // 上游余额（美元）
+	BalanceCNY     *float64 `json:"balance_cny"`          // 折合人民币
+	UnitCost       *float64 `json:"unit_cost"`            // 单次成本（元）：标准请求 1000 输入（200 缓存）+ 500 输出
+	UnitCostModel  string   `json:"unit_cost_model"`      // 计算单次成本所用模型
 
 	SyncState   string   `json:"sync_state"`
 	DirtyFields []string `json:"dirty_fields"`
-	DriftFields []string `json:"drift_fields"`
 	DraftID     uint     `json:"draft_id,omitempty"`
 	DraftOp     string   `json:"draft_op,omitempty"`
 	DraftError  string   `json:"draft_error,omitempty"`
+
+	manual *float64 // 手填倍率（草稿叠加后）；≤ 0 由 validateRows 报出
 }
+
+// Issue is one rule-check finding (GET /channels/issues); same shape as ValidationIssue.
+type Issue = ValidationIssue
 
 // FieldChange is one field in an apply preview.
 type FieldChange struct {

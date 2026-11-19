@@ -132,12 +132,11 @@ func (r reply) into(t *testing.T, v any) {
 }
 
 type chRow struct {
-	ID          int      `json:"id"`
-	Name        string   `json:"name"`
-	Priority    int64    `json:"priority"`
-	Weight      uint     `json:"weight"`
-	SyncState   string   `json:"sync_state"`
-	DriftFields []string `json:"drift_fields"`
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	Priority  int64  `json:"priority"`
+	Weight    uint   `json:"weight"`
+	SyncState string `json:"sync_state"`
 }
 
 func (m *m2) channels() []chRow {

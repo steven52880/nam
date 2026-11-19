@@ -36,7 +36,6 @@ const (
 	ReasonManual  = "manual"
 	ReasonAuto    = "auto"
 	ReasonConfirm = "confirm"
-	ReasonForce   = "force"
 )
 
 // Defaults for settings that are missing or invalid.
@@ -49,8 +48,8 @@ const (
 // vendorState is one vendor with its row, reference cost and computed result.
 type vendorState struct {
 	V      store.Vendor
-	Row    store.VendorPricing
-	Exists bool // the row is in the database
+	Row    store.VendorPricing // zero value (fixed mode, no draft) when the vendor has no row
+	Exists bool                // the row is in the database
 	Ref    *Reference
 	Res    Result
 	NewAPI *float64 // GroupRatio[group] in NewAPI right now
@@ -96,13 +95,6 @@ func inGroup(groups, want string) bool {
 	return false
 }
 
-func ptrEq(a, b *float64) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-	return *a == *b
-}
-
 func copyPtr(p *float64) *float64 {
 	if p == nil {
 		return nil
@@ -111,8 +103,7 @@ func copyPtr(p *float64) *float64 {
 	return &v
 }
 
-// load reads everything and computes every vendor. With no error text it also takes over
-// vendors that have no row yet and stores the computed state. Callers hold s.mu.
+// load reads everything and computes every vendor. It never writes. Callers hold s.mu.
 func (s *Service) load(ctx context.Context) (*snap, error) {
 	sn := &snap{byID: map[uint]*vendorState{}}
 	sn.site = s.St.GetFloat(ctx, store.KeySiteRate, 7)
@@ -165,12 +156,14 @@ func (s *Service) load(ctx context.Context) (*snap, error) {
 	for _, r := range rows {
 		rowOf[r.VendorID] = r
 	}
-	canPersist := len(sn.errs) == 0
 	for _, v := range vendors {
 		vs := &vendorState{V: v}
 		vs.Row, vs.Exists = rowOf[v.ID]
 		if !vs.Exists {
-			vs.Row = sn.takeover(v)
+			vs.Row = store.VendorPricing{VendorID: v.ID}
+		}
+		if vs.Row.Mode != store.PricingFollow {
+			vs.Row.Mode = store.PricingFixed
 		}
 		if t, ok := totals[v.Name]; ok {
 			vs.Rev, vs.Cost = t.Revenue, t.Cost
@@ -179,26 +172,7 @@ func (s *Service) load(ctx context.Context) (*snap, error) {
 		sn.vs = append(sn.vs, vs)
 		sn.byID[v.ID] = vs
 	}
-	if canPersist {
-		for _, vs := range sn.vs {
-			if err := s.persist(ctx, vs); err != nil {
-				return nil, err
-			}
-		}
-	}
 	return sn, nil
-}
-
-// takeover builds the row of a vendor nam has not priced yet from what NewAPI has: an
-// existing GroupRatio becomes a fixed price that reproduces it exactly (no price change).
-func (sn *snap) takeover(v store.Vendor) store.VendorPricing {
-	row := store.VendorPricing{VendorID: v.ID, Mode: store.PricingFixed, State: store.PricingUnset, UpdatedAt: time.Now().Unix()}
-	if r, ok := sn.opts.GroupRatio[v.GroupName]; ok && finitePositive(r) {
-		price := PriceFromRatio(r, sn.usd, sn.site)
-		ratio := r
-		row.SellPrice, row.LastWrittenPrice, row.LastWrittenRatio = &price, copyPtr(&price), &ratio
-	}
-	return row
 }
 
 // evaluate fills Ref, NewAPI and Res of one vendor.
@@ -215,74 +189,45 @@ func (sn *snap) evaluate(vs *vendorState) {
 		vs.NewAPI = &r
 	}
 	vs.Res = Evaluate(Input{
-		Mode: vs.Row.Mode, SellPrice: vs.Row.SellPrice, Markup: vs.Row.Markup, Ref: vs.Ref,
+		Mode: vs.Row.Mode, Markup: vs.Row.Markup, DraftRatio: vs.Row.DraftRatio, Ref: vs.Ref,
 		USDRate: sn.usd, SiteRate: sn.site, ProtectLimit: sn.protect, MinChange: sn.minChange,
-		NewAPIRatio: vs.NewAPI, LastPrice: vs.Row.LastWrittenPrice, LastRatio: vs.Row.LastWrittenRatio,
+		NewAPIRatio: vs.NewAPI,
 	})
-}
-
-// persist stores the computed state of a vendor (and creates its row on first sight).
-func (s *Service) persist(ctx context.Context, vs *vendorState) error {
-	var refCost *float64
-	if vs.Ref != nil {
-		refCost = copyPtr(&vs.Ref.Cost)
-	}
-	if vs.Exists && vs.Row.State == vs.Res.State && ptrEq(vs.Row.PendingPrice, vs.Res.Pending) && ptrEq(vs.Row.ReferenceCost, refCost) {
-		return nil
-	}
-	vs.Row.State, vs.Row.PendingPrice, vs.Row.ReferenceCost = vs.Res.State, copyPtr(vs.Res.Pending), refCost
-	vs.Row.UpdatedAt = time.Now().Unix()
-	if err := s.St.DB.WithContext(ctx).Save(&vs.Row).Error; err != nil {
-		return err
-	}
-	vs.Exists = true
-	return nil
-}
-
-// saveRow stores vs.Row after the caller changed it, recomputing the state first.
-func (s *Service) saveRow(ctx context.Context, sn *snap, vs *vendorState) error {
-	sn.evaluate(vs)
-	vs.Exists = false // force the write
-	return s.persist(ctx, vs)
 }
 
 // Item is one vendor in GET /vendor-pricing.
 type Item struct {
-	VendorID         uint       `json:"vendor_id"`
-	Vendor           string     `json:"vendor"`
-	Group            string     `json:"group"`
-	Order            int        `json:"order"`
-	Mode             string     `json:"mode"`
-	Markup           *float64   `json:"markup"`
-	SellPrice        *float64   `json:"sell_price"`
-	Reference        *Reference `json:"reference"`
-	TargetPrice      *float64   `json:"target_price"`
-	TargetRatio      *float64   `json:"target_ratio"`
-	NewAPIRatio      *float64   `json:"newapi_ratio"`
-	LastWrittenPrice *float64   `json:"last_written_price"`
-	LastWrittenRatio *float64   `json:"last_written_ratio"`
-	LastWrittenAt    *int64     `json:"last_written_at"`
-	PendingPrice     *float64   `json:"pending_price"`
-	Change           *float64   `json:"change"`
-	SmallChange      bool       `json:"small_change"`
-	State            string     `json:"state"`
-	Revenue7d        float64    `json:"revenue_7d"`
-	Cost7d           float64    `json:"cost_7d"`
-	Margin7d         *float64   `json:"margin_7d"`
+	VendorID    uint       `json:"vendor_id"`
+	Vendor      string     `json:"vendor"`
+	Group       string     `json:"group"`
+	Order       int        `json:"order"`
+	Mode        string     `json:"mode"`
+	Markup      *float64   `json:"markup"`
+	SellPrice   *float64   `json:"sell_price"`
+	Reference   *Reference `json:"reference"`
+	TargetPrice *float64   `json:"target_price"`
+	TargetRatio *float64   `json:"target_ratio"`
+	NewAPIRatio *float64   `json:"newapi_ratio"`
+	DraftRatio  *float64   `json:"draft_ratio"`
+	Change      *float64   `json:"change"`
+	SmallChange bool       `json:"small_change"`
+	State       string     `json:"state"`
+	Revenue7d   float64    `json:"revenue_7d"`
+	Cost7d      float64    `json:"cost_7d"`
+	Margin7d    *float64   `json:"margin_7d"`
 }
 
 func (vs *vendorState) item() Item {
 	it := Item{
 		VendorID: vs.V.ID, Vendor: vs.V.Name, Group: vs.V.GroupName, Order: vs.V.Order, Mode: vs.Row.Mode,
-		Markup: vs.Row.Markup, SellPrice: vs.Row.SellPrice, Reference: vs.Ref,
-		TargetPrice: vs.Res.Target, TargetRatio: vs.Res.TargetRatio, NewAPIRatio: vs.NewAPI,
-		LastWrittenPrice: vs.Row.LastWrittenPrice, LastWrittenRatio: vs.Row.LastWrittenRatio,
-		PendingPrice: vs.Res.Pending, Change: vs.Res.Change, SmallChange: vs.Res.SmallChange,
+		Markup: copyPtr(vs.Row.Markup), SellPrice: copyPtr(vs.Res.Target), Reference: vs.Ref,
+		TargetPrice: copyPtr(vs.Res.Target), TargetRatio: copyPtr(vs.Res.TargetRatio), NewAPIRatio: copyPtr(vs.NewAPI),
+		Change: copyPtr(vs.Res.Change), SmallChange: vs.Res.SmallChange,
 		State: vs.Res.State, Revenue7d: vs.Rev, Cost7d: vs.Cost,
 	}
-	if vs.Row.LastWrittenAt > 0 {
-		at := vs.Row.LastWrittenAt
-		it.LastWrittenAt = &at
+	// A draft that already equals NewAPI is not a pending edit.
+	if vs.Row.Mode == store.PricingFixed && vs.Res.State != store.PricingSynced {
+		it.DraftRatio = copyPtr(vs.Row.DraftRatio)
 	}
 	if vs.Rev > 0 {
 		m := (vs.Rev - vs.Cost) / vs.Rev
@@ -334,7 +279,7 @@ func (sn *snap) overview() *OverviewResult {
 	return out
 }
 
-// Overview computes every vendor (taking over vendors that have no row yet).
+// Overview computes every vendor. It never writes the database.
 func (s *Service) Overview(ctx context.Context) (*OverviewResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -347,16 +292,21 @@ func (s *Service) Overview(ctx context.Context) (*OverviewResult, error) {
 
 // UpdateInput is PUT /vendor-pricing/:id. Nil fields are left unchanged.
 //
-// GroupRatio edits the vendor group ratio directly (fixed mode only, not together with
-// SellPrice): it is rounded to 3 decimals and converted to the sell price that produces it.
+// SellPrice and GroupRatio (fixed mode only, not together) become a draft ratio: nothing is
+// written to NewAPI until preview/apply. DiscardDraft clears the draft and cannot be combined
+// with the other fields.
 type UpdateInput struct {
-	Mode       *string  `json:"mode"`
-	SellPrice  *float64 `json:"sell_price"`
-	Markup     *float64 `json:"markup"`
-	GroupRatio *float64 `json:"group_ratio"`
+	Mode         *string  `json:"mode"`
+	SellPrice    *float64 `json:"sell_price"`
+	Markup       *float64 `json:"markup"`
+	GroupRatio   *float64 `json:"group_ratio"`
+	DiscardDraft bool     `json:"discard_draft"`
 }
 
 func (in UpdateInput) validate() error {
+	if in.DiscardDraft && (in.Mode != nil || in.SellPrice != nil || in.Markup != nil || in.GroupRatio != nil) {
+		return resp.Invalid("撤销修改（discard_draft）不能和其它字段同时提交")
+	}
 	if in.Mode != nil && *in.Mode != store.PricingFixed && *in.Mode != store.PricingFollow {
 		return resp.Invalid("模式只能是 fixed 或 follow")
 	}
@@ -381,13 +331,16 @@ func (in UpdateInput) validate() error {
 }
 
 type rowDoc struct {
-	Mode      string   `json:"mode"`
-	SellPrice *float64 `json:"sell_price"`
-	Markup    *float64 `json:"markup"`
+	Mode       string   `json:"mode"`
+	Markup     *float64 `json:"markup"`
+	DraftRatio *float64 `json:"draft_ratio"`
 }
 
-// Update changes a vendor's mode, sell price, markup or (fixed mode) group ratio. Writes nam
-// only; clears pending_price.
+func docOf(r store.VendorPricing) rowDoc {
+	return rowDoc{Mode: r.Mode, Markup: copyPtr(r.Markup), DraftRatio: copyPtr(r.DraftRatio)}
+}
+
+// Update changes a vendor's mode, markup or (fixed mode) draft ratio. Writes nam only.
 func (s *Service) Update(ctx context.Context, id uint, in UpdateInput) (*Item, error) {
 	if err := in.validate(); err != nil {
 		return nil, err
@@ -402,92 +355,67 @@ func (s *Service) Update(ctx context.Context, id uint, in UpdateInput) (*Item, e
 	if !ok {
 		return nil, store.ErrNotFound
 	}
-	if !vs.Exists {
-		return nil, resp.Conflict("NewAPI 选项或设置异常，暂时不能编辑厂商定价：" + sn.errText())
+	if msg := sn.errText(); msg != "" {
+		return nil, resp.Conflict("NewAPI 选项或设置异常，暂时不能编辑厂商定价：" + msg)
 	}
-	before := rowDoc{vs.Row.Mode, vs.Row.SellPrice, vs.Row.Markup}
-	if in.GroupRatio != nil {
-		mode := vs.Row.Mode
-		if in.Mode != nil {
-			mode = *in.Mode
-		}
-		if mode != store.PricingFixed {
-			return nil, resp.Invalid("跟随模式的倍率由参考成本决定，请先改为固定模式再直接修改厂商分组倍率")
-		}
+	before := docOf(vs.Row)
+	row := vs.Row
+	row.DraftRatio = copyPtr(row.DraftRatio)
+	row.Markup = copyPtr(row.Markup)
+	if in.Mode != nil {
+		row.Mode = *in.Mode
+	}
+	if in.Markup != nil {
+		row.Markup = copyPtr(in.Markup)
+	}
+
+	var draft *float64 // the ratio asked for (fixed mode)
+	switch {
+	case in.GroupRatio != nil:
+		r := Round(*in.GroupRatio, RatioPlaces)
+		draft = &r
 		if !finitePositive(sn.usd) || !finitePositive(sn.site) {
 			return nil, resp.Conflict("美元参考汇率或站点汇率无效，不能换算厂商分组倍率")
 		}
-		// Round the ratio first, then convert without rounding so that the target ratio is
-		// exactly what the user typed.
-		price := PriceFromRatio(Round(*in.GroupRatio, RatioPlaces), sn.usd, sn.site)
-		if !(finitePositive(price) && price <= 10) {
+		if price := PriceFromRatio(r, sn.usd, sn.site); !(finitePositive(price) && price <= 10) {
 			return nil, resp.Invalid("该倍率折合的售价必须大于 0 且不超过 10（原厂价的倍数）")
 		}
-		in.SellPrice = &price
-	} else if in.SellPrice != nil {
-		if _, err := GroupRatio(*in.SellPrice, sn.usd, sn.site); err != nil {
+	case in.SellPrice != nil:
+		r, err := GroupRatio(*in.SellPrice, sn.usd, sn.site)
+		if err != nil {
 			return nil, resp.Invalid(err.Error())
 		}
+		draft = &r
 	}
-	if in.Mode != nil {
-		vs.Row.Mode = *in.Mode
+	if draft != nil && row.Mode != store.PricingFixed {
+		return nil, resp.Invalid("跟随模式的倍率由参考成本决定，请先改为固定模式再修改售价或厂商分组倍率")
 	}
-	if in.SellPrice != nil {
-		vs.Row.SellPrice = copyPtr(in.SellPrice)
+
+	switch {
+	case row.Mode == store.PricingFollow, in.DiscardDraft:
+		row.DraftRatio = nil
+	case draft != nil:
+		if vs.NewAPI != nil && finitePositive(*vs.NewAPI) && math.Abs(*vs.NewAPI-*draft) < SyncTolerance {
+			row.DraftRatio = nil // same as what NewAPI has: nothing to write
+		} else {
+			row.DraftRatio = draft
+		}
 	}
-	if in.Markup != nil {
-		vs.Row.Markup = copyPtr(in.Markup)
-	}
-	vs.Row.PendingPrice = nil
-	if err := s.saveRow(ctx, sn, vs); err != nil {
+	row.UpdatedAt = time.Now().Unix()
+	if err := s.St.DB.WithContext(ctx).Save(&row).Error; err != nil {
 		return nil, err
 	}
+	vs.Row, vs.Exists = row, true
+	sn.evaluate(vs)
 	s.record(ctx, store.AuditLog{Kind: store.AuditPrice, Target: fmt.Sprintf("nam:vendor_pricing:%d", id), Action: "update",
-		Summary: "修改厂商定价 " + vs.V.Name, Before: audit.JSON(before), After: audit.JSON(rowDoc{vs.Row.Mode, vs.Row.SellPrice, vs.Row.Markup})})
+		Summary: "修改厂商定价 " + vs.V.Name, Before: audit.JSON(before), After: audit.JSON(docOf(vs.Row))})
 	it := vs.item()
 	return &it, nil
 }
 
-// Adopt takes NewAPI's current ratio as the vendor's fixed price (drift only). Writes nam only.
-func (s *Service) Adopt(ctx context.Context, id uint) (*Item, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	sn, err := s.load(ctx)
-	if err != nil {
-		return nil, err
-	}
-	vs, ok := sn.byID[id]
-	if !ok {
-		return nil, store.ErrNotFound
-	}
-	if !vs.Exists {
-		return nil, resp.Conflict("NewAPI 选项或设置异常，暂时不能采纳：" + sn.errText())
-	}
-	if vs.Res.State != store.PricingDrift {
-		return nil, resp.Conflict(fmt.Sprintf("厂商 %s 当前不是漂移状态，不能采纳 NewAPI 值", vs.V.Name))
-	}
-	if vs.NewAPI == nil || !finitePositive(*vs.NewAPI) {
-		return nil, resp.Conflict(fmt.Sprintf("NewAPI 中没有厂商 %s 的有效倍率，无法采纳；可以选择以 nam 为准覆盖", vs.V.Name))
-	}
-	before := rowDoc{vs.Row.Mode, vs.Row.SellPrice, vs.Row.Markup}
-	ratio := *vs.NewAPI
-	price := PriceFromRatio(ratio, sn.usd, sn.site)
-	vs.Row.Mode = store.PricingFixed
-	vs.Row.SellPrice, vs.Row.LastWrittenPrice, vs.Row.LastWrittenRatio = &price, copyPtr(&price), &ratio
-	vs.Row.PendingPrice = nil
-	if err := s.saveRow(ctx, sn, vs); err != nil {
-		return nil, err
-	}
-	s.record(ctx, store.AuditLog{Kind: store.AuditPrice, Target: fmt.Sprintf("nam:vendor_pricing:%d", id), Action: "adopt",
-		Summary: "采纳 NewAPI 倍率作为厂商 " + vs.V.Name + " 的固定售价", Before: audit.JSON(before),
-		After: audit.JSON(rowDoc{vs.Row.Mode, vs.Row.SellPrice, vs.Row.Markup})})
-	it := vs.item()
-	return &it, nil
-}
-
-// Job is the scheduled pricing job: recompute every vendor (persisting 待确认 / 漂移), then,
-// when pricing_auto_write is on, write the follow-mode vendors that are 待写入 and not a
-// small change.
+// Job is the scheduled pricing job: recompute every vendor, then, when pricing_auto_write is
+// on, write the follow-mode vendors that are 待写入 and not a small change. Fixed-mode drafts
+// are never written by the job.
 func (s *Service) Job(ctx context.Context) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -519,8 +447,8 @@ func (s *Service) Job(ctx context.Context) (string, error) {
 	for _, vs := range sn.vs {
 		count[vs.Res.State]++
 	}
-	msg := fmt.Sprintf("%d 个厂商；写入 %d；待确认 %d；漂移 %d；无可用渠道 %d",
-		len(sn.vs), written, count[store.PricingPending], count[store.PricingDrift], count[store.PricingNoChannel])
+	msg := fmt.Sprintf("%d 个厂商；写入 %d；待确认 %d；无可用渠道 %d",
+		len(sn.vs), written, count[store.PricingPending], count[store.PricingNoChannel])
 	if writeErr != nil {
 		return msg, fmt.Errorf("自动写入失败：%w", writeErr)
 	}

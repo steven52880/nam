@@ -22,7 +22,8 @@ type ChannelUse struct {
 	ID          int      `json:"id"`
 	Name        string   `json:"name"`
 	Vendor      string   `json:"vendor"`
-	Discount    float64  `json:"discount"` // 实际使用的折扣（模型级覆盖优先）
+	Discount    *float64 `json:"discount"`        // 这个模型实际使用的倍率；null = 算不出
+	Source      string   `json:"discount_source"` // override / manual / model / channel / none
 	Override    *float64 `json:"override"`
 	CostInPerM  *float64 `json:"cost_in_per_m"`
 	CostOutPerM *float64 `json:"cost_out_per_m"`
@@ -73,7 +74,7 @@ func (s *Server) priceDetail(c *gin.Context) {
 		aliases = append(aliases, a.Alias)
 	}
 	out["aliases"] = aliases
-	uses, err := s.channelUses(c, book, model)
+	uses, err := s.channelUses(c, model)
 	if err != nil {
 		resp.FailFrom(c, err)
 		return
@@ -82,48 +83,15 @@ func (s *Server) priceDetail(c *gin.Context) {
 	resp.OK(c, out)
 }
 
-func (s *Server) channelUses(c *gin.Context, book *pricing.Book, model string) ([]ChannelUse, error) {
-	ctx := c.Request.Context()
-	rows, err := s.Channels.List(ctx)
+func (s *Server) channelUses(c *gin.Context, model string) ([]ChannelUse, error) {
+	items, err := s.Channels.ModelUses(c.Request.Context(), model)
 	if err != nil {
 		return nil, err
 	}
-	var exts []store.ChannelExt
-	if err := s.Store.DB.WithContext(ctx).Find(&exts).Error; err != nil {
-		return nil, err
-	}
-	extByID := map[int]store.ChannelExt{}
-	for _, e := range exts {
-		extByID[e.ChannelID] = e
-	}
-	price, priced := book.Resolve(model)
-	want := book.Canonical(model)
-	uses := []ChannelUse{}
-	for _, r := range rows {
-		var served string
-		for _, m := range r.Models {
-			if m == model || book.Canonical(m) == want {
-				served = m
-				break
-			}
-		}
-		if served == "" {
-			continue
-		}
-		ov := pricing.ModelDiscounts(extByID[r.ID].ModelDiscount)
-		u := ChannelUse{ID: r.ID, Name: r.Name, Vendor: r.Vendor, Discount: pricing.EffectiveDiscount(r.Discount, ov, served)}
-		if v, ok := ov[served]; ok {
-			u.Override = &v
-		}
-		if priced && r.CurrencyRate != nil {
-			if price.IsPerRequest() {
-				v := pricing.ChannelCNY(*price.PerRequest, u.Discount, *r.CurrencyRate)
-				u.CostPerReq = &v
-			} else {
-				u.CostInPerM, u.CostOutPerM = pricing.PerMillionCNY(price, u.Discount, *r.CurrencyRate)
-			}
-		}
-		uses = append(uses, u)
+	uses := make([]ChannelUse, 0, len(items))
+	for _, u := range items {
+		uses = append(uses, ChannelUse{ID: u.ID, Name: u.Name, Vendor: u.Vendor, Discount: u.Discount, Source: u.Source,
+			Override: u.Override, CostInPerM: u.CostInPerM, CostOutPerM: u.CostOutPerM, CostPerReq: u.CostPerReq})
 	}
 	return uses, nil
 }

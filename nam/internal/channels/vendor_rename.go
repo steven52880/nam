@@ -10,8 +10,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// UpdateVendor edits a vendor and carries the change over to channels. A vendor rename
-// updates channel_ext and draft ext.vendor; a group rename creates update drafts that
+// UpdateVendor edits a vendor and carries the change over to channels. A vendor rename needs
+// nothing (the channel's vendor follows its groups); a group rename creates update drafts that
 // swap the old group for the new one on every non-deleted channel carrying it. Nothing
 // is written to NewAPI: the user applies the drafts from the channel page.
 func (s *Service) UpdateVendor(ctx context.Context, id uint, in vendors.Input) (VendorUpdate, error) {
@@ -31,23 +31,6 @@ func (s *Service) UpdateVendor(ctx context.Context, id uint, in vendors.Input) (
 		}
 		out.Vendor = cur
 		touched := map[int]store.ChannelDraft{}
-		if old.Name != cur.Name {
-			if err := tx.Model(&store.ChannelExt{}).Where("vendor = ?", old.Name).Update("vendor", cur.Name).Error; err != nil {
-				return err
-			}
-			for chID, d := range st.drafts {
-				body := parseDraft(d)
-				if body.Ext.Vendor == nil || *body.Ext.Vendor != old.Name {
-					continue
-				}
-				body.Ext.Vendor = &cur.Name
-				raw, _ := json.Marshal(body)
-				d.Diff = string(raw)
-				st.drafts[chID] = d
-				touched[chID] = d
-				out.RenamedDrafts++
-			}
-		}
 		if old.GroupName != cur.GroupName {
 			for _, r := range st.rows() {
 				if r.DraftOp == store.DraftDelete {

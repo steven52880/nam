@@ -9,19 +9,20 @@ import (
 
 // ModelRow is one model of a channel in the lower detail table.
 type ModelRow struct {
-	Model          string         `json:"model"`
-	Official       string         `json:"official"`         // 原厂价库里的名字（别名映射后）
-	Price          *pricing.Price `json:"price"`            // 原厂价; nil = 缺价
-	UpstreamInput  *float64       `json:"upstream_input"`   // 上游价（上游美元 / 百万 token，已含上游分组倍率）
-	Derived        *float64       `json:"derived"`          // 由上游价推算的折扣
-	Deviation      *float64       `json:"deviation"`        // 相对渠道中位数
-	Deviates       bool           `json:"deviates"`         // 偏离 > 5%
-	Reason         string         `json:"reason"`           // 无法推算的原因
-	Override       *float64       `json:"override"`         // 模型级上游分组折扣覆盖
-	Effective      float64        `json:"effective"`        // 实际使用的折扣
-	CostInPerM     *float64       `json:"cost_in_per_m"`    // 成本（元 / 百万输入 token）
-	CostOutPerM    *float64       `json:"cost_out_per_m"`   // 成本（元 / 百万输出 token）
-	CostPerRequest *float64       `json:"cost_per_request"` // 按次计费模型的单次成本（元）
+	Model           string         `json:"model"`
+	Official        string         `json:"official"`         // 原厂价库里的名字（别名映射后）
+	Price           *pricing.Price `json:"price"`            // 原厂价; nil = 缺价
+	UpstreamInput   *float64       `json:"upstream_input"`   // 上游价（上游美元 / 百万 token，已含上游分组倍率）
+	Derived         *float64       `json:"derived"`          // 这个模型自己的 上游价 ÷ 原厂价
+	Deviation       *float64       `json:"deviation"`        // 相对基准（上游分组倍率，没有则渠道中位数）
+	Deviates        bool           `json:"deviates"`         // 偏离 > 1%：上游给这个模型的标价和原厂价不一致
+	Reason          string         `json:"reason"`           // 无法推算的原因
+	Override        *float64       `json:"override"`         // 模型级倍率覆盖
+	Effective       *float64       `json:"effective"`        // 实际使用的倍率；null = 算不出
+	EffectiveSource string         `json:"effective_source"` // override / manual / model / channel / none
+	CostInPerM      *float64       `json:"cost_in_per_m"`    // 成本（元 / 百万输入 token）
+	CostOutPerM     *float64       `json:"cost_out_per_m"`   // 成本（元 / 百万输出 token）
+	CostPerRequest  *float64       `json:"cost_per_request"` // 按次计费模型的单次成本（元）
 }
 
 // ModelDetail is the lower table for one channel.
@@ -29,9 +30,11 @@ type ModelDetail struct {
 	ChannelID      int        `json:"channel_id"`
 	Name           string     `json:"name"`
 	Vendor         string     `json:"vendor"`
-	Discount       float64    `json:"discount"`
+	Discount       *float64   `json:"discount"`
 	DiscountSource string     `json:"discount_source"`
-	DerivedMedian  *float64   `json:"derived_median"` // 当前上游价推算出的中位数（自动来源会在倍率同步后采用）
+	DiscountReason string     `json:"discount_reason"`
+	GroupRatio     *float64   `json:"upstream_group_ratio"`
+	DerivedMedian  *float64   `json:"derived_median"` // 渠道各模型 上游价 ÷ 原厂价 的中位数
 	CurrencyRate   *float64   `json:"currency_rate"`
 	TestModel      string     `json:"test_model"`
 	Models         []ModelRow `json:"models"`
@@ -50,46 +53,35 @@ func (s *Service) Models(ctx context.Context, id int) (ModelDetail, error) {
 		}
 	}
 	r := st.row(id)
-	book, err := pricing.LoadBook(ctx, s.St)
+	rs, err := s.resolver(ctx)
 	if err != nil {
 		return ModelDetail{}, err
 	}
-	out := ModelDetail{ChannelID: id, Name: r.Name, Vendor: r.Vendor, Discount: r.Discount, DiscountSource: r.DiscountSource,
+	book := rs.Book()
+	cr := st.channelRate(rs, r)
+	out := ModelDetail{ChannelID: id, Name: r.Name, Vendor: r.Vendor, Discount: cr.Discount, DiscountSource: cr.Source,
+		DiscountReason: cr.Reason, GroupRatio: cr.GroupRatio, DerivedMedian: cr.Median,
 		CurrencyRate: r.CurrencyRate, TestModel: r.TestModel, Models: make([]ModelRow, 0, len(r.Models))}
-
-	up := map[string]pricing.UpstreamPrice{}
-	if r.UpstreamID != nil && r.TokenID != nil {
-		if t, ok := st.tokens[*r.TokenID]; ok {
-			if up, err = pricing.UpstreamPrices(ctx, s.St, *r.UpstreamID, t.Group); err != nil {
-				return ModelDetail{}, err
-			}
-		}
-	}
-	d := pricing.Derive(r.Models, book, up)
-	out.DerivedMedian = d.Median
-	overrides := map[string]float64{}
-	if e, ok := st.ext[id]; ok {
-		overrides = pricing.ModelDiscounts(e.ModelDiscount)
-	}
-	for i, m := range r.Models {
-		md := d.Models[i]
-		row := ModelRow{Model: m, Official: md.Official, Derived: md.Discount, Deviation: md.Deviation, Deviates: md.Deviates, Reason: md.Reason}
-		if u, ok := up[m]; ok {
+	overrides := st.spec(r).Overrides
+	for _, m := range r.Models {
+		mr := cr.Model(m)
+		row := ModelRow{Model: m, Official: mr.Official, Derived: mr.Own, Deviation: mr.Deviation, Deviates: mr.Deviates,
+			Reason: mr.Reason, Effective: mr.Discount, EffectiveSource: mr.Source}
+		if u, ok := cr.Upstream(m); ok {
 			row.UpstreamInput = u.Input
 		}
 		if v, ok := overrides[m]; ok {
 			row.Override = &v
 		}
-		row.Effective = pricing.EffectiveDiscount(r.Discount, overrides, m)
 		if p, ok := book.Resolve(m); ok {
 			pp := p
 			row.Price = &pp
-			if r.CurrencyRate != nil {
+			if r.CurrencyRate != nil && mr.Discount != nil {
 				if p.IsPerRequest() {
-					c := pricing.ChannelCNY(*p.PerRequest, row.Effective, *r.CurrencyRate)
+					c := pricing.ChannelCNY(*p.PerRequest, *mr.Discount, *r.CurrencyRate)
 					row.CostPerRequest = &c
 				} else {
-					row.CostInPerM, row.CostOutPerM = pricing.PerMillionCNY(p, row.Effective, *r.CurrencyRate)
+					row.CostInPerM, row.CostOutPerM = pricing.PerMillionCNY(p, *mr.Discount, *r.CurrencyRate)
 				}
 			}
 		}
